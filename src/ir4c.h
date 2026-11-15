@@ -176,6 +176,7 @@ void      emit8_8(u8 a, u8 b);
 void      emit8_16(u8 a, u16 w);
 void      emit8_8_8(u8 a, u8 b, u8 c);
 void      cb_rewind(u16 n);
+void      patch8(u16 patch_offset, u8 val);
 void      patch16(u16 patch_offset, u16 target_addr);
 u16       cb_alloc_data(u16 size, u8 align);
 u16       cb_data_size(void);

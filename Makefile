@@ -30,6 +30,7 @@ test: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 test
 	./$(TARGET) -t 6502  -o $(BUILD)/core_6502.bin   tests/core.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/core_arm64.bin  --run tests/core.ir4
 	./$(TARGET) -t z80   -o $(BUILD)/muldiv_z80.bin  tests/muldiv.ir4
+	./$(TARGET) -t 6502  -o $(BUILD)/muldiv_6502.bin tests/muldiv.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/muldiv_arm64.bin --run tests/muldiv.ir4
 	./$(TARGET) -t z80   -o $(BUILD)/mem_z80.bin     tests/mem.ir4
 	./$(TARGET) -t 6502  -o $(BUILD)/mem_6502.bin    tests/mem.ir4
@@ -82,19 +83,23 @@ test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 
 		echo "tnylpo not found; skipping Z80 execution"; \
 	fi
 
-test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
-	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/fib_sim65.bin  tests/fib.ir4
-	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/core_sim65.bin tests/core.ir4
-	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/mem_sim65.bin  tests/mem.ir4
-	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/req_sim65.bin  tests/req.ir4
-	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/data_sim65.bin tests/data.ir4
-	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/ext_sim65.bin  tests/ext.ir4
+test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/fib_sim65.bin    tests/fib.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/core_sim65.bin   tests/core.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/muldiv_sim65.bin tests/muldiv.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/mem_sim65.bin    tests/mem.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/req_sim65.bin    tests/req.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/data_sim65.bin   tests/data.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/ext_sim65.bin    tests/ext.ir4
 	@if command -v sim65 >/dev/null 2>&1; then \
 		out=$$(sim65 $(BUILD)/fib_sim65.bin | tr -d '\r\n'); \
 		echo "sim65 fib_sim65.bin -> $$out"; \
 		test "$$out" = "110"; \
 		out=$$(sim65 $(BUILD)/core_sim65.bin | tr -d '\r\n'); \
 		echo "sim65 core_sim65.bin -> $$out"; \
+		test "$$out" = "0"; \
+		out=$$(sim65 $(BUILD)/muldiv_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 muldiv_sim65.bin -> $$out"; \
 		test "$$out" = "0"; \
 		out=$$(sim65 $(BUILD)/mem_sim65.bin | tr -d '\r\n'); \
 		echo "sim65 mem_sim65.bin -> $$out"; \

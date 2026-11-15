@@ -81,6 +81,13 @@ void cb_rewind(u16 n) {
     code_pc = (u16)(code_pc - n);
 }
 
+void patch8(u16 patch_offset, u8 val) {
+    if (patch_offset >= MAX_CODE) {
+        ir4_die("patch offset out of bounds");
+    }
+    code_buf[patch_offset] = val;
+}
+
 void patch16(u16 patch_offset, u16 target_addr) {
     if ((u32)patch_offset + 1 >= MAX_CODE) {
         ir4_die("patch offset out of bounds");

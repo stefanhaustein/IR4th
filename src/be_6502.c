@@ -10,6 +10,9 @@ static u8  zp_scratch      = 0xFB;
 static u16 stack_data_off  = 0;
 static u16 locals_data_off = 0;
 static int data_inited     = 0;
+static u16 mul16_addr      = 0;
+static u16 udivmod16_addr  = 0;
+static u16 sdivmod16_addr  = 0;
 
 void be_6502_set_zp(u8 zp) {
     zp_scratch = zp;
@@ -398,6 +401,154 @@ static void m6502_mem_addr_setup(void) {
     m6502_ldy_imm(0x00);
 }
 
+static void emit_neg_stk(u8 disp) {
+    m6502_sec();
+    m6502_lda_imm(0x00);
+    m6502_sbc_stk(disp);
+    m6502_sta_stk(disp);
+    m6502_lda_imm(0x00);
+    m6502_sbc_stk((u8)(disp + 1));
+    m6502_sta_stk((u8)(disp + 1));
+}
+
+static void emit_neg_zp(u8 zp) {
+    m6502_sec();
+    m6502_lda_imm(0x00);
+    emit8(0xE5); emit8(zp);
+    m6502_sta_zp(zp);
+    m6502_lda_imm(0x00);
+    emit8(0xE5); emit8((u8)(zp + 1));
+    m6502_sta_zp((u8)(zp + 1));
+}
+
+static void ensure_mul16(void) {
+    u16 skip_patch, loop_pc, bcc_patch;
+    if (mul16_addr) return;
+    emit8(0x4C); skip_patch = cb_pc(); emit16(0x0000);
+    mul16_addr = cb_cur_addr();
+
+    /* prod (zp0/zp1) = 0, Y = 16 */
+    m6502_lda_imm(0x00);
+    m6502_sta_zp(zp_scratch);
+    m6502_sta_zp((u8)(zp_scratch + 1));
+    m6502_ldy_imm(16);
+
+    loop_pc = cb_pc();
+    m6502_lsr_stk(1);
+    m6502_ror_stk(0);
+    emit8(0x90); bcc_patch = cb_pc(); emit8(0x00); /* BCC skip_add */
+    m6502_clc();
+    m6502_lda_zp(zp_scratch);
+    m6502_adc_stk(2);
+    m6502_sta_zp(zp_scratch);
+    m6502_lda_zp((u8)(zp_scratch + 1));
+    m6502_adc_stk(3);
+    m6502_sta_zp((u8)(zp_scratch + 1));
+    patch8(bcc_patch, (u8)(cb_pc() - (bcc_patch + 1)));
+
+    m6502_asl_stk(2);
+    m6502_lda_stk(3);
+    emit8(0x2A); /* ROL A (avoids $3E sim65 bug) */
+    m6502_sta_stk(3);
+    emit8(0x88); /* DEY */
+    emit8(0xD0); emit8((u8)(loop_pc - (cb_pc() + 1)));
+
+    m6502_lda_zp(zp_scratch);
+    m6502_sta_stk(2);
+    m6502_lda_zp((u8)(zp_scratch + 1));
+    m6502_sta_stk(3);
+    m6502_inx();
+    m6502_inx();
+    m6502_rts();
+
+    patch16(skip_patch, cb_cur_addr());
+}
+
+static void ensure_udivmod16(void) {
+    u16 skip_patch, loop_pc, bcc_patch;
+    if (udivmod16_addr) return;
+    emit8(0x4C); skip_patch = cb_pc(); emit16(0x0000);
+    udivmod16_addr = cb_cur_addr();
+
+    /* rem (zp0/zp1) = 0, Y = 16; quotient in stack+2/3,X */
+    m6502_lda_imm(0x00);
+    m6502_sta_zp(zp_scratch);
+    m6502_sta_zp((u8)(zp_scratch + 1));
+    m6502_ldy_imm(16);
+
+    loop_pc = cb_pc();
+    m6502_asl_stk(2);
+    m6502_lda_stk(3);
+    emit8(0x2A); /* ROL A */
+    m6502_sta_stk(3);
+    emit8(0x26); emit8(zp_scratch);             /* ROL zp0 */
+    emit8(0x26); emit8((u8)(zp_scratch + 1));   /* ROL zp1 */
+
+    m6502_sec();
+    m6502_lda_zp(zp_scratch);
+    m6502_sbc_stk(0);
+    m6502_sta_zp((u8)(zp_scratch + 2));
+    m6502_lda_zp((u8)(zp_scratch + 1));
+    m6502_sbc_stk(1);
+    emit8(0x90); bcc_patch = cb_pc(); emit8(0x00); /* BCC skip_sub */
+    m6502_sta_zp((u8)(zp_scratch + 1));
+    m6502_lda_zp((u8)(zp_scratch + 2));
+    m6502_sta_zp(zp_scratch);
+    emit_stack_op(0xFE, 2);                     /* INC stack+2,X */
+    patch8(bcc_patch, (u8)(cb_pc() - (bcc_patch + 1)));
+
+    emit8(0x88); /* DEY */
+    emit8(0xD0); emit8((u8)(loop_pc - (cb_pc() + 1)));
+    m6502_rts();
+
+    patch16(skip_patch, cb_cur_addr());
+}
+
+static void ensure_sdivmod16(void) {
+    u16 skip_patch, p1, p2, p3, p4;
+    if (sdivmod16_addr) return;
+    ensure_udivmod16();
+    emit8(0x4C); skip_patch = cb_pc(); emit16(0x0000);
+    sdivmod16_addr = cb_cur_addr();
+
+    /* Save dividend sign (zp3) and quotient sign (HW stack) */
+    m6502_lda_stk(3);
+    m6502_sta_zp((u8)(zp_scratch + 3));
+    m6502_eor_stk(1);
+    m6502_pha();
+
+    /* If dividend < 0, negate stack+2/3,X */
+    m6502_lda_stk(3);
+    emit8(0x10); p1 = cb_pc(); emit8(0x00);
+    emit_neg_stk(2);
+    patch8(p1, (u8)(cb_pc() - (p1 + 1)));
+
+    /* If divisor < 0, negate stack+0/1,X */
+    m6502_lda_stk(1);
+    emit8(0x10); p2 = cb_pc(); emit8(0x00);
+    emit_neg_stk(0);
+    patch8(p2, (u8)(cb_pc() - (p2 + 1)));
+
+    m6502_lda_zp((u8)(zp_scratch + 3));
+    m6502_pha();
+    m6502_jsr(udivmod16_addr);
+
+    /* Apply dividend sign to remainder (zp0/zp1) */
+    m6502_pla();
+    emit8(0x10); p3 = cb_pc(); emit8(0x00);
+    emit_neg_zp(zp_scratch);
+    patch8(p3, (u8)(cb_pc() - (p3 + 1)));
+
+    /* Apply quotient sign to quotient (stack+2/3,X) */
+    m6502_pla();
+    emit8(0x10); p4 = cb_pc(); emit8(0x00);
+    emit_neg_stk(2);
+    patch8(p4, (u8)(cb_pc() - (p4 + 1)));
+
+    m6502_rts();
+    patch16(skip_patch, cb_cur_addr());
+}
+
 static void m6502_op(IrOp op) {
     switch (op) {
     case OP_INVERT:
@@ -559,11 +710,40 @@ static void m6502_op(IrOp op) {
         /* Zero-cost no-op on 6502 */
         break;
     case OP_MUL:
-    case OP_DIV:
-    case OP_MOD:
+        ensure_mul16();
+        m6502_jsr(mul16_addr);
+        break;
     case OP_UDIV:
+        ensure_udivmod16();
+        m6502_jsr(udivmod16_addr);
+        m6502_inx();
+        m6502_inx();
+        break;
     case OP_UMOD:
-        ir4_die("unimplemented 6502 ALU op (mul/div require runtime helper)");
+        ensure_udivmod16();
+        m6502_jsr(udivmod16_addr);
+        m6502_inx();
+        m6502_inx();
+        m6502_lda_zp(zp_scratch);
+        m6502_sta_stk(0);
+        m6502_lda_zp((u8)(zp_scratch + 1));
+        m6502_sta_stk(1);
+        break;
+    case OP_DIV:
+        ensure_sdivmod16();
+        m6502_jsr(sdivmod16_addr);
+        m6502_inx();
+        m6502_inx();
+        break;
+    case OP_MOD:
+        ensure_sdivmod16();
+        m6502_jsr(sdivmod16_addr);
+        m6502_inx();
+        m6502_inx();
+        m6502_lda_zp(zp_scratch);
+        m6502_sta_stk(0);
+        m6502_lda_zp((u8)(zp_scratch + 1));
+        m6502_sta_stk(1);
         break;
     case OP_FADD:
     case OP_FSUB:

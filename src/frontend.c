@@ -17,6 +17,50 @@ typedef struct {
 #define MAX_INCLUDE_DEPTH 16
 #define MAX_INCLUDES      64
 #define MAX_PATH         256
+#define MAX_IR          8192
+
+typedef enum {
+    IR_FN_END,
+    IR_PUSH_W,
+    IR_PUSH_A,
+    IR_PUSH_F,
+    IR_PUSH_DATA,
+    IR_LOCAL_OP,
+    IR_STACK_OP,
+    IR_ALU_OP,
+    IR_CALL,
+    IR_CALL_EXTERN,
+    IR_BR_FWD,
+    IR_BR_BACK
+} IrKind;
+
+typedef struct {
+    IrKind kind;
+    union {
+        i32    w;
+        u32    a;
+        double f;
+        u16    offset;
+        struct { LocalOp op; u8 slot; StackType type; u16 stack_bytes; } loc;
+        struct { StackOp op; StackType t1; StackType t2; } stk;
+        IrOp   op;
+        u8     func_idx;
+        struct { BranchCond cond; u16 target; } br;
+    } u;
+} IrInstr;
+
+typedef struct {
+    u16      ir_start;
+    u16      ir_len;
+    u8       param_cnt;
+    u8       local_count;
+    LocalVar locals[MAX_LOCALS];
+    u8       reachable;
+} WordIR;
+
+static IrInstr ir_buf[MAX_IR];
+static u16     ir_count = 0;
+static WordIR  words[MAX_SYMS];
 
 typedef struct {
     FILE *fp;
@@ -371,26 +415,47 @@ static const BuiltinDef builtins[] = {
     { "f>w",     OP_F2W,      TY_F, TY_NONE, TY_W }
 };
 
-static int handle_builtin(const char *tok) {
+static IrInstr *emit_ir(IrKind kind, WordIR *w) {
+    IrInstr *ins;
+    if (ir_count >= MAX_IR) {
+        ir4_die("IR buffer overflow");
+    }
+    ins = &ir_buf[ir_count++];
+    memset(ins, 0, sizeof(IrInstr));
+    ins->kind = kind;
+    w->ir_len++;
+    return ins;
+}
+
+static int handle_builtin(const char *tok, WordIR *w) {
     u8 a, b;
     size_t i;
+    IrInstr *ins;
 
     /* Stack manipulation (polymorphic) */
     if (strcmp(tok, "dup") == 0) {
         a = tpop(); tpush(a); tpush(a);
-        be->stack_op(OP_DUP, (StackType)a, TY_NONE); return 1;
+        ins = emit_ir(IR_STACK_OP, w);
+        ins->u.stk.op = OP_DUP; ins->u.stk.t1 = (StackType)a; ins->u.stk.t2 = TY_NONE;
+        return 1;
     }
     if (strcmp(tok, "drop") == 0) {
         a = tpop();
-        be->stack_op(OP_DROP, (StackType)a, TY_NONE); return 1;
+        ins = emit_ir(IR_STACK_OP, w);
+        ins->u.stk.op = OP_DROP; ins->u.stk.t1 = (StackType)a; ins->u.stk.t2 = TY_NONE;
+        return 1;
     }
     if (strcmp(tok, "swap") == 0) {
         b = tpop(); a = tpop(); tpush(b); tpush(a);
-        be->stack_op(OP_SWAP, (StackType)b, (StackType)a); return 1;
+        ins = emit_ir(IR_STACK_OP, w);
+        ins->u.stk.op = OP_SWAP; ins->u.stk.t1 = (StackType)b; ins->u.stk.t2 = (StackType)a;
+        return 1;
     }
     if (strcmp(tok, "over") == 0) {
         b = tpop(); a = tpop(); tpush(a); tpush(b); tpush(a);
-        be->stack_op(OP_OVER, (StackType)b, (StackType)a); return 1;
+        ins = emit_ir(IR_STACK_OP, w);
+        ins->u.stk.op = OP_OVER; ins->u.stk.t1 = (StackType)b; ins->u.stk.t2 = (StackType)a;
+        return 1;
     }
 
     for (i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {
@@ -398,7 +463,8 @@ static int handle_builtin(const char *tok) {
             tpop_expect(builtins[i].in1);
             if (builtins[i].in2 != TY_NONE) tpop_expect(builtins[i].in2);
             if (builtins[i].out != TY_NONE) tpush(builtins[i].out);
-            be->op(builtins[i].op);
+            ins = emit_ir(IR_ALU_OP, w);
+            ins->u.op = builtins[i].op;
             return 1;
         }
     }
@@ -477,8 +543,17 @@ static void compile_word(void) {
     i32 num_val;
 
     if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
-    sig = &funcs[func_count++];
+    u8 fidx;
+    FuncSig *sig;
+    WordIR *w;
+    IrInstr *ins;
+
+    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+    fidx = func_count++;
+    sig = &funcs[fidx];
+    w = &words[fidx];
     memset(sig, 0, sizeof(FuncSig));
+    memset(w, 0, sizeof(WordIR));
 
     if (!next_tok(sig->name)) ir4_die("expected word name after ':'");
     if (!next_tok(tok) || strcmp(tok, "{") != 0) ir4_die("expected '{' after word name");
@@ -486,10 +561,15 @@ static void compile_word(void) {
     bsp = 0;
     parse_sig_body(sig, &param_cnt, 1);
 
-    sig->addr = be->cur_addr();
-    be->fn_begin(sig->name, param_cnt, locals, local_count);
+    w->ir_start = ir_count;
+    w->ir_len = 0;
+    w->param_cnt = param_cnt;
+    w->local_count = local_count;
+    if (local_count > 0) {
+        memcpy(w->locals, locals, local_count * sizeof(LocalVar));
+    }
 
-    /* Stream & type-check body */
+    /* Parse, type-check, and record IR for word body (Pass 1) */
     while (next_tok(tok)) {
         u8 ty;
         int idx;
@@ -498,7 +578,7 @@ static void compile_word(void) {
             if (bsp != 0) ir4_die("unclosed control block at ';'");
             if (!unreachable) {
                 check_return_stack();
-                be->fn_end(sig, locals, local_count);
+                emit_ir(IR_FN_END, w);
             }
             return;
         }
@@ -506,7 +586,7 @@ static void compile_word(void) {
         if (strcmp(tok, "exit") == 0) {
             if (!unreachable) {
                 check_return_stack();
-                be->fn_end(sig, locals, local_count);
+                emit_ir(IR_FN_END, w);
                 unreachable = 1;
             }
             continue;
@@ -519,11 +599,13 @@ static void compile_word(void) {
             if (ty == TY_A) {
                 if (!parse_int(tok, &num_val)) ir4_die("expected integer address after A:");
                 tpush(TY_A);
-                be->push_a((u32)num_val);
+                ins = emit_ir(IR_PUSH_A, w);
+                ins->u.a = (u32)num_val;
             } else if (ty == TY_W) {
                 if (!parse_int(tok, &num_val)) ir4_die("expected integer after W:");
                 tpush(TY_W);
-                be->push_w(num_val);
+                ins = emit_ir(IR_PUSH_W, w);
+                ins->u.w = num_val;
             } else {
                 char *endp;
                 double fval;
@@ -531,7 +613,8 @@ static void compile_word(void) {
                 fval = strtod(tok, &endp);
                 if (*endp != '\0') ir4_die("expected float literal after F:");
                 tpush(TY_F);
-                be->push_f(fval);
+                ins = emit_ir(IR_PUSH_F, w);
+                ins->u.f = fval;
             }
             continue;
         }
@@ -539,7 +622,8 @@ static void compile_word(void) {
         /* Bare integer literal defaults to W: */
         if (parse_int(tok, &num_val)) {
             tpush(TY_W);
-            be->push_w(num_val);
+            ins = emit_ir(IR_PUSH_W, w);
+            ins->u.w = num_val;
             continue;
         }
 
@@ -549,7 +633,11 @@ static void compile_word(void) {
             idx = find_local(tok);
             if (idx < 0) ir4_die("unknown local in 'to'");
             tpop_expect(locals[idx].type);
-            be->local_op(LOCAL_SET, locals[idx].slot, (StackType)locals[idx].type, tstack_bytes());
+            ins = emit_ir(IR_LOCAL_OP, w);
+            ins->u.loc.op = LOCAL_SET;
+            ins->u.loc.slot = locals[idx].slot;
+            ins->u.loc.type = (StackType)locals[idx].type;
+            ins->u.loc.stack_bytes = tstack_bytes();
             continue;
         }
 
@@ -565,7 +653,9 @@ static void compile_word(void) {
             b->if_unreach = 0;
             b->saved_sp = tsp;
             memcpy(b->saved_stack, tstack, tsp);
-            b->patch_else = be->emit_br_fwd(BR_JZ);
+            b->patch_else = w->ir_len;
+            ins = emit_ir(IR_BR_FWD, w);
+            ins->u.br.cond = BR_JZ;
             continue;
         }
         if (strcmp(tok, "else") == 0) {
@@ -579,8 +669,10 @@ static void compile_word(void) {
             tsp = b->saved_sp;
             memcpy(tstack, b->saved_stack, tsp);
             unreachable = b->saved_unreach;
-            b->patch_end = be->emit_br_fwd(BR_JMP);
-            be->patch_fwd(b->patch_else);
+            b->patch_end = w->ir_len;
+            ins = emit_ir(IR_BR_FWD, w);
+            ins->u.br.cond = BR_JMP;
+            ir_buf[w->ir_start + b->patch_else].u.br.target = w->ir_len;
             continue;
         }
         if (strcmp(tok, "then") == 0) {
@@ -595,7 +687,7 @@ static void compile_word(void) {
                 tsp = b->saved_sp;
                 memcpy(tstack, b->saved_stack, tsp);
                 unreachable = b->saved_unreach;
-                be->patch_fwd(b->patch_else);
+                ir_buf[w->ir_start + b->patch_else].u.br.target = w->ir_len;
             } else {
                 if (!b->if_unreach && !unreachable) {
                     if (tsp != b->else_sp || memcmp(tstack, b->else_stack, tsp) != 0)
@@ -605,7 +697,7 @@ static void compile_word(void) {
                     memcpy(tstack, b->else_stack, tsp);
                     unreachable = 0;
                 }
-                be->patch_fwd(b->patch_end);
+                ir_buf[w->ir_start + b->patch_end].u.br.target = w->ir_len;
             }
             continue;
         }
@@ -614,7 +706,7 @@ static void compile_word(void) {
             if (bsp >= MAX_BLOCKS) ir4_die("block nesting overflow");
             b = &blocks[bsp++];
             b->kind = 2;
-            b->loop_addr = be->cur_addr();
+            b->loop_addr = w->ir_len;
             b->saved_sp = tsp;
             memcpy(b->saved_stack, tstack, tsp);
             continue;
@@ -624,7 +716,9 @@ static void compile_word(void) {
             if (bsp == 0 || blocks[bsp - 1].kind != 2) ir4_die("'while' without 'begin'");
             b = &blocks[bsp - 1];
             tpop_expect(TY_W);
-            b->patch_end = be->emit_br_fwd(BR_JZ);
+            b->patch_end = w->ir_len;
+            ins = emit_ir(IR_BR_FWD, w);
+            ins->u.br.cond = BR_JZ;
             continue;
         }
         if (strcmp(tok, "repeat") == 0) {
@@ -633,8 +727,10 @@ static void compile_word(void) {
             b = &blocks[--bsp];
             if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
                 ir4_die("loop body must leave stack even at 'repeat'");
-            be->emit_br_back(BR_JMP, b->loop_addr);
-            be->patch_fwd(b->patch_end);
+            ins = emit_ir(IR_BR_BACK, w);
+            ins->u.br.cond = BR_JMP;
+            ins->u.br.target = b->loop_addr;
+            ir_buf[w->ir_start + b->patch_end].u.br.target = w->ir_len;
             continue;
         }
         if (strcmp(tok, "until") == 0) {
@@ -644,17 +740,23 @@ static void compile_word(void) {
             tpop_expect(TY_W);
             if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
                 ir4_die("loop body must leave stack even at 'until'");
-            be->emit_br_back(BR_JZ, b->loop_addr);
+            ins = emit_ir(IR_BR_BACK, w);
+            ins->u.br.cond = BR_JZ;
+            ins->u.br.target = b->loop_addr;
             continue;
         }
 
         /* Core built-in word */
-        if (handle_builtin(tok)) continue;
+        if (handle_builtin(tok, w)) continue;
 
         /* Local variable read */
         idx = find_local(tok);
         if (idx >= 0) {
-            be->local_op(LOCAL_GET, locals[idx].slot, (StackType)locals[idx].type, tstack_bytes());
+            ins = emit_ir(IR_LOCAL_OP, w);
+            ins->u.loc.op = LOCAL_GET;
+            ins->u.loc.slot = locals[idx].slot;
+            ins->u.loc.type = (StackType)locals[idx].type;
+            ins->u.loc.stack_bytes = tstack_bytes();
             tpush(locals[idx].type);
             continue;
         }
@@ -663,7 +765,8 @@ static void compile_word(void) {
         idx = find_buffer(tok);
         if (idx >= 0) {
             tpush(TY_A);
-            be->push_data(buffers[idx].offset);
+            ins = emit_ir(IR_PUSH_DATA, w);
+            ins->u.offset = buffers[idx].offset;
             continue;
         }
 
@@ -679,10 +782,11 @@ static void compile_word(void) {
                 tpush(callee->out_types[i]);
             }
             if (callee->is_extern) {
-                be->call_extern(callee);
+                ins = emit_ir(IR_CALL_EXTERN, w);
             } else {
-                be->call(callee->addr);
+                ins = emit_ir(IR_CALL, w);
             }
+            ins->u.func_idx = (u8)idx;
             continue;
         }
 
