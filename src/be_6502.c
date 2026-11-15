@@ -163,17 +163,20 @@ static void m6502_stack_op(u8 op, u8 t1, u8 t2) {
     if (t1 == TY_F || t2 == TY_F) {
         ir4_die("unimplemented 6502 float stack op");
     }
-    if (op == OP_DUP) {
+    switch (op) {
+    case OP_DUP:
         m6502_dex();
         m6502_dex();
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sta_zpx(ZP_STACK);
         m6502_lda_zpx(ZP_STACK + 3);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_DROP) {
+        break;
+    case OP_DROP:
         m6502_inx();
         m6502_inx();
-    } else if (op == OP_SWAP) {
+        break;
+    case OP_SWAP:
         m6502_ldy_zpx(ZP_STACK);
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sta_zpx(ZP_STACK);
@@ -185,28 +188,32 @@ static void m6502_stack_op(u8 op, u8 t1, u8 t2) {
         m6502_sta_zpx(ZP_STACK + 1);
         m6502_tya();
         m6502_sta_zpx(ZP_STACK + 3);
-    } else if (op == OP_OVER) {
+        break;
+    case OP_OVER:
         m6502_dex();
         m6502_dex();
         m6502_lda_zpx(ZP_STACK + 4);
         m6502_sta_zpx(ZP_STACK);
         m6502_lda_zpx(ZP_STACK + 5);
         m6502_sta_zpx(ZP_STACK + 1);
+        break;
+    default:
+        ir4_die("unimplemented 6502 stack op");
     }
 }
 
 static void m6502_alu_op(u8 op) {
-    if (op == OP_INVERT) {
+    switch (op) {
+    case OP_INVERT:
         m6502_lda_zpx(ZP_STACK);
         m6502_eor_imm(0xFF);
         m6502_sta_zpx(ZP_STACK);
         m6502_lda_zpx(ZP_STACK + 1);
         m6502_eor_imm(0xFF);
         m6502_sta_zpx(ZP_STACK + 1);
-        return;
-    }
-
-    if (op == OP_ADD || op == OP_AADD) {
+        break;
+    case OP_ADD:
+    case OP_AADD:
         m6502_clc();
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_adc_zpx(ZP_STACK);
@@ -216,7 +223,10 @@ static void m6502_alu_op(u8 op) {
         m6502_sta_zpx(ZP_STACK + 3);
         m6502_inx();
         m6502_inx();
-    } else if (op == OP_SUB || op == OP_ASUB || op == OP_ADIFF) {
+        break;
+    case OP_SUB:
+    case OP_ASUB:
+    case OP_ADIFF:
         m6502_sec();
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sbc_zpx(ZP_STACK);
@@ -226,7 +236,8 @@ static void m6502_alu_op(u8 op) {
         m6502_sta_zpx(ZP_STACK + 3);
         m6502_inx();
         m6502_inx();
-    } else if (op == OP_AND) {
+        break;
+    case OP_AND:
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_and_zpx(ZP_STACK);
         m6502_sta_zpx(ZP_STACK + 2);
@@ -235,7 +246,8 @@ static void m6502_alu_op(u8 op) {
         m6502_sta_zpx(ZP_STACK + 3);
         m6502_inx();
         m6502_inx();
-    } else if (op == OP_OR) {
+        break;
+    case OP_OR:
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_ora_zpx(ZP_STACK);
         m6502_sta_zpx(ZP_STACK + 2);
@@ -244,7 +256,8 @@ static void m6502_alu_op(u8 op) {
         m6502_sta_zpx(ZP_STACK + 3);
         m6502_inx();
         m6502_inx();
-    } else if (op == OP_XOR) {
+        break;
+    case OP_XOR:
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_eor_zpx(ZP_STACK);
         m6502_sta_zpx(ZP_STACK + 2);
@@ -253,7 +266,10 @@ static void m6502_alu_op(u8 op) {
         m6502_sta_zpx(ZP_STACK + 3);
         m6502_inx();
         m6502_inx();
-    } else if (op == OP_LSHIFT || op == OP_RSHIFT || op == OP_ARSHIFT) {
+        break;
+    case OP_LSHIFT:
+    case OP_RSHIFT:
+    case OP_ARSHIFT:
         m6502_ldy_zpx(ZP_STACK);
         m6502_inx();
         m6502_inx();
@@ -279,7 +295,8 @@ static void m6502_alu_op(u8 op) {
             emit8(0x88);              /* DEY */
             emit8(0xD0); emit8(0xF6); /* BNE -10 */
         }
-    } else {
+        break;
+    default:
         ir4_die("unimplemented 6502 ALU op (mul/div require runtime helper)");
     }
 }
@@ -292,12 +309,24 @@ static void m6502_cmp_op(u8 op) {
     m6502_inx();
     m6502_inx();
 
-    if (op == OP_GT || op == OP_LE || op == OP_UGT || op == OP_ULE || op == OP_AGT) {
+    switch (op) {
+    case OP_GT:
+    case OP_LE:
+    case OP_UGT:
+    case OP_ULE:
+    case OP_AGT:
         lhs_lo = (u8)(ZP_STACK - 2);
         rhs_lo = ZP_STACK;
+        break;
+    default:
+        break;
     }
 
-    if (op == OP_EQ || op == OP_NE || op == OP_AEQ || op == OP_ANE) {
+    switch (op) {
+    case OP_EQ:
+    case OP_NE:
+    case OP_AEQ:
+    case OP_ANE:
         m6502_lda_zpx(ZP_STACK);
         m6502_eor_zpx((u8)(ZP_STACK - 2));
         m6502_sta_zp(ZP_SCRATCH);
@@ -314,8 +343,13 @@ static void m6502_cmp_op(u8 op) {
         m6502_lda_imm(0xFF);
         m6502_sta_zpx(ZP_STACK);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_ULT || op == OP_UGT || op == OP_ALT || op == OP_AGT ||
-               op == OP_UGE || op == OP_ULE) {
+        break;
+    case OP_ULT:
+    case OP_UGT:
+    case OP_ALT:
+    case OP_AGT:
+    case OP_UGE:
+    case OP_ULE:
         m6502_sec();
         m6502_lda_zpx(lhs_lo);
         m6502_sbc_zpx(rhs_lo);
@@ -331,7 +365,11 @@ static void m6502_cmp_op(u8 op) {
         m6502_lda_imm(0xFF);
         m6502_sta_zpx(ZP_STACK);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_LT || op == OP_GT || op == OP_GE || op == OP_LE) {
+        break;
+    case OP_LT:
+    case OP_GT:
+    case OP_GE:
+    case OP_LE:
         m6502_sec();
         m6502_lda_zpx(lhs_lo);
         m6502_sbc_zpx(rhs_lo);
@@ -349,7 +387,8 @@ static void m6502_cmp_op(u8 op) {
         m6502_lda_imm(0xFF);
         m6502_sta_zpx(ZP_STACK);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else {
+        break;
+    default:
         ir4_die("unimplemented 6502 comparison op");
     }
 }
@@ -361,30 +400,40 @@ static void m6502_mem_op(u8 op) {
     m6502_sta_zp(ZP_SCRATCH + 1);
     m6502_ldy_imm(0x00);
 
-    if (op == OP_U8FETCH) {
+    switch (op) {
+    case OP_U8FETCH:
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK);
         m6502_lda_imm(0x00);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_I8FETCH) {
+        break;
+    case OP_I8FETCH:
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK);
         emit8_8(0x10, 0x01); /* BPL +1 */
         emit8(0x88);         /* DEY */
         emit8(0x98);         /* TYA */
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_I8STORE) {
+        break;
+    case OP_I8STORE:
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sta_indy(ZP_SCRATCH);
         m6502_inx(); m6502_inx();
         m6502_inx(); m6502_inx();
-    } else if (op == OP_FETCH || op == OP_AFETCH || op == OP_I16FETCH || op == OP_U16FETCH) {
+        break;
+    case OP_FETCH:
+    case OP_AFETCH:
+    case OP_I16FETCH:
+    case OP_U16FETCH:
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK);
         emit8(0xC8); /* INY */
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_STORE || op == OP_ASTORE || op == OP_I16STORE) {
+        break;
+    case OP_STORE:
+    case OP_ASTORE:
+    case OP_I16STORE:
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sta_indy(ZP_SCRATCH);
         emit8(0xC8); /* INY */
@@ -392,21 +441,26 @@ static void m6502_mem_op(u8 op) {
         m6502_sta_indy(ZP_SCRATCH);
         m6502_inx(); m6502_inx();
         m6502_inx(); m6502_inx();
-    } else {
+        break;
+    default:
         ir4_die("unimplemented 6502 float memory op");
     }
 }
 
 static void m6502_conv_op(u8 op) {
-    if (op == OP_SEXT) {
+    switch (op) {
+    case OP_SEXT:
         m6502_lda_imm(0x00);
         m6502_ldy_zpx(ZP_STACK);
         emit8(0x10); emit8(0x02); /* BPL +2 */
         m6502_lda_imm(0xFF);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_W2A || op == OP_A2W) {
+        break;
+    case OP_W2A:
+    case OP_A2W:
         /* Zero-cost no-op on 6502 */
-    } else {
+        break;
+    default:
         ir4_die("unimplemented 6502 float conversion op");
     }
 }

@@ -147,152 +147,231 @@ static void a64_local_set(u8 slot, u8 type) {
 
 static void a64_stack_op(u8 op, u8 t1, u8 t2) {
     (void)t1; (void)t2;
-    if (op == OP_DUP) {
+    switch (op) {
+    case OP_DUP:
         emit32(0xF94003E0UL); /* LDR X0, [SP] */
         push_x0();
-    } else if (op == OP_DROP) {
+        break;
+    case OP_DROP:
         emit32(0x910043FFUL); /* ADD SP, SP, #16 */
-    } else if (op == OP_SWAP) {
+        break;
+    case OP_SWAP:
         pop_x0(); pop_x1(); push_x0(); push_x1();
-    } else if (op == OP_OVER) {
+        break;
+    case OP_OVER:
         emit32(0xF9400BE0UL); /* LDR X0, [SP, #16] */
         push_x0();
+        break;
+    default:
+        ir4_die("unimplemented ARM64 stack op");
     }
 }
 
 static void a64_alu_op(u8 op) {
-    if (op == OP_INVERT) {
+    switch (op) {
+    case OP_INVERT:
         pop_x0();
         emit32(0xAA2003E0UL); /* MVN X0, X0 */
         push_x0();
         return;
-    }
-
-    if (op == OP_FNEG) {
+    case OP_FNEG:
         pop_d0();
         emit32(0x1E614000UL); /* FNEG D0, D0 */
         push_d0();
         return;
-    }
-
-    if (op == OP_FADD || op == OP_FSUB || op == OP_FMUL || op == OP_FDIV) {
+    case OP_FADD:
+    case OP_FSUB:
+    case OP_FMUL:
+    case OP_FDIV:
         pop_d1(); /* rhs */
         pop_d0(); /* lhs */
-        if (op == OP_FADD)      emit32(0x1E612800UL); /* FADD D0, D0, D1 */
-        else if (op == OP_FSUB) emit32(0x1E613800UL); /* FSUB D0, D0, D1 */
-        else if (op == OP_FMUL) emit32(0x1E610800UL); /* FMUL D0, D0, D1 */
-        else                    emit32(0x1E611800UL); /* FDIV D0, D0, D1 */
+        switch (op) {
+        case OP_FADD: emit32(0x1E612800UL); break; /* FADD D0, D0, D1 */
+        case OP_FSUB: emit32(0x1E613800UL); break; /* FSUB D0, D0, D1 */
+        case OP_FMUL: emit32(0x1E610800UL); break; /* FMUL D0, D0, D1 */
+        case OP_FDIV: emit32(0x1E611800UL); break; /* FDIV D0, D0, D1 */
+        }
         push_d0();
         return;
+    default:
+        break;
     }
 
     pop_x1(); /* rhs */
     pop_x0(); /* lhs */
 
-    if (op == OP_ADD || op == OP_AADD)                 emit32(0x8B010000UL); /* ADD X0, X0, X1 */
-    else if (op == OP_SUB || op == OP_ASUB || op == OP_ADIFF) emit32(0xCB010000UL); /* SUB X0, X0, X1 */
-    else if (op == OP_MUL)                             emit32(0x9B017C00UL); /* MUL X0, X0, X1 */
-    else if (op == OP_DIV)                             emit32(0x9AC10C00UL); /* SDIV X0, X0, X1 */
-    else if (op == OP_UDIV)                            emit32(0x9AC10800UL); /* UDIV X0, X0, X1 */
-    else if (op == OP_MOD)   { emit32(0x9AC10C02UL); emit32(0x9B018040UL); }
-    else if (op == OP_UMOD)  { emit32(0x9AC10802UL); emit32(0x9B018040UL); }
-    else if (op == OP_AND)                             emit32(0x8A010000UL); /* AND X0, X0, X1 */
-    else if (op == OP_OR)                              emit32(0xAA010000UL); /* ORR X0, X0, X1 */
-    else if (op == OP_XOR)                             emit32(0xCA010000UL); /* EOR X0, X0, X1 */
-    else if (op == OP_LSHIFT)                          emit32(0x9AC12000UL); /* LSLV X0, X0, X1 */
-    else if (op == OP_RSHIFT)                          emit32(0x9AC12400UL); /* LSRV X0, X0, X1 */
-    else if (op == OP_ARSHIFT)                         emit32(0x9AC12800UL); /* ASRV X0, X0, X1 */
-    else ir4_die("unimplemented ARM64 ALU op");
+    switch (op) {
+    case OP_ADD:
+    case OP_AADD:
+        emit32(0x8B010000UL); /* ADD X0, X0, X1 */
+        break;
+    case OP_SUB:
+    case OP_ASUB:
+    case OP_ADIFF:
+        emit32(0xCB010000UL); /* SUB X0, X0, X1 */
+        break;
+    case OP_MUL:
+        emit32(0x9B017C00UL); /* MUL X0, X0, X1 */
+        break;
+    case OP_DIV:
+        emit32(0x9AC10C00UL); /* SDIV X0, X0, X1 */
+        break;
+    case OP_UDIV:
+        emit32(0x9AC10800UL); /* UDIV X0, X0, X1 */
+        break;
+    case OP_MOD:
+        emit32(0x9AC10C02UL);
+        emit32(0x9B018040UL);
+        break;
+    case OP_UMOD:
+        emit32(0x9AC10802UL);
+        emit32(0x9B018040UL);
+        break;
+    case OP_AND:
+        emit32(0x8A010000UL); /* AND X0, X0, X1 */
+        break;
+    case OP_OR:
+        emit32(0xAA010000UL); /* ORR X0, X0, X1 */
+        break;
+    case OP_XOR:
+        emit32(0xCA010000UL); /* EOR X0, X0, X1 */
+        break;
+    case OP_LSHIFT:
+        emit32(0x9AC12000UL); /* LSLV X0, X0, X1 */
+        break;
+    case OP_RSHIFT:
+        emit32(0x9AC12400UL); /* LSRV X0, X0, X1 */
+        break;
+    case OP_ARSHIFT:
+        emit32(0x9AC12800UL); /* ASRV X0, X0, X1 */
+        break;
+    default:
+        ir4_die("unimplemented ARM64 ALU op");
+    }
 
     push_x0();
 }
 
 static void a64_cmp_op(u8 op) {
     u32 cond = 0;
-    if (op == OP_FEQ || op == OP_FNE || op == OP_FLT || op == OP_FGT) {
+    switch (op) {
+    case OP_FEQ:
+    case OP_FNE:
+    case OP_FLT:
+    case OP_FGT:
         pop_d1();
         pop_d0();
         emit32(0x1E612000UL); /* FCMP D0, D1 */
-        if (op == OP_FEQ)      cond = 0x0; /* EQ */
-        else if (op == OP_FNE) cond = 0x1; /* NE */
-        else if (op == OP_FLT) cond = 0x4; /* MI (ordered <) */
-        else                   cond = 0xC; /* GT */
+        switch (op) {
+        case OP_FEQ: cond = 0x0; break; /* EQ */
+        case OP_FNE: cond = 0x1; break; /* NE */
+        case OP_FLT: cond = 0x4; break; /* MI (ordered <) */
+        case OP_FGT: cond = 0xC; break; /* GT */
+        }
         emit32(0xDA9F03E0UL | ((cond ^ 1UL) << 12)); /* CSETM X0, cond */
         push_x0();
         return;
+    default:
+        break;
     }
 
     pop_x1();
     pop_x0();
     emit32(0xEB01001FUL); /* CMP X0, X1 */
 
-    if (op == OP_EQ || op == OP_AEQ)       cond = 0x0;
-    else if (op == OP_NE || op == OP_ANE)  cond = 0x1;
-    else if (op == OP_LT)                  cond = 0xB;
-    else if (op == OP_GE)                  cond = 0xA;
-    else if (op == OP_GT)                  cond = 0xC;
-    else if (op == OP_LE)                  cond = 0xD;
-    else if (op == OP_ULT || op == OP_ALT) cond = 0x3;
-    else if (op == OP_UGE)                 cond = 0x2;
-    else if (op == OP_UGT || op == OP_AGT) cond = 0x8;
-    else if (op == OP_ULE)                 cond = 0x9;
-    else ir4_die("unimplemented ARM64 comparison op");
+    switch (op) {
+    case OP_EQ:
+    case OP_AEQ:  cond = 0x0; break;
+    case OP_NE:
+    case OP_ANE:  cond = 0x1; break;
+    case OP_LT:   cond = 0xB; break;
+    case OP_GE:   cond = 0xA; break;
+    case OP_GT:   cond = 0xC; break;
+    case OP_LE:   cond = 0xD; break;
+    case OP_ULT:
+    case OP_ALT:  cond = 0x3; break;
+    case OP_UGE:  cond = 0x2; break;
+    case OP_UGT:
+    case OP_AGT:  cond = 0x8; break;
+    case OP_ULE:  cond = 0x9; break;
+    default:
+        ir4_die("unimplemented ARM64 comparison op");
+    }
 
     emit32(0xDA9F03E0UL | ((cond ^ 1UL) << 12)); /* CSETM X0, cond */
     push_x0();
 }
 
 static void a64_mem_op(u8 op) {
-    if (op == OP_U8FETCH) {
+    switch (op) {
+    case OP_U8FETCH:
         pop_x0();
         emit32(0x39400000UL); /* LDRB W0, [X0] (implicitly zero-extends to 64-bit X0) */
         push_x0();
-    } else if (op == OP_I8FETCH) {
+        break;
+    case OP_I8FETCH:
         pop_x0();
         emit32(0x39800000UL); /* LDRSB X0, [X0] */
         push_x0();
-    } else if (op == OP_I8STORE) {
+        break;
+    case OP_I8STORE:
         pop_x0(); pop_x1();
         emit32(0x39000001UL); /* STRB W1, [X0] */
-    } else if (op == OP_U16FETCH) {
+        break;
+    case OP_U16FETCH:
         pop_x0();
         emit32(0x79400000UL); /* LDRH W0, [X0] */
         push_x0();
-    } else if (op == OP_I16FETCH) {
+        break;
+    case OP_I16FETCH:
         pop_x0();
         emit32(0x79800000UL); /* LDRSH X0, [X0] */
         push_x0();
-    } else if (op == OP_I16STORE) {
+        break;
+    case OP_I16STORE:
         pop_x0(); pop_x1();
         emit32(0x79000001UL); /* STRH W1, [X0] */
-    } else if (op == OP_FETCH || op == OP_AFETCH || op == OP_FFETCH) {
+        break;
+    case OP_FETCH:
+    case OP_AFETCH:
+    case OP_FFETCH:
         pop_x0();
         emit32(0xF9400000UL); /* LDR X0, [X0] */
         push_x0();
-    } else if (op == OP_STORE || op == OP_ASTORE || op == OP_FSTORE) {
+        break;
+    case OP_STORE:
+    case OP_ASTORE:
+    case OP_FSTORE:
         pop_x0(); pop_x1();
         emit32(0xF9000001UL); /* STR X1, [X0] */
-    } else {
+        break;
+    default:
         ir4_die("unimplemented ARM64 memory op");
     }
 }
 
 static void a64_conv_op(u8 op) {
-    if (op == OP_SEXT) {
+    switch (op) {
+    case OP_SEXT:
         pop_x0();
         emit32(0x93401C00UL); /* SXTB X0, X0 */
         push_x0();
-    } else if (op == OP_W2A || op == OP_A2W) {
+        break;
+    case OP_W2A:
+    case OP_A2W:
         /* Uniform 64-bit cells: zero-cost no-op */
-    } else if (op == OP_W2F) {
+        break;
+    case OP_W2F:
         pop_x0();
         emit32(0x9E620000UL); /* SCVTF D0, X0 */
         push_d0();
-    } else if (op == OP_F2W) {
+        break;
+    case OP_F2W:
         pop_d0();
         emit32(0x9E780000UL); /* FCVTZS X0, D0 */
         push_x0();
-    } else {
+        break;
+    default:
         ir4_die("unimplemented ARM64 conversion op");
     }
 }
