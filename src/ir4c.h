@@ -163,6 +163,9 @@ u16       cb_cur_addr(void);
 const u8 *cb_data(void);
 void      emit8(u8 b);
 void      emit16(u16 w);
+void      emit8_8(u8 a, u8 b);
+void      emit8_16(u8 a, u16 w);
+void      emit8_8_8(u8 a, u8 b, u8 c);
 void      patch16(u16 patch_offset, u16 target_addr);
 
 /* Frontend entry points (implemented in frontend.c) */

@@ -34,6 +34,22 @@ void emit16(u16 w) {
     emit8((u8)((w >> 8) & 0xFF));  /* Little-endian high byte */
 }
 
+void emit8_8(u8 a, u8 b) {
+    emit8(a);
+    emit8(b);
+}
+
+void emit8_16(u8 a, u16 w) {
+    emit8(a);
+    emit16(w);
+}
+
+void emit8_8_8(u8 a, u8 b, u8 c) {
+    emit8(a);
+    emit8(b);
+    emit8(c);
+}
+
 void patch16(u16 patch_offset, u16 target_addr) {
     if ((u32)patch_offset + 1 >= MAX_CODE) {
         ir4_die("patch offset out of bounds");
