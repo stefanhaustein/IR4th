@@ -152,10 +152,10 @@ static void push_require(const char *name) {
 
     if (name[0] != '/') {
         if (platform_name != NULL && platform_name[0] != '\0') {
-            if (strlen(be->name) + 1 + strlen(platform_name) + 1 + strlen(name) >= MAX_PATH) {
+            if (strlen(platform_name) + 1 + strlen(name) >= MAX_PATH) {
                 ir4_die("required file path too long");
             }
-            sprintf(cands[n_cands++], "%s/%s/%s", be->name, platform_name, name);
+            sprintf(cands[n_cands++], "%s/%s", platform_name, name);
         }
         if (strlen(be->name) + 1 + strlen(name) >= MAX_PATH) {
             ir4_die("required file path too long");

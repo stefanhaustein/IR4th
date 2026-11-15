@@ -11,6 +11,7 @@ int main(int argc, char **argv) {
     const char *out_path = "out.bin";
     const char *platform = NULL;
     u16 base = 0x0100;
+    int target_set = 0;
     int base_set = 0;
     int run_jit = 0;
     int cpm_stub = 0;
@@ -22,6 +23,7 @@ int main(int argc, char **argv) {
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
             i++;
+            target_set = 1;
             if (strcmp(argv[i], "z80") == 0) {
                 be = &be_z80;
                 if (!base_set) base = 0x0100;
@@ -75,6 +77,19 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    if (cpm_stub && sim65_stub) {
+        fprintf(stderr, "--cpm and --sim65 cannot be combined\n");
+        fclose(in_fp);
+        return 1;
+    }
+    if (cpm_stub && !target_set) {
+        be = &be_z80;
+        if (!base_set) base = 0x0100;
+    }
+    if (sim65_stub && !target_set) {
+        be = &be_6502;
+        if (!base_set) base = 0x0200;
+    }
     if (cpm_stub && be != &be_z80) {
         fprintf(stderr, "--cpm requires -t z80\n");
         fclose(in_fp);
