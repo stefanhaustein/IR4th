@@ -2,7 +2,7 @@
 
 **IR4th** (*Typed Forth as an Intermediate Representation*) is a minimal, statically typed, monomorphic concatenative intermediate language designed for retro-computing CPUs (such as the Z80 and 6502) and constrained embedded systems.
 
-IR4th is designed so that word-only programs are directly executable under **Gforth** (with a minimal compatibility prelude) while compiling via single-pass direct machine-code generation to native Z80 and 6502 binaries.
+IR4th is designed so that word-only programs are directly executable under **Gforth** (with a minimal compatibility prelude) while compiling via direct 2-pass machine-code generation (with dead-code elimination) to native Z80, 6502, and ARM64 binaries.
 
 ---
 

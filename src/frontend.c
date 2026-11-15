@@ -1,7 +1,17 @@
 #include "ir4c.h"
 
+#define MAX_INCLUDE_DEPTH 16
+#define MAX_INCLUDES      64
+#define MAX_PATH         256
+#define MAX_IR          8192
+
+typedef enum {
+    BLOCK_IF = 1,
+    BLOCK_BEGIN = 2
+} BlockKind;
+
 typedef struct {
-    u8  kind; /* 1 = IF, 2 = BEGIN */
+    BlockKind kind;
     u16 patch_else;
     u16 patch_end;
     u16 loop_addr;
@@ -13,11 +23,6 @@ typedef struct {
     u8  saved_unreach;
     u8  if_unreach;
 } BlockInfo;
-
-#define MAX_INCLUDE_DEPTH 16
-#define MAX_INCLUDES      64
-#define MAX_PATH         256
-#define MAX_IR          8192
 
 typedef enum {
     IR_FN_END,
@@ -644,7 +649,7 @@ static void compile_word(void) {
             if (bsp >= MAX_BLOCKS) ir4_die("block nesting overflow");
             tpop_expect(TY_W);
             b = &blocks[bsp++];
-            b->kind = 1;
+            b->kind = BLOCK_IF;
             b->has_else = 0;
             b->saved_unreach = unreachable;
             b->if_unreach = 0;
@@ -657,7 +662,7 @@ static void compile_word(void) {
         }
         if (strcmp(tok, "else") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != 1) ir4_die("'else' without 'if'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_IF) ir4_die("'else' without 'if'");
             b = &blocks[bsp - 1];
             b->has_else = 1;
             b->if_unreach = unreachable;
@@ -674,7 +679,7 @@ static void compile_word(void) {
         }
         if (strcmp(tok, "then") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != 1) ir4_die("'then' without 'if'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_IF) ir4_die("'then' without 'if'");
             b = &blocks[--bsp];
             if (!b->has_else) {
                 if (!unreachable) {
@@ -702,7 +707,7 @@ static void compile_word(void) {
             BlockInfo *b;
             if (bsp >= MAX_BLOCKS) ir4_die("block nesting overflow");
             b = &blocks[bsp++];
-            b->kind = 2;
+            b->kind = BLOCK_BEGIN;
             b->loop_addr = w->ir_len;
             b->saved_sp = tsp;
             memcpy(b->saved_stack, tstack, tsp);
@@ -710,7 +715,7 @@ static void compile_word(void) {
         }
         if (strcmp(tok, "while") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != 2) ir4_die("'while' without 'begin'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN) ir4_die("'while' without 'begin'");
             b = &blocks[bsp - 1];
             tpop_expect(TY_W);
             b->patch_end = w->ir_len;
@@ -720,7 +725,7 @@ static void compile_word(void) {
         }
         if (strcmp(tok, "repeat") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != 2) ir4_die("'repeat' without 'begin'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN) ir4_die("'repeat' without 'begin'");
             b = &blocks[--bsp];
             if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
                 ir4_die("loop body must leave stack even at 'repeat'");
@@ -732,7 +737,7 @@ static void compile_word(void) {
         }
         if (strcmp(tok, "until") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != 2) ir4_die("'until' without 'begin'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN) ir4_die("'until' without 'begin'");
             b = &blocks[--bsp];
             tpop_expect(TY_W);
             if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
@@ -817,9 +822,9 @@ typedef struct {
 } PendingBr;
 
 static void emit_word(u8 fidx) {
+    static u16 ir_addr[MAX_IR];
     FuncSig *sig = &funcs[fidx];
     WordIR *w = &words[fidx];
-    u16 ir_addr[MAX_IR];
     PendingBr pending[MAX_BLOCKS * 4];
     u16 pend_cnt = 0;
     u16 i, p;
