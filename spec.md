@@ -27,16 +27,14 @@ IR4th uses a static, unified type stack. All primitive types have fixed, target-
 | Type Token | Name | Semantics | 8/16-bit Target (Z80, 6502) | 32-bit Target (ARM, RISC-V) |
 | :--- | :--- | :--- | :--- | :--- |
 | **`C:`** | Char / Byte | Signed 8-bit integer | 1 byte (`i8`) | 1 byte (`i8`) |
-| **`W:`** | Native Word | Signed native machine word | 2 bytes (`i16`) | 4 bytes (`i32`) |
-| **`D:`** | Double Word | Signed double-width integer | 4 bytes (`i32`) | 8 bytes (`i64`) |
+| **`W:`** | Word | Signed native machine word | 2 bytes (`i16`) | 2 bytes (`i16`) |
 | **`A:`** | Address | Memory pointer | 2 bytes (`u16`) | 4 bytes (`u32`) |
-| **`F:`** | Float *(optional)* | IEEE-754 single-precision float | 4 bytes (`f32`) | 4 bytes (`f32`) |
+| **`F:`** | Float  | Floating point number | 6 bytes | TBD  |
 
 ### 2.1 Literal Typing Rules
 * **Bare Integer Literals** (`0`, `1`, `-42`, `0x10`) implicitly default to type **`W:`**.
 * **Explicitly Typed Literals** prefix the value with a `TYPE` token separated by whitespace:
   * `C: 65` (pushes 8-bit char `65`)
-  * `D: 100000` (pushes 32-bit double word `100000`)
   * `A: 0x0400` (pushes memory address `0x0400`)
   * `F: 3.14` (pushes 32-bit float `3.14`)
 
