@@ -14,6 +14,45 @@ static u16 rt_sdivmod_addr = 0;
 static u16 rt_math48_addr  = 0;
 static u16 z80_local_off[MAX_LOCALS];
 static u16 z80_local_bytes = 0;
+static u16 z80_last_push_pc = 0;
+static u8  z80_last_push_op = 0;
+
+static void z80_peep_barrier(void) {
+    z80_last_push_op = 0;
+}
+
+static void z80_push(u8 op) {
+    emit8(op);
+    z80_last_push_op = op;
+    z80_last_push_pc = cb_pc();
+}
+
+static void z80_pop(u8 op) {
+    if (z80_last_push_op != 0 && cb_pc() == z80_last_push_pc) {
+        if ((op == Z80_POP_HL && z80_last_push_op == Z80_PUSH_HL) ||
+            (op == Z80_POP_DE && z80_last_push_op == Z80_PUSH_DE)) {
+            cb_rewind(1);
+            z80_last_push_op = 0;
+            return;
+        }
+        if (op == Z80_POP_DE && z80_last_push_op == Z80_PUSH_HL) {
+            cb_rewind(1);
+            emit8(Z80_LD_D_H);
+            emit8(Z80_LD_E_L);
+            z80_last_push_op = 0;
+            return;
+        }
+        if (op == Z80_POP_HL && z80_last_push_op == Z80_PUSH_DE) {
+            cb_rewind(1);
+            emit8(Z80_LD_H_D);
+            emit8(Z80_LD_L_E);
+            z80_last_push_op = 0;
+            return;
+        }
+    }
+    z80_last_push_op = 0;
+    emit8(op);
+}
 
 /* --- Prefixed & Multi-byte Z80 Helpers --- */
 static void z80_sbc_hl_de(void)     { emit8_8(0xED, 0x52); }
@@ -46,6 +85,7 @@ static void z80_neg_de(void) {
 
 /* --- Backend Interface Implementation --- */
 static u16 z80_cur_addr(void) {
+    z80_peep_barrier();
     return cb_cur_addr();
 }
 
@@ -54,6 +94,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
     u8 i;
     u16 off = 0;
     (void)name;
+    z80_peep_barrier();
 
     if (cb_pc() <= 3) {
         rt_mul_addr     = 0;
@@ -106,7 +147,7 @@ static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_loca
     if (out_words > 4) ir4_die("Z80 return values exceed 8 bytes");
 
     /* Pop return values from evaluation stack before unwinding locals */
-    if (out_words >= 1) emit8(Z80_POP_DE);
+    if (out_words >= 1) z80_pop(Z80_POP_DE);
     if (out_words >= 2) emit8(Z80_POP_BC);
     if (out_words >= 3) {
         emit8(Z80_EXX);
@@ -156,12 +197,12 @@ static void z80_call(u16 target_addr) {
 
 static void z80_push_w(i32 val) {
     emit8_16(Z80_LD_HL_NN, (u16)val);
-    emit8(Z80_PUSH_HL);
+    z80_push(Z80_PUSH_HL);
 }
 
 static void z80_push_a(u32 val) {
     emit8_16(Z80_LD_HL_NN, (u16)val);
-    emit8(Z80_PUSH_HL);
+    z80_push(Z80_PUSH_HL);
 }
 
 static void z80_push_f(double val) {
@@ -199,14 +240,14 @@ static void z80_push_f(double val) {
     emit8_16(Z80_LD_HL_NN, (u16)(bytes[2] | ((u16)bytes[3] << 8)));
     emit8(Z80_PUSH_HL);
     emit8_16(Z80_LD_HL_NN, (u16)(bytes[0] | ((u16)bytes[1] << 8)));
-    emit8(Z80_PUSH_HL);
+    z80_push(Z80_PUSH_HL);
 }
 
 static void z80_push_data(u16 offset) {
     emit8(Z80_LD_HL_NN);
     cb_add_data_reloc(cb_pc(), offset);
     emit16(0x0000);
-    emit8(Z80_PUSH_HL);
+    z80_push(Z80_PUSH_HL);
 }
 
 static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
@@ -220,7 +261,7 @@ static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
             emit8(Z80_DEC_HL);
             emit8(Z80_LD_E_MHL);
             if (i < 2) emit8(Z80_DEC_HL);
-            emit8(Z80_PUSH_DE);
+            z80_push(Z80_PUSH_DE);
         }
     } else {
         emit8_16(Z80_LD_HL_NN, off);
@@ -228,7 +269,7 @@ static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
         emit8(Z80_LD_E_MHL);
         emit8(Z80_INC_HL);
         emit8(Z80_LD_D_MHL);
-        emit8(Z80_PUSH_DE);
+        z80_push(Z80_PUSH_DE);
     }
 }
 
@@ -246,7 +287,7 @@ static void z80_local_set(u8 slot, u8 type, u16 stack_bytes) {
             if (i < 2) emit8(Z80_INC_HL);
         }
     } else {
-        emit8(Z80_POP_DE);
+        z80_pop(Z80_POP_DE);
         emit8_16(Z80_LD_HL_NN, off);
         emit8(Z80_ADD_HL_SP);
         emit8(Z80_LD_MHL_E);
@@ -256,7 +297,7 @@ static void z80_local_set(u8 slot, u8 type, u16 stack_bytes) {
 }
 
 static void z80_pop_f_ac(void) {
-    emit8(Z80_POP_HL);
+    z80_pop(Z80_POP_HL);
     emit8(Z80_POP_DE);
     emit8(Z80_POP_BC);
 }
@@ -264,7 +305,7 @@ static void z80_pop_f_ac(void) {
 static void z80_push_f_ac(void) {
     emit8(Z80_PUSH_BC);
     emit8(Z80_PUSH_DE);
-    emit8(Z80_PUSH_HL);
+    z80_push(Z80_PUSH_HL);
 }
 
 static void z80_stack_op(u8 op, u8 t1, u8 t2) {
@@ -275,13 +316,13 @@ static void z80_stack_op(u8 op, u8 t1, u8 t2) {
             z80_push_f_ac();
             z80_push_f_ac();
         } else {
-            emit8(Z80_POP_HL);
+            z80_pop(Z80_POP_HL);
             emit8(Z80_PUSH_HL);
-            emit8(Z80_PUSH_HL);
+            z80_push(Z80_PUSH_HL);
         }
         break;
     case OP_DROP:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         if (t1 == TY_F) {
             emit8(Z80_POP_HL);
             emit8(Z80_POP_HL);
@@ -289,9 +330,9 @@ static void z80_stack_op(u8 op, u8 t1, u8 t2) {
         break;
     case OP_SWAP:
         if (t1 != TY_F && t2 != TY_F) {
-            emit8(Z80_POP_HL);
+            z80_pop(Z80_POP_HL);
             emit8(Z80_EX_SP_HL);
-            emit8(Z80_PUSH_HL);
+            z80_push(Z80_PUSH_HL);
         } else if (t1 == TY_F && t2 == TY_F) {
             z80_pop_f_ac();
             emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX);
@@ -311,11 +352,11 @@ static void z80_stack_op(u8 op, u8 t1, u8 t2) {
         break;
     case OP_OVER:
         if (t1 != TY_F && t2 != TY_F) {
-            emit8(Z80_POP_DE);
+            z80_pop(Z80_POP_DE);
             emit8(Z80_POP_HL);
             emit8(Z80_PUSH_HL);
             emit8(Z80_PUSH_DE);
-            emit8(Z80_PUSH_HL);
+            z80_push(Z80_PUSH_HL);
         } else if (t1 == TY_F && t2 == TY_F) {
             z80_pop_f_ac();
             emit8(Z80_EXX); z80_pop_f_ac(); z80_push_f_ac(); emit8(Z80_EXX);
@@ -471,10 +512,10 @@ static void z80_call_math48(u16 entry_offset) {
 static void z80_alu_op(u8 op) {
     switch (op) {
     case OP_INVERT:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         emit8(Z80_LD_A_L); emit8(Z80_CPL); emit8(Z80_LD_L_A);
         emit8(Z80_LD_A_H); emit8(Z80_CPL); emit8(Z80_LD_H_A);
-        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_HL);
         return;
     case OP_FNEG:
         z80_pop_f_ac();
@@ -498,7 +539,7 @@ static void z80_alu_op(u8 op) {
         break;
     }
 
-    emit8(Z80_POP_DE); /* rhs */
+    z80_pop(Z80_POP_DE); /* rhs */
     emit8(Z80_POP_HL); /* lhs */
 
     switch (op) {
@@ -564,7 +605,7 @@ static void z80_alu_op(u8 op) {
     default:
         ir4_die("unimplemented Z80 ALU op");
     }
-    emit8(Z80_PUSH_HL);
+    z80_push(Z80_PUSH_HL);
 }
 
 static void z80_cmp_op(u8 op) {
@@ -584,13 +625,13 @@ static void z80_cmp_op(u8 op) {
         emit8_16(Z80_LD_HL_NN, 0xFFFF);
         emit8_8((op == OP_FEQ) ? Z80_JR_Z : (op == OP_FNE) ? Z80_JR_NZ : Z80_JR_C, 3);
         emit8_16(Z80_LD_HL_NN, 0x0000);
-        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_HL);
         return;
     default:
         break;
     }
 
-    emit8(Z80_POP_DE); /* rhs */
+    z80_pop(Z80_POP_DE); /* rhs */
     emit8(Z80_POP_HL); /* lhs */
 
     switch (op) {
@@ -662,28 +703,28 @@ static void z80_cmp_op(u8 op) {
     default:
         ir4_die("unimplemented Z80 comparison op");
     }
-    emit8(Z80_PUSH_HL);
+    z80_push(Z80_PUSH_HL);
 }
 
 static void z80_mem_op(u8 op) {
     switch (op) {
     case OP_U8FETCH:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         emit8(Z80_LD_L_MHL);
         emit8_8(Z80_LD_H_N, 0x00);
-        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_HL);
         break;
     case OP_I8FETCH:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         emit8(Z80_LD_L_MHL);
         emit8(Z80_LD_A_L);
         emit8(Z80_RLA);
         emit8(Z80_SBC_A_A);
         emit8(Z80_LD_H_A);
-        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_HL);
         break;
     case OP_I8STORE:
-        emit8(Z80_POP_HL); /* addr */
+        z80_pop(Z80_POP_HL); /* addr */
         emit8(Z80_POP_DE); /* val */
         emit8(Z80_LD_MHL_E);
         break;
@@ -691,24 +732,24 @@ static void z80_mem_op(u8 op) {
     case OP_AFETCH:
     case OP_I16FETCH:
     case OP_U16FETCH:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         emit8(Z80_LD_E_MHL);
         emit8(Z80_INC_HL);
         emit8(Z80_LD_D_MHL);
         emit8(Z80_EX_DE_HL);
-        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_HL);
         break;
     case OP_STORE:
     case OP_ASTORE:
     case OP_I16STORE:
-        emit8(Z80_POP_HL); /* addr */
+        z80_pop(Z80_POP_HL); /* addr */
         emit8(Z80_POP_DE); /* val */
         emit8(Z80_LD_MHL_E);
         emit8(Z80_INC_HL);
         emit8(Z80_LD_MHL_D);
         break;
     case OP_FFETCH:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         emit8(Z80_LD_E_MHL); emit8(Z80_INC_HL);
         emit8(Z80_LD_D_MHL); emit8(Z80_INC_HL);
         emit8(Z80_LD_C_MHL); emit8(Z80_INC_HL);
@@ -718,10 +759,10 @@ static void z80_mem_op(u8 op) {
         emit8(Z80_LD_L_A);
         emit8(Z80_PUSH_HL);
         emit8(Z80_PUSH_BC);
-        emit8(Z80_PUSH_DE);
+        z80_push(Z80_PUSH_DE);
         break;
     case OP_FSTORE:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         emit8(Z80_POP_DE);
         emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
         emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
@@ -740,26 +781,26 @@ static void z80_mem_op(u8 op) {
 static void z80_conv_op(u8 op) {
     switch (op) {
     case OP_SEXT:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         emit8(Z80_LD_A_L);
         emit8(Z80_RLA);
         emit8(Z80_SBC_A_A);
         emit8(Z80_LD_H_A);
-        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_HL);
         break;
     case OP_W2A:
     case OP_A2W:
         /* 16-bit word and 16-bit address are identical on Z80: zero-cost no-op */
         break;
     case OP_W2F:
-        emit8(Z80_POP_HL);
+        z80_pop(Z80_POP_HL);
         z80_call_math48(RT_FP_ITOF);
         z80_push_f_ac();
         break;
     case OP_F2W:
         z80_pop_f_ac();
         z80_call_math48(RT_FP_FTOI);
-        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_HL);
         break;
     default:
         ir4_die("unimplemented Z80 conversion op");
@@ -768,7 +809,7 @@ static void z80_conv_op(u8 op) {
 
 static u16 z80_emit_jz_fwd(void) {
     u16 patch_pos;
-    emit8(Z80_POP_HL);
+    z80_pop(Z80_POP_HL);
     emit8(Z80_LD_A_H);
     emit8(Z80_OR_L);
     emit8(Z80_JP_Z);
@@ -790,13 +831,14 @@ static void z80_emit_jmp_back(u16 target_addr) {
 }
 
 static void z80_emit_jz_back(u16 target_addr) {
-    emit8(Z80_POP_HL);
+    z80_pop(Z80_POP_HL);
     emit8(Z80_LD_A_H);
     emit8(Z80_OR_L);
     emit8_16(Z80_JP_Z, target_addr);
 }
 
 static void z80_patch_fwd(u16 patch_offset) {
+    z80_peep_barrier();
     patch16(patch_offset, cb_cur_addr());
 }
 

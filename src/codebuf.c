@@ -62,6 +62,13 @@ void emit8_8_8(u8 a, u8 b, u8 c) {
     emit8(c);
 }
 
+void cb_rewind(u16 n) {
+    if (n > code_pc) {
+        ir4_die("code buffer underflow");
+    }
+    code_pc = (u16)(code_pc - n);
+}
+
 void patch16(u16 patch_offset, u16 target_addr) {
     if ((u32)patch_offset + 1 >= MAX_CODE) {
         ir4_die("patch offset out of bounds");
