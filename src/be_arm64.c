@@ -131,23 +131,20 @@ static void a64_push_data(u16 offset) {
     push_x0();
 }
 
-static void a64_local_get(u8 slot, u8 type, u16 stack_bytes) {
+static void a64_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
     u32 off = (u32)(slot + 1) * 8;
     (void)type;
     (void)stack_bytes;
-    emit32(0xF84003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* LDUR X0, [X29, #-off] */
-    push_x0();
+    if (op == LOCAL_GET) {
+        emit32(0xF84003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* LDUR X0, [X29, #-off] */
+        push_x0();
+    } else {
+        pop_x0();
+        emit32(0xF80003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-off] */
+    }
 }
 
-static void a64_local_set(u8 slot, u8 type, u16 stack_bytes) {
-    u32 off = (u32)(slot + 1) * 8;
-    (void)type;
-    (void)stack_bytes;
-    pop_x0();
-    emit32(0xF80003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-off] */
-}
-
-static void a64_stack_op(u8 op, u8 t1, u8 t2) {
+static void a64_stack_op(StackOp op, StackType t1, StackType t2) {
     (void)t1; (void)t2;
     switch (op) {
     case OP_DUP:
@@ -169,36 +166,7 @@ static void a64_stack_op(u8 op, u8 t1, u8 t2) {
     }
 }
 
-static void a64_alu_op(u8 op) {
-    switch (op) {
-    case OP_INVERT:
-        pop_x0();
-        emit32(0xAA2003E0UL); /* MVN X0, X0 */
-        push_x0();
-        return;
-    case OP_FNEG:
-        pop_d0();
-        emit32(0x1E614000UL); /* FNEG D0, D0 */
-        push_d0();
-        return;
-    case OP_FADD:
-    case OP_FSUB:
-    case OP_FMUL:
-    case OP_FDIV:
-        pop_d1(); /* rhs */
-        pop_d0(); /* lhs */
-        switch (op) {
-        case OP_FADD: emit32(0x1E612800UL); break; /* FADD D0, D0, D1 */
-        case OP_FSUB: emit32(0x1E613800UL); break; /* FSUB D0, D0, D1 */
-        case OP_FMUL: emit32(0x1E610800UL); break; /* FMUL D0, D0, D1 */
-        case OP_FDIV: emit32(0x1E611800UL); break; /* FDIV D0, D0, D1 */
-        }
-        push_d0();
-        return;
-    default:
-        break;
-    }
-
+static void a64_int_alu(IrOp op) {
     pop_x1(); /* rhs */
     pop_x0(); /* lhs */
 
@@ -254,29 +222,8 @@ static void a64_alu_op(u8 op) {
     push_x0();
 }
 
-static void a64_cmp_op(u8 op) {
+static void a64_int_cmp(IrOp op) {
     u32 cond = 0;
-    switch (op) {
-    case OP_FEQ:
-    case OP_FNE:
-    case OP_FLT:
-    case OP_FGT:
-        pop_d1();
-        pop_d0();
-        emit32(0x1E612000UL); /* FCMP D0, D1 */
-        switch (op) {
-        case OP_FEQ: cond = 0x0; break; /* EQ */
-        case OP_FNE: cond = 0x1; break; /* NE */
-        case OP_FLT: cond = 0x4; break; /* MI (ordered <) */
-        case OP_FGT: cond = 0xC; break; /* GT */
-        }
-        emit32(0xDA9F03E0UL | ((cond ^ 1UL) << 12)); /* CSETM X0, cond */
-        push_x0();
-        return;
-    default:
-        break;
-    }
-
     pop_x1();
     pop_x0();
     emit32(0xEB01001FUL); /* CMP X0, X1 */
@@ -304,8 +251,55 @@ static void a64_cmp_op(u8 op) {
     push_x0();
 }
 
-static void a64_mem_op(u8 op) {
+static void a64_op(IrOp op) {
     switch (op) {
+    case OP_ADD: case OP_AADD:
+    case OP_SUB: case OP_ASUB: case OP_ADIFF:
+    case OP_MUL: case OP_DIV: case OP_UDIV: case OP_MOD: case OP_UMOD:
+    case OP_AND: case OP_OR: case OP_XOR:
+    case OP_LSHIFT: case OP_RSHIFT: case OP_ARSHIFT:
+        a64_int_alu(op);
+        break;
+    case OP_INVERT:
+        pop_x0();
+        emit32(0xAA2003E0UL); /* MVN X0, X0 */
+        push_x0();
+        break;
+    case OP_FNEG:
+        pop_d0();
+        emit32(0x1E614000UL); /* FNEG D0, D0 */
+        push_d0();
+        break;
+    case OP_FADD:
+    case OP_FSUB:
+    case OP_FMUL:
+    case OP_FDIV:
+        pop_d1(); /* rhs */
+        pop_d0(); /* lhs */
+        if (op == OP_FADD)      emit32(0x1E612800UL); /* FADD D0, D0, D1 */
+        else if (op == OP_FSUB) emit32(0x1E613800UL); /* FSUB D0, D0, D1 */
+        else if (op == OP_FMUL) emit32(0x1E610800UL); /* FMUL D0, D0, D1 */
+        else                    emit32(0x1E611800UL); /* FDIV D0, D0, D1 */
+        push_d0();
+        break;
+    case OP_EQ: case OP_AEQ:
+    case OP_NE: case OP_ANE:
+    case OP_LT: case OP_GE: case OP_GT: case OP_LE:
+    case OP_ULT: case OP_ALT: case OP_UGE: case OP_UGT: case OP_AGT: case OP_ULE:
+        a64_int_cmp(op);
+        break;
+    case OP_FEQ:
+    case OP_FNE:
+    case OP_FLT:
+    case OP_FGT: {
+        u32 cond = (op == OP_FEQ) ? 0x0 : (op == OP_FNE) ? 0x1 : (op == OP_FLT) ? 0x4 : 0xC;
+        pop_d1();
+        pop_d0();
+        emit32(0x1E612000UL); /* FCMP D0, D1 */
+        emit32(0xDA9F03E0UL | ((cond ^ 1UL) << 12)); /* CSETM X0, cond */
+        push_x0();
+        break;
+    }
     case OP_U8FETCH:
         pop_x0();
         emit32(0x39400000UL); /* LDRB W0, [X0] (implicitly zero-extends to 64-bit X0) */
@@ -347,13 +341,6 @@ static void a64_mem_op(u8 op) {
         pop_x0(); pop_x1();
         emit32(0xF9000001UL); /* STR X1, [X0] */
         break;
-    default:
-        ir4_die("unimplemented ARM64 memory op");
-    }
-}
-
-static void a64_conv_op(u8 op) {
-    switch (op) {
     case OP_SEXT:
         pop_x0();
         emit32(0x93401C00UL); /* SXTB X0, X0 */
@@ -373,37 +360,34 @@ static void a64_conv_op(u8 op) {
         emit32(0x9E780000UL); /* FCVTZS X0, D0 */
         push_x0();
         break;
-    default:
-        ir4_die("unimplemented ARM64 conversion op");
     }
 }
 
-static u16 a64_emit_jz_fwd(void) {
+static u16 a64_emit_br_fwd(BranchCond cond) {
     u16 pos;
-    pop_x0();
-    pos = cb_pc();
-    emit32(0xB4000000UL); /* CBZ X0, rel19 */
+    if (cond == BR_JZ) {
+        pop_x0();
+        pos = cb_pc();
+        emit32(0xB4000000UL); /* CBZ X0, rel19 */
+    } else {
+        pos = cb_pc();
+        emit32(0x14000000UL); /* B rel26 */
+    }
     return pos;
 }
 
-static u16 a64_emit_jmp_fwd(void) {
-    u16 pos = cb_pc();
-    emit32(0x14000000UL); /* B rel26 */
-    return pos;
-}
-
-static void a64_emit_jmp_back(u16 target_addr) {
-    i32 diff = (i32)target_addr - (i32)cb_cur_addr();
-    emit32(0x14000000UL | (((u32)(diff >> 2)) & 0x03FFFFFFUL));
-}
-
-static void a64_emit_jz_back(u16 target_addr) {
+static void a64_emit_br_back(BranchCond cond, u16 target_addr) {
     i32 diff;
-    u32 imm19;
-    pop_x0();
-    diff = (i32)target_addr - (i32)cb_cur_addr();
-    imm19 = ((u32)(diff >> 2)) & 0x0007FFFFUL;
-    emit32(0xB4000000UL | (imm19 << 5)); /* CBZ X0, rel19 */
+    if (cond == BR_JZ) {
+        u32 imm19;
+        pop_x0();
+        diff = (i32)target_addr - (i32)cb_cur_addr();
+        imm19 = ((u32)(diff >> 2)) & 0x0007FFFFUL;
+        emit32(0xB4000000UL | (imm19 << 5)); /* CBZ X0, rel19 */
+    } else {
+        diff = (i32)target_addr - (i32)cb_cur_addr();
+        emit32(0x14000000UL | (((u32)(diff >> 2)) & 0x03FFFFFFUL));
+    }
 }
 
 static void a64_patch_fwd(u16 patch_offset) {
@@ -429,16 +413,10 @@ const Backend be_arm64 = {
     a64_push_a,
     a64_push_f,
     a64_push_data,
-    a64_local_get,
-    a64_local_set,
+    a64_local_op,
     a64_stack_op,
-    a64_alu_op,
-    a64_cmp_op,
-    a64_mem_op,
-    a64_conv_op,
-    a64_emit_jz_fwd,
-    a64_emit_jmp_fwd,
-    a64_emit_jmp_back,
-    a64_emit_jz_back,
+    a64_op,
+    a64_emit_br_fwd,
+    a64_emit_br_back,
     a64_patch_fwd
 };

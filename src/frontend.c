@@ -267,12 +267,9 @@ const FuncSig *ir4_func_sig(u8 idx) {
     return &funcs[idx];
 }
 
-enum { CAT_ALU, CAT_CMP, CAT_MEM, CAT_CONV };
-
 typedef struct {
     const char *name;
-    u8 cat;
-    u8 op;
+    IrOp op;
     u8 in1;
     u8 in2;
     u8 out;
@@ -280,73 +277,73 @@ typedef struct {
 
 static const BuiltinDef builtins[] = {
     /* Word ALU & bitwise */
-    { "+",       CAT_ALU, OP_ADD,     TY_W, TY_W,    TY_W },
-    { "-",       CAT_ALU, OP_SUB,     TY_W, TY_W,    TY_W },
-    { "*",       CAT_ALU, OP_MUL,     TY_W, TY_W,    TY_W },
-    { "/",       CAT_ALU, OP_DIV,     TY_W, TY_W,    TY_W },
-    { "mod",     CAT_ALU, OP_MOD,     TY_W, TY_W,    TY_W },
-    { "u/",      CAT_ALU, OP_UDIV,    TY_W, TY_W,    TY_W },
-    { "umod",    CAT_ALU, OP_UMOD,    TY_W, TY_W,    TY_W },
-    { "and",     CAT_ALU, OP_AND,     TY_W, TY_W,    TY_W },
-    { "or",      CAT_ALU, OP_OR,      TY_W, TY_W,    TY_W },
-    { "xor",     CAT_ALU, OP_XOR,     TY_W, TY_W,    TY_W },
-    { "invert",  CAT_ALU, OP_INVERT,  TY_W, TY_NONE, TY_W },
-    { "lshift",  CAT_ALU, OP_LSHIFT,  TY_W, TY_W,    TY_W },
-    { "arshift", CAT_ALU, OP_ARSHIFT, TY_W, TY_W,    TY_W },
-    { "rshift",  CAT_ALU, OP_RSHIFT,  TY_W, TY_W,    TY_W },
+    { "+",       OP_ADD,      TY_W, TY_W,    TY_W },
+    { "-",       OP_SUB,      TY_W, TY_W,    TY_W },
+    { "*",       OP_MUL,      TY_W, TY_W,    TY_W },
+    { "/",       OP_DIV,      TY_W, TY_W,    TY_W },
+    { "mod",     OP_MOD,      TY_W, TY_W,    TY_W },
+    { "u/",      OP_UDIV,     TY_W, TY_W,    TY_W },
+    { "umod",    OP_UMOD,     TY_W, TY_W,    TY_W },
+    { "and",     OP_AND,      TY_W, TY_W,    TY_W },
+    { "or",      OP_OR,       TY_W, TY_W,    TY_W },
+    { "xor",     OP_XOR,      TY_W, TY_W,    TY_W },
+    { "invert",  OP_INVERT,   TY_W, TY_NONE, TY_W },
+    { "lshift",  OP_LSHIFT,   TY_W, TY_W,    TY_W },
+    { "arshift", OP_ARSHIFT,  TY_W, TY_W,    TY_W },
+    { "rshift",  OP_RSHIFT,   TY_W, TY_W,    TY_W },
 
     /* Address arithmetic */
-    { "a+",      CAT_ALU, OP_AADD,    TY_W, TY_A,    TY_A },
-    { "a-",      CAT_ALU, OP_ASUB,    TY_W, TY_A,    TY_A },
-    { "adiff",   CAT_ALU, OP_ADIFF,   TY_A, TY_A,    TY_W },
+    { "a+",      OP_AADD,     TY_W, TY_A,    TY_A },
+    { "a-",      OP_ASUB,     TY_W, TY_A,    TY_A },
+    { "adiff",   OP_ADIFF,    TY_A, TY_A,    TY_W },
 
     /* Floating-point operations */
-    { "f+",      CAT_ALU, OP_FADD,    TY_F, TY_F,    TY_F },
-    { "f-",      CAT_ALU, OP_FSUB,    TY_F, TY_F,    TY_F },
-    { "f*",      CAT_ALU, OP_FMUL,    TY_F, TY_F,    TY_F },
-    { "f/",      CAT_ALU, OP_FDIV,    TY_F, TY_F,    TY_F },
-    { "fnegate", CAT_ALU, OP_FNEG,    TY_F, TY_NONE, TY_F },
+    { "f+",      OP_FADD,     TY_F, TY_F,    TY_F },
+    { "f-",      OP_FSUB,     TY_F, TY_F,    TY_F },
+    { "f*",      OP_FMUL,     TY_F, TY_F,    TY_F },
+    { "f/",      OP_FDIV,     TY_F, TY_F,    TY_F },
+    { "fnegate", OP_FNEG,     TY_F, TY_NONE, TY_F },
 
     /* Comparisons */
-    { "=",       CAT_CMP, OP_EQ,      TY_W, TY_W,    TY_W },
-    { "<>",      CAT_CMP, OP_NE,      TY_W, TY_W,    TY_W },
-    { "<",       CAT_CMP, OP_LT,      TY_W, TY_W,    TY_W },
-    { ">",       CAT_CMP, OP_GT,      TY_W, TY_W,    TY_W },
-    { "<=",      CAT_CMP, OP_LE,      TY_W, TY_W,    TY_W },
-    { ">=",      CAT_CMP, OP_GE,      TY_W, TY_W,    TY_W },
-    { "u<",      CAT_CMP, OP_ULT,     TY_W, TY_W,    TY_W },
-    { "u>",      CAT_CMP, OP_UGT,     TY_W, TY_W,    TY_W },
-    { "u<=",     CAT_CMP, OP_ULE,     TY_W, TY_W,    TY_W },
-    { "u>=",     CAT_CMP, OP_UGE,     TY_W, TY_W,    TY_W },
-    { "a=",      CAT_CMP, OP_AEQ,     TY_A, TY_A,    TY_W },
-    { "a<>",     CAT_CMP, OP_ANE,     TY_A, TY_A,    TY_W },
-    { "au<",     CAT_CMP, OP_ALT,     TY_A, TY_A,    TY_W },
-    { "au>",     CAT_CMP, OP_AGT,     TY_A, TY_A,    TY_W },
-    { "f=",      CAT_CMP, OP_FEQ,     TY_F, TY_F,    TY_W },
-    { "f<>",     CAT_CMP, OP_FNE,     TY_F, TY_F,    TY_W },
-    { "f<",      CAT_CMP, OP_FLT,     TY_F, TY_F,    TY_W },
-    { "f>",      CAT_CMP, OP_FGT,     TY_F, TY_F,    TY_W },
+    { "=",       OP_EQ,       TY_W, TY_W,    TY_W },
+    { "<>",      OP_NE,       TY_W, TY_W,    TY_W },
+    { "<",       OP_LT,       TY_W, TY_W,    TY_W },
+    { ">",       OP_GT,       TY_W, TY_W,    TY_W },
+    { "<=",      OP_LE,       TY_W, TY_W,    TY_W },
+    { ">=",      OP_GE,       TY_W, TY_W,    TY_W },
+    { "u<",      OP_ULT,      TY_W, TY_W,    TY_W },
+    { "u>",      OP_UGT,      TY_W, TY_W,    TY_W },
+    { "u<=",     OP_ULE,      TY_W, TY_W,    TY_W },
+    { "u>=",     OP_UGE,      TY_W, TY_W,    TY_W },
+    { "a=",      OP_AEQ,      TY_A, TY_A,    TY_W },
+    { "a<>",     OP_ANE,      TY_A, TY_A,    TY_W },
+    { "au<",     OP_ALT,      TY_A, TY_A,    TY_W },
+    { "au>",     OP_AGT,      TY_A, TY_A,    TY_W },
+    { "f=",      OP_FEQ,      TY_F, TY_F,    TY_W },
+    { "f<>",     OP_FNE,      TY_F, TY_F,    TY_W },
+    { "f<",      OP_FLT,      TY_F, TY_F,    TY_W },
+    { "f>",      OP_FGT,      TY_F, TY_F,    TY_W },
 
     /* Memory load/store */
-    { "i8@",     CAT_MEM, OP_I8FETCH,  TY_A, TY_NONE, TY_W },
-    { "u8@",     CAT_MEM, OP_U8FETCH,  TY_A, TY_NONE, TY_W },
-    { "i8!",     CAT_MEM, OP_I8STORE,  TY_A, TY_W,    TY_NONE },
-    { "i16@",    CAT_MEM, OP_I16FETCH, TY_A, TY_NONE, TY_W },
-    { "u16@",    CAT_MEM, OP_U16FETCH, TY_A, TY_NONE, TY_W },
-    { "i16!",    CAT_MEM, OP_I16STORE, TY_A, TY_W,    TY_NONE },
-    { "@",       CAT_MEM, OP_FETCH,    TY_A, TY_NONE, TY_W },
-    { "!",       CAT_MEM, OP_STORE,    TY_A, TY_W,    TY_NONE },
-    { "a@",      CAT_MEM, OP_AFETCH,   TY_A, TY_NONE, TY_A },
-    { "a!",      CAT_MEM, OP_ASTORE,   TY_A, TY_A,    TY_NONE },
-    { "f@",      CAT_MEM, OP_FFETCH,   TY_A, TY_NONE, TY_F },
-    { "f!",      CAT_MEM, OP_FSTORE,   TY_A, TY_F,    TY_NONE },
+    { "i8@",     OP_I8FETCH,  TY_A, TY_NONE, TY_W },
+    { "u8@",     OP_U8FETCH,  TY_A, TY_NONE, TY_W },
+    { "i8!",     OP_I8STORE,  TY_A, TY_W,    TY_NONE },
+    { "i16@",    OP_I16FETCH, TY_A, TY_NONE, TY_W },
+    { "u16@",    OP_U16FETCH, TY_A, TY_NONE, TY_W },
+    { "i16!",    OP_I16STORE, TY_A, TY_W,    TY_NONE },
+    { "@",       OP_FETCH,    TY_A, TY_NONE, TY_W },
+    { "!",       OP_STORE,    TY_A, TY_W,    TY_NONE },
+    { "a@",      OP_AFETCH,   TY_A, TY_NONE, TY_A },
+    { "a!",      OP_ASTORE,   TY_A, TY_A,    TY_NONE },
+    { "f@",      OP_FFETCH,   TY_A, TY_NONE, TY_F },
+    { "f!",      OP_FSTORE,   TY_A, TY_F,    TY_NONE },
 
     /* Type conversions */
-    { "sext",    CAT_CONV, OP_SEXT,    TY_W, TY_NONE, TY_W },
-    { "w>a",     CAT_CONV, OP_W2A,     TY_W, TY_NONE, TY_A },
-    { "a>w",     CAT_CONV, OP_A2W,     TY_A, TY_NONE, TY_W },
-    { "w>f",     CAT_CONV, OP_W2F,     TY_W, TY_NONE, TY_F },
-    { "f>w",     CAT_CONV, OP_F2W,     TY_F, TY_NONE, TY_W }
+    { "sext",    OP_SEXT,     TY_W, TY_NONE, TY_W },
+    { "w>a",     OP_W2A,      TY_W, TY_NONE, TY_A },
+    { "a>w",     OP_A2W,      TY_A, TY_NONE, TY_W },
+    { "w>f",     OP_W2F,      TY_W, TY_NONE, TY_F },
+    { "f>w",     OP_F2W,      TY_F, TY_NONE, TY_W }
 };
 
 static int handle_builtin(const char *tok) {
@@ -356,19 +353,19 @@ static int handle_builtin(const char *tok) {
     /* Stack manipulation (polymorphic) */
     if (strcmp(tok, "dup") == 0) {
         a = tpop(); tpush(a); tpush(a);
-        be->stack_op(OP_DUP, a, 0); return 1;
+        be->stack_op(OP_DUP, (StackType)a, TY_NONE); return 1;
     }
     if (strcmp(tok, "drop") == 0) {
         a = tpop();
-        be->stack_op(OP_DROP, a, 0); return 1;
+        be->stack_op(OP_DROP, (StackType)a, TY_NONE); return 1;
     }
     if (strcmp(tok, "swap") == 0) {
         b = tpop(); a = tpop(); tpush(b); tpush(a);
-        be->stack_op(OP_SWAP, b, a); return 1;
+        be->stack_op(OP_SWAP, (StackType)b, (StackType)a); return 1;
     }
     if (strcmp(tok, "over") == 0) {
         b = tpop(); a = tpop(); tpush(a); tpush(b); tpush(a);
-        be->stack_op(OP_OVER, b, a); return 1;
+        be->stack_op(OP_OVER, (StackType)b, (StackType)a); return 1;
     }
 
     for (i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {
@@ -376,12 +373,7 @@ static int handle_builtin(const char *tok) {
             tpop_expect(builtins[i].in1);
             if (builtins[i].in2 != TY_NONE) tpop_expect(builtins[i].in2);
             if (builtins[i].out != TY_NONE) tpush(builtins[i].out);
-            switch (builtins[i].cat) {
-            case CAT_ALU:  be->alu_op(builtins[i].op); break;
-            case CAT_CMP:  be->cmp_op(builtins[i].op); break;
-            case CAT_MEM:  be->mem_op(builtins[i].op); break;
-            case CAT_CONV: be->conv_op(builtins[i].op); break;
-            }
+            be->op(builtins[i].op);
             return 1;
         }
     }
@@ -507,7 +499,7 @@ static void compile_word(void) {
             idx = find_local(tok);
             if (idx < 0) ir4_die("unknown local in 'to'");
             tpop_expect(locals[idx].type);
-            be->local_set(locals[idx].slot, locals[idx].type, tstack_bytes());
+            be->local_op(LOCAL_SET, locals[idx].slot, (StackType)locals[idx].type, tstack_bytes());
             continue;
         }
 
@@ -523,7 +515,7 @@ static void compile_word(void) {
             b->if_unreach = 0;
             b->saved_sp = tsp;
             memcpy(b->saved_stack, tstack, tsp);
-            b->patch_else = be->emit_jz_fwd();
+            b->patch_else = be->emit_br_fwd(BR_JZ);
             continue;
         }
         if (strcmp(tok, "else") == 0) {
@@ -537,7 +529,7 @@ static void compile_word(void) {
             tsp = b->saved_sp;
             memcpy(tstack, b->saved_stack, tsp);
             unreachable = b->saved_unreach;
-            b->patch_end = be->emit_jmp_fwd();
+            b->patch_end = be->emit_br_fwd(BR_JMP);
             be->patch_fwd(b->patch_else);
             continue;
         }
@@ -582,7 +574,7 @@ static void compile_word(void) {
             if (bsp == 0 || blocks[bsp - 1].kind != 2) ir4_die("'while' without 'begin'");
             b = &blocks[bsp - 1];
             tpop_expect(TY_W);
-            b->patch_end = be->emit_jz_fwd();
+            b->patch_end = be->emit_br_fwd(BR_JZ);
             continue;
         }
         if (strcmp(tok, "repeat") == 0) {
@@ -591,7 +583,7 @@ static void compile_word(void) {
             b = &blocks[--bsp];
             if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
                 ir4_die("loop body must leave stack even at 'repeat'");
-            be->emit_jmp_back(b->loop_addr);
+            be->emit_br_back(BR_JMP, b->loop_addr);
             be->patch_fwd(b->patch_end);
             continue;
         }
@@ -602,7 +594,7 @@ static void compile_word(void) {
             tpop_expect(TY_W);
             if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
                 ir4_die("loop body must leave stack even at 'until'");
-            be->emit_jz_back(b->loop_addr);
+            be->emit_br_back(BR_JZ, b->loop_addr);
             continue;
         }
 
@@ -612,7 +604,7 @@ static void compile_word(void) {
         /* Local variable read */
         idx = find_local(tok);
         if (idx >= 0) {
-            be->local_get(locals[idx].slot, locals[idx].type, tstack_bytes());
+            be->local_op(LOCAL_GET, locals[idx].slot, (StackType)locals[idx].type, tstack_bytes());
             tpush(locals[idx].type);
             continue;
         }

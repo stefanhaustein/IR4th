@@ -161,7 +161,12 @@ static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
     m6502_inx();
 }
 
-static void m6502_stack_op(u8 op, u8 t1, u8 t2) {
+static void m6502_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
+    if (op == LOCAL_GET) m6502_local_get(slot, (u8)type, stack_bytes);
+    else                 m6502_local_set(slot, (u8)type, stack_bytes);
+}
+
+static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {
     if (t1 == TY_F || t2 == TY_F) {
         ir4_die("unimplemented 6502 float stack op");
     }
@@ -204,7 +209,107 @@ static void m6502_stack_op(u8 op, u8 t1, u8 t2) {
     }
 }
 
-static void m6502_alu_op(u8 op) {
+static void m6502_int_cmp(IrOp op) {
+    u8 lhs_lo = ZP_STACK;
+    u8 rhs_lo = (u8)(ZP_STACK - 2);
+
+    /* Adjust X up front so INX does not clobber N/Z flags before branches */
+    m6502_inx();
+    m6502_inx();
+
+    switch (op) {
+    case OP_GT:
+    case OP_LE:
+    case OP_UGT:
+    case OP_ULE:
+    case OP_AGT:
+        lhs_lo = (u8)(ZP_STACK - 2);
+        rhs_lo = ZP_STACK;
+        break;
+    default:
+        break;
+    }
+
+    switch (op) {
+    case OP_EQ:
+    case OP_NE:
+    case OP_AEQ:
+    case OP_ANE:
+        m6502_lda_zpx(ZP_STACK);
+        m6502_eor_zpx((u8)(ZP_STACK - 2));
+        m6502_sta_zp(ZP_SCRATCH);
+        m6502_lda_zpx(ZP_STACK + 1);
+        m6502_eor_zpx((u8)(ZP_STACK - 1));
+        emit8(0x05); emit8(ZP_SCRATCH); /* ORA $00 */
+        if (op == OP_EQ || op == OP_AEQ) {
+            emit8(0xF0); emit8(0x04); /* BEQ true */
+        } else {
+            emit8(0xD0); emit8(0x04); /* BNE true */
+        }
+        m6502_lda_imm(0x00);
+        emit8(0xF0); emit8(0x02);     /* BEQ store */
+        m6502_lda_imm(0xFF);
+        m6502_sta_zpx(ZP_STACK);
+        m6502_sta_zpx(ZP_STACK + 1);
+        break;
+    case OP_ULT:
+    case OP_UGT:
+    case OP_ALT:
+    case OP_AGT:
+    case OP_UGE:
+    case OP_ULE:
+        m6502_sec();
+        m6502_lda_zpx(lhs_lo);
+        m6502_sbc_zpx(rhs_lo);
+        m6502_lda_zpx((u8)(lhs_lo + 1));
+        m6502_sbc_zpx((u8)(rhs_lo + 1));
+        if (op == OP_UGE || op == OP_ULE) {
+            emit8(0xB0); emit8(0x04); /* BCS true */
+        } else {
+            emit8(0x90); emit8(0x04); /* BCC true */
+        }
+        m6502_lda_imm(0x00);
+        emit8(0xF0); emit8(0x02);     /* BEQ store */
+        m6502_lda_imm(0xFF);
+        m6502_sta_zpx(ZP_STACK);
+        m6502_sta_zpx(ZP_STACK + 1);
+        break;
+    case OP_LT:
+    case OP_GT:
+    case OP_GE:
+    case OP_LE:
+        m6502_sec();
+        m6502_lda_zpx(lhs_lo);
+        m6502_sbc_zpx(rhs_lo);
+        m6502_lda_zpx((u8)(lhs_lo + 1));
+        m6502_sbc_zpx((u8)(rhs_lo + 1));
+        emit8(0x50); emit8(0x02);     /* BVC +2 */
+        m6502_eor_imm(0x80);
+        if (op == OP_GE || op == OP_LE) {
+            emit8(0x10); emit8(0x04); /* BPL true */
+        } else {
+            emit8(0x30); emit8(0x04); /* BMI true */
+        }
+        m6502_lda_imm(0x00);
+        emit8(0xF0); emit8(0x02);     /* BEQ store */
+        m6502_lda_imm(0xFF);
+        m6502_sta_zpx(ZP_STACK);
+        m6502_sta_zpx(ZP_STACK + 1);
+        break;
+    default:
+        ir4_die("unimplemented 6502 comparison op");
+    }
+}
+
+static void m6502_mem_addr_setup(void) {
+    m6502_lda_zpx(ZP_STACK);
+    m6502_sta_zp(ZP_SCRATCH);
+    m6502_lda_zpx(ZP_STACK + 1);
+    m6502_sta_zp(ZP_SCRATCH + 1);
+    m6502_ldy_imm(0x00);
+}
+
+static void m6502_op(IrOp op) {
     switch (op) {
     case OP_INVERT:
         m6502_lda_zpx(ZP_STACK);
@@ -298,118 +403,21 @@ static void m6502_alu_op(u8 op) {
             emit8(0xD0); emit8(0xF6); /* BNE -10 */
         }
         break;
-    default:
-        ir4_die("unimplemented 6502 ALU op (mul/div require runtime helper)");
-    }
-}
-
-static void m6502_cmp_op(u8 op) {
-    u8 lhs_lo = ZP_STACK;
-    u8 rhs_lo = (u8)(ZP_STACK - 2);
-
-    /* Adjust X up front so INX does not clobber N/Z flags before branches */
-    m6502_inx();
-    m6502_inx();
-
-    switch (op) {
-    case OP_GT:
-    case OP_LE:
-    case OP_UGT:
-    case OP_ULE:
-    case OP_AGT:
-        lhs_lo = (u8)(ZP_STACK - 2);
-        rhs_lo = ZP_STACK;
+    case OP_EQ: case OP_AEQ:
+    case OP_NE: case OP_ANE:
+    case OP_LT: case OP_GE: case OP_GT: case OP_LE:
+    case OP_ULT: case OP_ALT: case OP_UGE: case OP_UGT: case OP_AGT: case OP_ULE:
+        m6502_int_cmp(op);
         break;
-    default:
-        break;
-    }
-
-    switch (op) {
-    case OP_EQ:
-    case OP_NE:
-    case OP_AEQ:
-    case OP_ANE:
-        m6502_lda_zpx(ZP_STACK);
-        m6502_eor_zpx((u8)(ZP_STACK - 2));
-        m6502_sta_zp(ZP_SCRATCH);
-        m6502_lda_zpx(ZP_STACK + 1);
-        m6502_eor_zpx((u8)(ZP_STACK - 1));
-        emit8(0x05); emit8(ZP_SCRATCH); /* ORA $00 */
-        if (op == OP_EQ || op == OP_AEQ) {
-            emit8(0xF0); emit8(0x04); /* BEQ true */
-        } else {
-            emit8(0xD0); emit8(0x04); /* BNE true */
-        }
-        m6502_lda_imm(0x00);
-        emit8(0xF0); emit8(0x02);     /* BEQ store */
-        m6502_lda_imm(0xFF);
-        m6502_sta_zpx(ZP_STACK);
-        m6502_sta_zpx(ZP_STACK + 1);
-        break;
-    case OP_ULT:
-    case OP_UGT:
-    case OP_ALT:
-    case OP_AGT:
-    case OP_UGE:
-    case OP_ULE:
-        m6502_sec();
-        m6502_lda_zpx(lhs_lo);
-        m6502_sbc_zpx(rhs_lo);
-        m6502_lda_zpx((u8)(lhs_lo + 1));
-        m6502_sbc_zpx((u8)(rhs_lo + 1));
-        if (op == OP_UGE || op == OP_ULE) {
-            emit8(0xB0); emit8(0x04); /* BCS true */
-        } else {
-            emit8(0x90); emit8(0x04); /* BCC true */
-        }
-        m6502_lda_imm(0x00);
-        emit8(0xF0); emit8(0x02);     /* BEQ store */
-        m6502_lda_imm(0xFF);
-        m6502_sta_zpx(ZP_STACK);
-        m6502_sta_zpx(ZP_STACK + 1);
-        break;
-    case OP_LT:
-    case OP_GT:
-    case OP_GE:
-    case OP_LE:
-        m6502_sec();
-        m6502_lda_zpx(lhs_lo);
-        m6502_sbc_zpx(rhs_lo);
-        m6502_lda_zpx((u8)(lhs_lo + 1));
-        m6502_sbc_zpx((u8)(rhs_lo + 1));
-        emit8(0x50); emit8(0x02);     /* BVC +2 */
-        m6502_eor_imm(0x80);
-        if (op == OP_GE || op == OP_LE) {
-            emit8(0x10); emit8(0x04); /* BPL true */
-        } else {
-            emit8(0x30); emit8(0x04); /* BMI true */
-        }
-        m6502_lda_imm(0x00);
-        emit8(0xF0); emit8(0x02);     /* BEQ store */
-        m6502_lda_imm(0xFF);
-        m6502_sta_zpx(ZP_STACK);
-        m6502_sta_zpx(ZP_STACK + 1);
-        break;
-    default:
-        ir4_die("unimplemented 6502 comparison op");
-    }
-}
-
-static void m6502_mem_op(u8 op) {
-    m6502_lda_zpx(ZP_STACK);
-    m6502_sta_zp(ZP_SCRATCH);
-    m6502_lda_zpx(ZP_STACK + 1);
-    m6502_sta_zp(ZP_SCRATCH + 1);
-    m6502_ldy_imm(0x00);
-
-    switch (op) {
     case OP_U8FETCH:
+        m6502_mem_addr_setup();
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK);
         m6502_lda_imm(0x00);
         m6502_sta_zpx(ZP_STACK + 1);
         break;
     case OP_I8FETCH:
+        m6502_mem_addr_setup();
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK);
         emit8_8(0x10, 0x01); /* BPL +1 */
@@ -418,6 +426,7 @@ static void m6502_mem_op(u8 op) {
         m6502_sta_zpx(ZP_STACK + 1);
         break;
     case OP_I8STORE:
+        m6502_mem_addr_setup();
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sta_indy(ZP_SCRATCH);
         m6502_inx(); m6502_inx();
@@ -427,6 +436,7 @@ static void m6502_mem_op(u8 op) {
     case OP_AFETCH:
     case OP_I16FETCH:
     case OP_U16FETCH:
+        m6502_mem_addr_setup();
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK);
         emit8(0xC8); /* INY */
@@ -436,6 +446,7 @@ static void m6502_mem_op(u8 op) {
     case OP_STORE:
     case OP_ASTORE:
     case OP_I16STORE:
+        m6502_mem_addr_setup();
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sta_indy(ZP_SCRATCH);
         emit8(0xC8); /* INY */
@@ -444,13 +455,6 @@ static void m6502_mem_op(u8 op) {
         m6502_inx(); m6502_inx();
         m6502_inx(); m6502_inx();
         break;
-    default:
-        ir4_die("unimplemented 6502 float memory op");
-    }
-}
-
-static void m6502_conv_op(u8 op) {
-    switch (op) {
     case OP_SEXT:
         m6502_lda_imm(0x00);
         m6502_ldy_zpx(ZP_STACK);
@@ -462,42 +466,54 @@ static void m6502_conv_op(u8 op) {
     case OP_A2W:
         /* Zero-cost no-op on 6502 */
         break;
-    default:
-        ir4_die("unimplemented 6502 float conversion op");
+    case OP_MUL:
+    case OP_DIV:
+    case OP_MOD:
+    case OP_UDIV:
+    case OP_UMOD:
+        ir4_die("unimplemented 6502 ALU op (mul/div require runtime helper)");
+        break;
+    case OP_FADD:
+    case OP_FSUB:
+    case OP_FMUL:
+    case OP_FDIV:
+    case OP_FNEG:
+    case OP_FEQ:
+    case OP_FNE:
+    case OP_FLT:
+    case OP_FGT:
+    case OP_FFETCH:
+    case OP_FSTORE:
+    case OP_W2F:
+    case OP_F2W:
+        ir4_die("unimplemented 6502 float op");
+        break;
     }
 }
 
-static u16 m6502_emit_jz_fwd(void) {
+static u16 m6502_emit_br_fwd(BranchCond cond) {
     u16 patch_pos;
-    m6502_inx();
-    m6502_inx();
-    m6502_lda_zpx((u8)(ZP_STACK - 2));
-    m6502_ora_zpx((u8)(ZP_STACK - 1));
-    emit8(0xD0); emit8(0x03); /* BNE +3 */
+    if (cond == BR_JZ) {
+        m6502_inx();
+        m6502_inx();
+        m6502_lda_zpx((u8)(ZP_STACK - 2));
+        m6502_ora_zpx((u8)(ZP_STACK - 1));
+        emit8(0xD0); emit8(0x03); /* BNE +3 */
+    }
     emit8(0x4C);              /* JMP abs */
     patch_pos = cb_pc();
     emit16(0x0000);
     return patch_pos;
 }
 
-static u16 m6502_emit_jmp_fwd(void) {
-    u16 patch_pos;
-    emit8(0x4C);
-    patch_pos = cb_pc();
-    emit16(0x0000);
-    return patch_pos;
-}
-
-static void m6502_emit_jmp_back(u16 target_addr) {
-    m6502_jmp(target_addr);
-}
-
-static void m6502_emit_jz_back(u16 target_addr) {
-    m6502_inx();
-    m6502_inx();
-    m6502_lda_zpx((u8)(ZP_STACK - 2));
-    m6502_ora_zpx((u8)(ZP_STACK - 1));
-    emit8(0xD0); emit8(0x03); /* BNE +3 */
+static void m6502_emit_br_back(BranchCond cond, u16 target_addr) {
+    if (cond == BR_JZ) {
+        m6502_inx();
+        m6502_inx();
+        m6502_lda_zpx((u8)(ZP_STACK - 2));
+        m6502_ora_zpx((u8)(ZP_STACK - 1));
+        emit8(0xD0); emit8(0x03); /* BNE +3 */
+    }
     m6502_jmp(target_addr);
 }
 
@@ -516,16 +532,10 @@ const Backend be_6502 = {
     m6502_push_a,
     m6502_push_f,
     m6502_push_data,
-    m6502_local_get,
-    m6502_local_set,
+    m6502_local_op,
     m6502_stack_op,
-    m6502_alu_op,
-    m6502_cmp_op,
-    m6502_mem_op,
-    m6502_conv_op,
-    m6502_emit_jz_fwd,
-    m6502_emit_jmp_fwd,
-    m6502_emit_jmp_back,
-    m6502_emit_jz_back,
+    m6502_op,
+    m6502_emit_br_fwd,
+    m6502_emit_br_back,
     m6502_patch_fwd
 };

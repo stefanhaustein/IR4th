@@ -29,23 +29,35 @@ typedef signed long    i32;
 #define MAX_RELOCS 128
 
 /* Stack types (v0.3) */
-enum {
+typedef enum {
     TY_NONE = 0,
     TY_W,
     TY_A,
     TY_F
-};
+} StackType;
 
 /* Stack operations */
-enum {
+typedef enum {
     OP_DUP = 0,
     OP_DROP,
     OP_SWAP,
     OP_OVER
-};
+} StackOp;
 
-/* ALU & bitwise operations */
-enum {
+/* Local variable operations */
+typedef enum {
+    LOCAL_GET = 0,
+    LOCAL_SET
+} LocalOp;
+
+/* Branch conditions */
+typedef enum {
+    BR_JMP = 0,
+    BR_JZ
+} BranchCond;
+
+/* Unified IR operations (ALU, comparison, memory, conversion) */
+typedef enum {
     OP_ADD = 0,
     OP_SUB,
     OP_MUL,
@@ -67,12 +79,9 @@ enum {
     OP_FSUB,
     OP_FMUL,
     OP_FDIV,
-    OP_FNEG
-};
+    OP_FNEG,
 
-/* Comparison operations */
-enum {
-    OP_EQ = 0,
+    OP_EQ,
     OP_NE,
     OP_LT,
     OP_GT,
@@ -89,12 +98,9 @@ enum {
     OP_FEQ,
     OP_FNE,
     OP_FLT,
-    OP_FGT
-};
+    OP_FGT,
 
-/* Memory operations */
-enum {
-    OP_I8FETCH = 0,
+    OP_I8FETCH,
     OP_U8FETCH,
     OP_I8STORE,
     OP_I16FETCH,
@@ -105,17 +111,14 @@ enum {
     OP_AFETCH,
     OP_ASTORE,
     OP_FFETCH,
-    OP_FSTORE
-};
+    OP_FSTORE,
 
-/* Type conversion operations */
-enum {
-    OP_SEXT = 0,
+    OP_SEXT,
     OP_W2A,
     OP_A2W,
     OP_W2F,
     OP_F2W
-};
+} IrOp;
 
 typedef struct {
     char name[MAX_TOK];
@@ -147,19 +150,13 @@ typedef struct {
     void (*push_a)(u32 val);
     void (*push_f)(double val);
     void (*push_data)(u16 data_offset);
-    void (*local_get)(u8 slot, u8 type, u16 stack_bytes);
-    void (*local_set)(u8 slot, u8 type, u16 stack_bytes);
+    void (*local_op)(LocalOp op, u8 slot, StackType type, u16 stack_bytes);
 
-    void (*stack_op)(u8 op, u8 t1, u8 t2);
-    void (*alu_op)(u8 op);
-    void (*cmp_op)(u8 op);
-    void (*mem_op)(u8 op);
-    void (*conv_op)(u8 op);
+    void (*stack_op)(StackOp op, StackType t1, StackType t2);
+    void (*op)(IrOp op);
 
-    u16  (*emit_jz_fwd)(void);
-    u16  (*emit_jmp_fwd)(void);
-    void (*emit_jmp_back)(u16 target_addr);
-    void (*emit_jz_back)(u16 target_addr);
+    u16  (*emit_br_fwd)(BranchCond cond);
+    void (*emit_br_back)(BranchCond cond, u16 target_addr);
     void (*patch_fwd)(u16 patch_offset);
 } Backend;
 

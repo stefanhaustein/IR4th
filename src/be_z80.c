@@ -308,7 +308,12 @@ static void z80_push_f_ac(void) {
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_stack_op(u8 op, u8 t1, u8 t2) {
+static void z80_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
+    if (op == LOCAL_GET) z80_local_get(slot, (u8)type, stack_bytes);
+    else                 z80_local_set(slot, (u8)type, stack_bytes);
+}
+
+static void z80_stack_op(StackOp op, StackType t1, StackType t2) {
     switch (op) {
     case OP_DUP:
         if (t1 == TY_F) {
@@ -509,36 +514,7 @@ static void z80_call_math48(u16 entry_offset) {
     z80_call((u16)(rt_math48_addr + entry_offset));
 }
 
-static void z80_alu_op(u8 op) {
-    switch (op) {
-    case OP_INVERT:
-        z80_pop(Z80_POP_HL);
-        emit8(Z80_LD_A_L); emit8(Z80_CPL); emit8(Z80_LD_L_A);
-        emit8(Z80_LD_A_H); emit8(Z80_CPL); emit8(Z80_LD_H_A);
-        z80_push(Z80_PUSH_HL);
-        return;
-    case OP_FNEG:
-        z80_pop_f_ac();
-        z80_call_math48(RT_FP_NEG);
-        z80_push_f_ac();
-        return;
-    case OP_FADD:
-    case OP_FSUB:
-    case OP_FMUL:
-    case OP_FDIV: {
-        u16 entry = (op == OP_FADD) ? RT_FP_ADD :
-                    (op == OP_FSUB) ? RT_FP_SUB :
-                    (op == OP_FMUL) ? RT_FP_MUL : RT_FP_DIV;
-        emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* rhs -> AC' */
-        z80_pop_f_ac();                                  /* lhs -> AC */
-        z80_call_math48(entry);
-        z80_push_f_ac();
-        return;
-    }
-    default:
-        break;
-    }
-
+static void z80_int_alu(IrOp op) {
     z80_pop(Z80_POP_DE); /* rhs */
     emit8(Z80_POP_HL); /* lhs */
 
@@ -608,42 +584,13 @@ static void z80_alu_op(u8 op) {
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_cmp_op(u8 op) {
-    switch (op) {
-    case OP_FEQ:
-    case OP_FNE:
-    case OP_FLT:
-    case OP_FGT:
-        if (op == OP_FGT) {
-            z80_pop_f_ac();                                  /* rhs -> AC */
-            emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* lhs -> AC' */
-        } else {
-            emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* rhs -> AC' */
-            z80_pop_f_ac();                                  /* lhs -> AC */
-        }
-        z80_call_math48(RT_FP_CMP);
-        emit8_16(Z80_LD_HL_NN, 0xFFFF);
-        emit8_8((op == OP_FEQ) ? Z80_JR_Z : (op == OP_FNE) ? Z80_JR_NZ : Z80_JR_C, 3);
-        emit8_16(Z80_LD_HL_NN, 0x0000);
-        z80_push(Z80_PUSH_HL);
-        return;
-    default:
-        break;
-    }
-
-    z80_pop(Z80_POP_DE); /* rhs */
-    emit8(Z80_POP_HL); /* lhs */
-
-    switch (op) {
-    case OP_GT:
-    case OP_LE:
-    case OP_UGT:
-    case OP_ULE:
-    case OP_AGT:
-        emit8(Z80_EX_DE_HL);
-        break;
-    default:
-        break;
+static void z80_int_cmp(IrOp op) {
+    if (op == OP_GT || op == OP_LE || op == OP_UGT || op == OP_ULE || op == OP_AGT) {
+        z80_pop(Z80_POP_HL); /* rhs */
+        emit8(Z80_POP_DE);   /* lhs */
+    } else {
+        z80_pop(Z80_POP_DE); /* rhs */
+        emit8(Z80_POP_HL);   /* lhs */
     }
 
     emit8(Z80_OR_A);
@@ -706,8 +653,62 @@ static void z80_cmp_op(u8 op) {
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_mem_op(u8 op) {
+static void z80_op(IrOp op) {
     switch (op) {
+    case OP_ADD: case OP_AADD:
+    case OP_SUB: case OP_ASUB: case OP_ADIFF:
+    case OP_MUL: case OP_DIV: case OP_MOD: case OP_UDIV: case OP_UMOD:
+    case OP_AND: case OP_OR: case OP_XOR:
+    case OP_LSHIFT: case OP_RSHIFT: case OP_ARSHIFT:
+        z80_int_alu(op);
+        break;
+    case OP_INVERT:
+        z80_pop(Z80_POP_HL);
+        emit8(Z80_LD_A_L); emit8(Z80_CPL); emit8(Z80_LD_L_A);
+        emit8(Z80_LD_A_H); emit8(Z80_CPL); emit8(Z80_LD_H_A);
+        z80_push(Z80_PUSH_HL);
+        break;
+    case OP_FNEG:
+        z80_pop_f_ac();
+        z80_call_math48(RT_FP_NEG);
+        z80_push_f_ac();
+        break;
+    case OP_FADD:
+    case OP_FSUB:
+    case OP_FMUL:
+    case OP_FDIV: {
+        u16 entry = (op == OP_FADD) ? RT_FP_ADD :
+                    (op == OP_FSUB) ? RT_FP_SUB :
+                    (op == OP_FMUL) ? RT_FP_MUL : RT_FP_DIV;
+        emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* rhs -> AC' */
+        z80_pop_f_ac();                                  /* lhs -> AC */
+        z80_call_math48(entry);
+        z80_push_f_ac();
+        break;
+    }
+    case OP_EQ: case OP_AEQ:
+    case OP_NE: case OP_ANE:
+    case OP_LT: case OP_GE: case OP_GT: case OP_LE:
+    case OP_ULT: case OP_ALT: case OP_UGE: case OP_UGT: case OP_AGT: case OP_ULE:
+        z80_int_cmp(op);
+        break;
+    case OP_FEQ:
+    case OP_FNE:
+    case OP_FLT:
+    case OP_FGT:
+        if (op == OP_FGT) {
+            z80_pop_f_ac();                                  /* rhs -> AC */
+            emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* lhs -> AC' */
+        } else {
+            emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* rhs -> AC' */
+            z80_pop_f_ac();                                  /* lhs -> AC */
+        }
+        z80_call_math48(RT_FP_CMP);
+        emit8_16(Z80_LD_HL_NN, 0xFFFF);
+        emit8_8((op == OP_FEQ) ? Z80_JR_Z : (op == OP_FNE) ? Z80_JR_NZ : Z80_JR_C, 3);
+        emit8_16(Z80_LD_HL_NN, 0x0000);
+        z80_push(Z80_PUSH_HL);
+        break;
     case OP_U8FETCH:
         z80_pop(Z80_POP_HL);
         emit8(Z80_LD_L_MHL);
@@ -773,13 +774,6 @@ static void z80_mem_op(u8 op) {
         emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
         emit8(Z80_LD_MHL_D);
         break;
-    default:
-        ir4_die("unimplemented Z80 memory op");
-    }
-}
-
-static void z80_conv_op(u8 op) {
-    switch (op) {
     case OP_SEXT:
         z80_pop(Z80_POP_HL);
         emit8(Z80_LD_A_L);
@@ -802,39 +796,33 @@ static void z80_conv_op(u8 op) {
         z80_call_math48(RT_FP_FTOI);
         z80_push(Z80_PUSH_HL);
         break;
-    default:
-        ir4_die("unimplemented Z80 conversion op");
     }
 }
 
-static u16 z80_emit_jz_fwd(void) {
+static u16 z80_emit_br_fwd(BranchCond cond) {
     u16 patch_pos;
-    z80_pop(Z80_POP_HL);
-    emit8(Z80_LD_A_H);
-    emit8(Z80_OR_L);
-    emit8(Z80_JP_Z);
+    if (cond == BR_JZ) {
+        z80_pop(Z80_POP_HL);
+        emit8(Z80_LD_A_H);
+        emit8(Z80_OR_L);
+        emit8(Z80_JP_Z);
+    } else {
+        emit8(Z80_JP);
+    }
     patch_pos = cb_pc();
     emit16(0x0000);
     return patch_pos;
 }
 
-static u16 z80_emit_jmp_fwd(void) {
-    u16 patch_pos;
-    emit8(Z80_JP);
-    patch_pos = cb_pc();
-    emit16(0x0000);
-    return patch_pos;
-}
-
-static void z80_emit_jmp_back(u16 target_addr) {
-    emit8_16(Z80_JP, target_addr);
-}
-
-static void z80_emit_jz_back(u16 target_addr) {
-    z80_pop(Z80_POP_HL);
-    emit8(Z80_LD_A_H);
-    emit8(Z80_OR_L);
-    emit8_16(Z80_JP_Z, target_addr);
+static void z80_emit_br_back(BranchCond cond, u16 target_addr) {
+    if (cond == BR_JZ) {
+        z80_pop(Z80_POP_HL);
+        emit8(Z80_LD_A_H);
+        emit8(Z80_OR_L);
+        emit8_16(Z80_JP_Z, target_addr);
+    } else {
+        emit8_16(Z80_JP, target_addr);
+    }
 }
 
 static void z80_patch_fwd(u16 patch_offset) {
@@ -853,16 +841,10 @@ const Backend be_z80 = {
     z80_push_a,
     z80_push_f,
     z80_push_data,
-    z80_local_get,
-    z80_local_set,
+    z80_local_op,
     z80_stack_op,
-    z80_alu_op,
-    z80_cmp_op,
-    z80_mem_op,
-    z80_conv_op,
-    z80_emit_jz_fwd,
-    z80_emit_jmp_fwd,
-    z80_emit_jmp_back,
-    z80_emit_jz_back,
+    z80_op,
+    z80_emit_br_fwd,
+    z80_emit_br_back,
     z80_patch_fwd
 };
