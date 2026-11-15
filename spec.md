@@ -4,7 +4,6 @@
 
 It combines Forth's low-overhead stack execution and Gforth-style local variables with compile-time static type checking, explicit bit-width types, and single-pass direct machine-code generation.
 
----
 
 ## 1. Lexical Structure
 
@@ -18,7 +17,6 @@ It combines Forth's low-overhead stack execution and Gforth-style local variable
 * **Numeric Literals:** Decimal (`42`, `-10`), hexadecimal (`0xFF`, `0x4000`), or floating-point (`3.14`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a trailing colon that is not a keyword.
 
----
 
 ## 2. Type System
 
@@ -38,7 +36,6 @@ IR4th uses a static, unified type stack. All primitive types have fixed, target-
   * `A: 0x0400` (pushes memory address `0x0400`)
   * `F: 3.14` (pushes 32-bit float `3.14`)
 
----
 
 ## 3. Functions, Parameters & Locals
 
@@ -68,7 +65,7 @@ end
 
 ## 4. Core Instruction Set
 
-In the stack-effect notation `( before -- after )`, `T` denotes any matching primitive type (`C:`, `W:`, `D:`, `A:`, `F:`), and the rightmost item is the top of the stack.
+In the stack-effect notation `( before -- after )`, `T` denotes any matching primitive type (`C:`, `W:`, `A:`, `F:`), and the rightmost item is the top of the stack.
 
 ### 4.1 Stack Manipulation
 
@@ -87,18 +84,18 @@ Standard arithmetic and right-shift operators treat integers as **signed** (two'
 | :--- | :--- | :--- |
 | `+` | `( T T -- T )` | Addition. Special rule: `( A: W: -- A: )` allowed for pointer offsets. |
 | `-` | `( T T -- T )` | Subtraction. Special rule: `( A: W: -- A: )` allowed for pointer offsets. |
-| `*` | `( T T -- T )` | Multiplication (`T` in `{C:, W:, D:, F:}`). |
-| `/` | `( T T -- T )` | Signed division (`T` in `{C:, W:, D:, F:}`). |
-| `mod` | `( T T -- T )` | Signed remainder (`T` in `{C:, W:, D:}`). |
-| `u/` | `( T T -- T )` | Unsigned division (`T` in `{C:, W:, D:}`). |
-| `umod` | `( T T -- T )` | Unsigned remainder (`T` in `{C:, W:, D:}`). |
-| `and` | `( T T -- T )` | Bitwise AND (`T` in `{C:, W:, D:}`). |
-| `or` | `( T T -- T )` | Bitwise OR (`T` in `{C:, W:, D:}`). |
-| `xor` | `( T T -- T )` | Bitwise XOR (`T` in `{C:, W:, D:}`). |
-| `not` | `( T -- T )` | Bitwise one's complement (`T` in `{C:, W:, D:}`). |
-| `<<` | `( T T -- T )` | Logical shift left (`T` in `{C:, W:, D:}`). |
-| `>>` | `( T T -- T )` | Arithmetic (sign-preserving) shift right (`T` in `{C:, W:, D:}`). |
-| `u>>` | `( T T -- T )` | Logical (zero-filling) shift right (`T` in `{C:, W:, D:}`). |
+| `*` | `( T T -- T )` | Multiplication (`T` in `{C:, W:, F:}`). |
+| `/` | `( T T -- T )` | Signed division (`T` in `{C:, W:, F:}`). |
+| `mod` | `( T T -- T )` | Signed remainder (`T` in `{C:, W:}`). |
+| `u/` | `( T T -- T )` | Unsigned division (`T` in `{C:, W:}`). |
+| `umod` | `( T T -- T )` | Unsigned remainder (`T` in `{C:, W:}`). |
+| `and` | `( T T -- T )` | Bitwise AND (`T` in `{C:, W:}`). |
+| `or` | `( T T -- T )` | Bitwise OR (`T` in `{C:, W:}`). |
+| `xor` | `( T T -- T )` | Bitwise XOR (`T` in `{C:, W:}`). |
+| `not` | `( T -- T )` | Bitwise one's complement (`T` in `{C:, W:}`). |
+| `<<` | `( T T -- T )` | Logical shift left (`T` in `{C:, W:}`). |
+| `>>` | `( T T -- T )` | Arithmetic (sign-preserving) shift right (`T` in `{C:, W:}`). |
+| `u>>` | `( T T -- T )` | Logical (zero-filling) shift right (`T` in `{C:, W:}`). |
 
 ### 4.3 Comparisons
 All comparisons consume two values of identical type `T` and push a boolean flag of type **`W:`** (`1` for true, `0` for false).
@@ -117,11 +114,9 @@ Memory operations take an address of type `A:` on top of the stack.
 | :--- | :--- | :--- |
 | `load.c` | `( A: -- C: )` | Load 8-bit byte from address |
 | `load.w` | `( A: -- W: )` | Load native word from address |
-| `load.d` | `( A: -- D: )` | Load double-width integer from address |
 | `load.a` | `( A: -- A: )` | Load pointer address from address |
 | `store.c` | `( C: A: -- )` | Store 8-bit byte to address |
 | `store.w` | `( W: A: -- )` | Store native word to address |
-| `store.d` | `( D: A: -- )` | Store double-width integer to address |
 | `store.a` | `( A: A: -- )` | Store pointer address to address |
 
 ### 4.5 Type Conversions
@@ -129,13 +124,10 @@ Memory operations take an address of type `A:` on top of the stack.
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
 | `to.c` | `( T -- C: )` | Truncate to 8-bit byte |
-| `to.w` | `( T -- W: )` | Zero-extend (from `C:`) or truncate (from `D:`, `A:`) to native word |
-| `to.d` | `( T -- D: )` | Zero-extend to double word |
-| `to.a` | `( T -- A: )` | Zero-extend/truncate integer (`W:`, `D:`) to address pointer |
+| `to.w` | `( T -- W: )` | Zero-extend (from `C:`) to native word |
+| `to.a` | `( T -- A: )` | Zero-extend/truncate integer (`W:`) to address pointer |
 | `sext.w` | `( C: -- W: )` | Sign-extend 8-bit `C:` to native word `W:` |
-| `sext.d` | `( T -- D: )` | Sign-extend `C:` or `W:` to double word `D:` |
 
----
 
 ## 5. Control Flow & Static Stack Invariants
 
@@ -176,8 +168,6 @@ until
 ### 5.4 Function Calls & Returns
 * **`<fn_name>`:** Pops arguments matching the callee's input types in reverse order and pushes the callee's output types.
 * **`return`:** Exits the current function immediately. The type stack at `return` must match the function's declared output signature after `--`.
-
----
 
 ## 6. Complete Example Program
 
