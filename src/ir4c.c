@@ -9,7 +9,7 @@
 #endif
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64] [-b hex_addr] [-o out.bin] [--run] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64] [-b hex_addr] [-o out.bin] [--run] [--cpm] <input.ir4>\n");
 }
 
 #ifdef HAS_ARM64_JIT
@@ -69,6 +69,98 @@ static void run_arm64_jit(u8 main_idx) {
 }
 #endif
 
+static void emit_z80_cpm_stub(u8 main_idx) {
+    const FuncSig *sig = ir4_func_sig(main_idx);
+    u16 entry_addr = cb_cur_addr();
+    u16 pos_patch;
+    u16 print_u16_addr;
+    u16 div10_addr;
+
+    if (sig->in_count != 0 || sig->out_count > 1) {
+        fprintf(stderr, "--cpm requires 'main' with 0 inputs and at most 1 output\n");
+        exit(1);
+    }
+
+    /* Patch the initial JP 0x0000 at offset 0 (base + 1) to jump here */
+    patch16(1, entry_addr);
+
+    /* CALL main */
+    emit8(0xCD); emit16(sig->addr);
+
+    if (sig->out_count == 1) {
+        emit8(0xE1); /* POP HL */
+
+        /* If HL < 0, print '-' and negate HL */
+        emit8(0x7C); /* LD A, H */
+        emit8(0xB7); /* OR A */
+        emit8(0xF2); /* JP P, pos */
+        pos_patch = cb_pc();
+        emit16(0x0000);
+
+        emit8(0xE5);             /* PUSH HL */
+        emit8(0x0E); emit8(0x02); /* LD C, 2 */
+        emit8(0x1E); emit8(0x2D); /* LD E, '-' */
+        emit8(0xCD); emit16(0x0005); /* CALL 5 */
+        emit8(0xE1);             /* POP HL */
+        emit8(0xAF);             /* XOR A */
+        emit8(0x95);             /* SUB L */
+        emit8(0x6F);             /* LD L, A */
+        emit8(0x9F);             /* SBC A, A */
+        emit8(0x94);             /* SUB H */
+        emit8(0x67);             /* LD H, A */
+
+        patch16(pos_patch, cb_cur_addr());
+
+        /* CALL print_u16 (patched below) */
+        emit8(0xCD);
+        pos_patch = cb_pc();
+        emit16(0x0000);
+
+        /* Print CR LF */
+        emit8(0x0E); emit8(0x02); emit8(0x1E); emit8(0x0D); emit8(0xCD); emit16(0x0005);
+        emit8(0x0E); emit8(0x02); emit8(0x1E); emit8(0x0A); emit8(0xCD); emit16(0x0005);
+    }
+
+    /* BDOS function 0: system reset / exit */
+    emit8(0x0E); emit8(0x00);
+    emit8(0xC3); emit16(0x0005);
+
+    if (sig->out_count == 1) {
+        print_u16_addr = cb_cur_addr();
+        patch16(pos_patch, print_u16_addr);
+
+        /* div10 is placed right after print_u16 */
+        emit8(0xCD); /* CALL div10 */
+        pos_patch = cb_pc();
+        emit16(0x0000);
+        emit8(0xF5);             /* PUSH AF */
+        emit8(0x7C);             /* LD A, H */
+        emit8(0xB5);             /* OR L */
+        emit8(0x28); emit8(0x03); /* JR Z, +3 */
+        emit8(0xCD); emit16(print_u16_addr); /* CALL print_u16 */
+        emit8(0xF1);             /* POP AF */
+        emit8(0xC6); emit8(0x30); /* ADD A, '0' */
+        emit8(0x5F);             /* LD E, A */
+        emit8(0x0E); emit8(0x02); /* LD C, 2 */
+        emit8(0xC3); emit16(0x0005); /* JP 5 */
+
+        div10_addr = cb_cur_addr();
+        patch16(pos_patch, div10_addr);
+
+        /* div10: HL = HL / 10, A = HL % 10 */
+        emit8(0x06); emit8(0x10); /* LD B, 16 */
+        emit8(0xAF);             /* XOR A */
+        emit8(0x29);             /* ADD HL, HL */
+        emit8(0x17);             /* RLA */
+        emit8(0xFE); emit8(0x0A); /* CP 10 */
+        emit8(0x38); emit8(0x03); /* JR C, +3 */
+        emit8(0xD6); emit8(0x0A); /* SUB 10 */
+        emit8(0x2C);             /* INC L */
+        emit8(0x10); emit8(0xF5); /* DJNZ -11 */
+        emit8(0xC9);             /* RET */
+    }
+}
+
 int main(int argc, char **argv) {
     const Backend *be = &be_z80;
     const char *in_path = NULL;
@@ -76,6 +168,7 @@ int main(int argc, char **argv) {
     u16 base = 0x0100;
     int base_set = 0;
     int run_jit = 0;
+    int cpm_stub = 0;
     int i;
     FILE *in_fp;
     FILE *out_fp;
@@ -105,6 +198,8 @@ int main(int argc, char **argv) {
             out_path = argv[i];
         } else if (strcmp(argv[i], "--run") == 0) {
             run_jit = 1;
+        } else if (strcmp(argv[i], "--cpm") == 0) {
+            cpm_stub = 1;
         } else if (argv[i][0] == '-') {
             print_usage();
             return 1;
@@ -124,9 +219,27 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    if (cpm_stub && be != &be_z80) {
+        fprintf(stderr, "--cpm requires -t z80\n");
+        fclose(in_fp);
+        return 1;
+    }
+
     cb_reset(base);
+    if (cpm_stub) {
+        emit8(0xC3); emit16(0x0000); /* Reserve JP entry at 0x0100 */
+    }
     ir4_compile_stream(in_fp, be);
     fclose(in_fp);
+
+    if (cpm_stub) {
+        int main_idx = ir4_find_func("main");
+        if (main_idx < 0) {
+            fprintf(stderr, "--cpm requires a 'main' function\n");
+            return 1;
+        }
+        emit_z80_cpm_stub((u8)main_idx);
+    }
 
     out_fp = fopen(out_path, "wb");
     if (!out_fp) {

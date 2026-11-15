@@ -1,0 +1,124 @@
+\ core.ir4 - Core language, control-flow, ALU, comparison, and address tests
+\ Expected main() return value: 0 (all checks pass)
+
+: assert_eq { W: got W: expected W: code -- W: }
+  got expected = if
+    0 exit
+  then
+  code
+;
+
+: test_stack { -- W: }
+  \ dup, drop, swap, over, rot
+  10 dup + 20 1 assert_eq
+  dup 0 <> if exit then drop
+  10 20 drop 10 2 assert_eq
+  dup 0 <> if exit then drop
+  10 20 swap - 10 3 assert_eq
+  dup 0 <> if exit then drop
+  10 20 over + + 40 4 assert_eq
+  dup 0 <> if exit then drop
+  1 2 3 rot + + 6 5 assert_eq
+  dup 0 <> if exit then drop
+  \ Verify rot order: ( 1 2 3 -- 2 3 1 ) -> drop -> ( 2 3 ) -> swap -> ( 3 2 ) -> drop -> 3
+  1 2 3 rot drop swap drop 3 6 assert_eq
+;
+
+: test_alu { -- W: }
+  0x0F 0x33 and 0x03 10 assert_eq
+  dup 0 <> if exit then drop
+  0x0F 0x30 or 0x3F 11 assert_eq
+  dup 0 <> if exit then drop
+  0xFF 0x0F xor 0xF0 12 assert_eq
+  dup 0 <> if exit then drop
+  0 invert -1 13 assert_eq
+  dup 0 <> if exit then drop
+  -1 invert 0 14 assert_eq
+  dup 0 <> if exit then drop
+  3 4 lshift 48 15 assert_eq
+  dup 0 <> if exit then drop
+  0x1230 4 rshift 0x0123 16 assert_eq
+  dup 0 <> if exit then drop
+  -16 2 arshift -4 17 assert_eq
+  dup 0 <> if exit then drop
+  0xFF sext -1 18 assert_eq
+  dup 0 <> if exit then drop
+  0x7F sext 127 19 assert_eq
+;
+
+: test_cmp { -- W: }
+  5 5 = -1 20 assert_eq
+  dup 0 <> if exit then drop
+  5 6 <> -1 21 assert_eq
+  dup 0 <> if exit then drop
+  -5 3 < -1 22 assert_eq
+  dup 0 <> if exit then drop
+  3 -5 > -1 23 assert_eq
+  dup 0 <> if exit then drop
+  -5 -5 <= -1 24 assert_eq
+  dup 0 <> if exit then drop
+  5 5 >= -1 25 assert_eq
+  dup 0 <> if exit then drop
+  1 -1 u< -1 26 assert_eq
+  dup 0 <> if exit then drop
+  -1 1 u> -1 27 assert_eq
+  dup 0 <> if exit then drop
+  1 1 u<= -1 28 assert_eq
+  dup 0 <> if exit then drop
+  -1 -1 u>= -1 29 assert_eq
+;
+
+: test_addr { | A: p A: q -- W: }
+  0x1000 w>a to p
+  p 16 a+ 4 a- to q
+  q p adiff 12 30 assert_eq
+  dup 0 <> if exit then drop
+  p q au< -1 31 assert_eq
+  dup 0 <> if exit then drop
+  q p au> -1 32 assert_eq
+  dup 0 <> if exit then drop
+  p p a= -1 33 assert_eq
+  dup 0 <> if exit then drop
+  p q a<> -1 34 assert_eq
+  dup 0 <> if exit then drop
+  q a>w 0x100C 35 assert_eq
+;
+
+: test_ctrl { W: x | W: acc -- W: }
+  \ if ... else ... then
+  x 0 > if
+    100
+  else
+    200
+  then
+  to acc
+
+  \ begin ... until (sum 1..5 = 15)
+  0 to x
+  begin
+    x 1 + to x
+    acc x + to acc
+    x 5 =
+  until
+  acc
+;
+
+: pair_swap { W: a W: b -- W: W: }
+  b a
+;
+
+: main { -- W: }
+  test_stack
+  dup 0 <> if exit then drop
+  test_alu
+  dup 0 <> if exit then drop
+  test_cmp
+  dup 0 <> if exit then drop
+  test_addr
+  dup 0 <> if exit then drop
+  1 test_ctrl 115 40 assert_eq
+  dup 0 <> if exit then drop
+  -1 test_ctrl 215 41 assert_eq
+  dup 0 <> if exit then drop
+  10 20 pair_swap - 10 42 assert_eq
+;
