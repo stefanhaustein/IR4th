@@ -104,6 +104,17 @@ static int parse_int(const char *s, i32 *val) {
     return (*endp == '\0');
 }
 
+static u16 tstack_bytes(void) {
+    u16 bytes = 0;
+    u8 i;
+    for (i = 0; i < tsp; i++) {
+        if (tstack[i] == TY_F)      bytes += be->float_bytes;
+        else if (tstack[i] == TY_A) bytes += be->addr_bytes;
+        else                        bytes += be->word_bytes;
+    }
+    return bytes;
+}
+
 static void tpush(u8 t) {
     if (tsp >= MAX_STACK) ir4_die("type stack overflow");
     tstack[tsp++] = t;
@@ -405,7 +416,7 @@ static void compile_word(void) {
             idx = find_local(tok);
             if (idx < 0) ir4_die("unknown local in 'to'");
             tpop_expect(locals[idx].type);
-            be->local_set(locals[idx].slot, locals[idx].type);
+            be->local_set(locals[idx].slot, locals[idx].type, tstack_bytes());
             continue;
         }
 
@@ -510,8 +521,8 @@ static void compile_word(void) {
         /* Local variable read */
         idx = find_local(tok);
         if (idx >= 0) {
+            be->local_get(locals[idx].slot, locals[idx].type, tstack_bytes());
             tpush(locals[idx].type);
-            be->local_get(locals[idx].slot, locals[idx].type);
             continue;
         }
 

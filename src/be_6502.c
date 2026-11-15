@@ -137,9 +137,10 @@ static void m6502_push_data(u16 offset) {
     cb_add_data_reloc_split(lo_pos, hi_pos, offset);
 }
 
-static void m6502_local_get(u8 slot, u8 type) {
+static void m6502_local_get(u8 slot, u8 type, u16 stack_bytes) {
     u8 zp = (u8)(ZP_LOCALS + slot * 2);
     (void)type;
+    (void)stack_bytes;
     m6502_dex();
     m6502_dex();
     m6502_lda_zp(zp);
@@ -148,9 +149,10 @@ static void m6502_local_get(u8 slot, u8 type) {
     m6502_sta_zpx(ZP_STACK + 1);
 }
 
-static void m6502_local_set(u8 slot, u8 type) {
+static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
     u8 zp = (u8)(ZP_LOCALS + slot * 2);
     (void)type;
+    (void)stack_bytes;
     m6502_lda_zpx(ZP_STACK);
     m6502_sta_zp(zp);
     m6502_lda_zpx(ZP_STACK + 1);

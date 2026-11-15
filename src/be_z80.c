@@ -1,7 +1,7 @@
 /* be_z80.c - Z80 Direct Binary Machine-Code Backend for IR4th (Strict C89)
  * Calling & Register Convention:
- *   - Data stack: Hardware SP (16-bit slots for W: and A:)
- *   - Frame pointer: IX (locals stored at IX-2, IX-4, ...)
+ *   - Data stack: Hardware SP (16-bit slots for W: and A:, 48-bit for F:)
+ *   - Locals & params: SP-relative offsets (no IX frame pointer)
  */
 #include "ir4c.h"
 #include "be_z80.h"
@@ -12,7 +12,8 @@ static u16 rt_mul_addr     = 0;
 static u16 rt_udivmod_addr = 0;
 static u16 rt_sdivmod_addr = 0;
 static u16 rt_math48_addr  = 0;
-static i8  z80_local_disp[MAX_LOCALS];
+static u16 z80_local_off[MAX_LOCALS];
+static u16 z80_local_bytes = 0;
 
 /* --- Prefixed & Multi-byte Z80 Helpers --- */
 static void z80_sbc_hl_de(void)     { emit8_8(0xED, 0x52); }
@@ -24,25 +25,6 @@ static void z80_rr_l(void)          { emit8_8(0xCB, 0x1D); }
 static void z80_sla_c(void)         { emit8_8(0xCB, 0x21); }
 static void z80_sra_h(void)         { emit8_8(0xCB, 0x2C); }
 static void z80_srl_h(void)         { emit8_8(0xCB, 0x3C); }
-
-static void z80_push_ix(void)       { emit8_8(0xDD, 0xE5); }
-static void z80_pop_ix(void)        { emit8_8(0xDD, 0xE1); }
-static void z80_ld_ix_imm(u16 v)    { emit8_8(0xDD, 0x21); emit16(v); }
-static void z80_add_ix_sp(void)     { emit8_8(0xDD, 0x39); }
-static void z80_ld_sp_ix(void)      { emit8_8(0xDD, 0xF9); }
-static void z80_ld_b_ix(i8 disp)    { emit8_8_8(0xDD, 0x46, (u8)disp); }
-static void z80_ld_c_ix(i8 disp)    { emit8_8_8(0xDD, 0x4E, (u8)disp); }
-static void z80_ld_d_ix(i8 disp)    { emit8_8_8(0xDD, 0x56, (u8)disp); }
-static void z80_ld_e_ix(i8 disp)    { emit8_8_8(0xDD, 0x5E, (u8)disp); }
-static void z80_ld_l_ix(i8 disp)    { emit8_8_8(0xDD, 0x6E, (u8)disp); }
-static void z80_ld_h_ix(i8 disp)    { emit8_8_8(0xDD, 0x66, (u8)disp); }
-static void z80_ld_ix_b(i8 disp)    { emit8_8_8(0xDD, 0x70, (u8)disp); }
-static void z80_ld_ix_c(i8 disp)    { emit8_8_8(0xDD, 0x71, (u8)disp); }
-static void z80_ld_ix_d(i8 disp)    { emit8_8_8(0xDD, 0x72, (u8)disp); }
-static void z80_ld_ix_e(i8 disp)    { emit8_8_8(0xDD, 0x73, (u8)disp); }
-static void z80_ld_ix_l(i8 disp)    { emit8_8_8(0xDD, 0x75, (u8)disp); }
-static void z80_ld_ix_h(i8 disp)    { emit8_8_8(0xDD, 0x74, (u8)disp); }
-static void z80_ld_ix_a(i8 disp)    { emit8_8_8(0xDD, 0x77, (u8)disp); }
 
 static void z80_neg_hl(void) {
     emit8(Z80_XOR_A);
@@ -70,8 +52,7 @@ static u16 z80_cur_addr(void) {
 static void z80_fn_begin(const char *name, u8 param_cnt,
                          const LocalVar *locals, u8 total_locals) {
     u8 i;
-    u16 frame_bytes = 0;
-    u16 src_disp = 4;
+    u16 off = 0;
     (void)name;
 
     if (cb_pc() <= 3) {
@@ -81,45 +62,28 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
         rt_math48_addr  = 0;
     }
 
-    for (i = 0; i < total_locals; i++) {
+    z80_local_bytes = 0;
+    for (i = param_cnt; i < total_locals; i++) {
         u8 sz = (locals[i].type == TY_F) ? 6 : 2;
-        frame_bytes += sz;
-        if (frame_bytes > 128) ir4_die("Z80 local frame exceeds IX range");
-        z80_local_disp[i] = (i8)(-(i16)frame_bytes);
+        z80_local_off[i] = z80_local_bytes;
+        z80_local_bytes += sz;
     }
 
-    z80_push_ix();
-    z80_ld_ix_imm(0x0000);
-    z80_add_ix_sp();
-
-    if (frame_bytes > 0) {
-        emit8_16(Z80_LD_HL_NN, (u16)(0 - frame_bytes));
-        emit8(Z80_ADD_HL_SP);
-        emit8(Z80_LD_SP_HL);
-    }
-
-    /* Copy incoming args (at IX+4, ...) into local slots */
+    /* Parameters stay in place above [local_bytes] + [2-byte return addr] */
+    off = (u16)(z80_local_bytes + 2);
     for (i = param_cnt; i > 0; i--) {
         u8 idx = (u8)(i - 1);
         u8 sz = (locals[idx].type == TY_F) ? 6 : 2;
-        i8 dst_disp = z80_local_disp[idx];
-        u8 b;
-        for (b = 0; b < sz; b++) {
-            z80_ld_l_ix((i8)(src_disp + b));
-            z80_ld_ix_l((i8)(dst_disp + b));
-        }
-        src_disp += sz;
+        z80_local_off[idx] = off;
+        off += sz;
     }
 
-    if (total_locals > param_cnt) {
-        emit8(Z80_XOR_A);
-        for (i = param_cnt; i < total_locals; i++) {
-            u8 sz = (locals[i].type == TY_F) ? 6 : 2;
-            i8 dst_disp = z80_local_disp[i];
-            u8 b;
-            for (b = 0; b < sz; b++) {
-                z80_ld_ix_a((i8)(dst_disp + b));
-            }
+    /* Allocate & zero-initialize non-parameter locals on SP */
+    if (z80_local_bytes > 0) {
+        u16 words = (u16)(z80_local_bytes / 2);
+        emit8_16(Z80_LD_HL_NN, 0x0000);
+        for (off = 0; off < words; off++) {
+            emit8(Z80_PUSH_HL);
         }
     }
 }
@@ -141,7 +105,7 @@ static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_loca
     out_words = (u8)(out_bytes / 2);
     if (out_words > 4) ir4_die("Z80 return values exceed 8 bytes");
 
-    /* Pop return values from evaluation stack before unwinding frame */
+    /* Pop return values from evaluation stack before unwinding locals */
     if (out_words >= 1) emit8(Z80_POP_DE);
     if (out_words >= 2) emit8(Z80_POP_BC);
     if (out_words >= 3) {
@@ -151,8 +115,18 @@ static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_loca
         emit8(Z80_EXX);
     }
 
-    z80_ld_sp_ix();
-    z80_pop_ix();
+    /* Drop non-parameter locals without disturbing DE/BC/DE'/BC' */
+    if (z80_local_bytes > 0 && z80_local_bytes <= 8) {
+        u16 words = (u16)(z80_local_bytes / 2);
+        u16 k;
+        for (k = 0; k < words; k++) {
+            emit8(Z80_POP_AF);
+        }
+    } else if (z80_local_bytes > 8) {
+        emit8_16(Z80_LD_HL_NN, z80_local_bytes);
+        emit8(Z80_ADD_HL_SP);
+        emit8(Z80_LD_SP_HL);
+    }
 
     if (param_bytes == 0 && out_words == 0) {
         emit8(Z80_RET);
@@ -235,41 +209,49 @@ static void z80_push_data(u16 offset) {
     emit8(Z80_PUSH_HL);
 }
 
-static void z80_local_get(u8 slot, u8 type) {
-    i8 disp = z80_local_disp[slot];
+static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
+    u16 off = (u16)(z80_local_off[slot] + stack_bytes);
     if (type == TY_F) {
-        z80_ld_c_ix((i8)(disp + 4));
-        z80_ld_b_ix((i8)(disp + 5));
-        z80_ld_e_ix((i8)(disp + 2));
-        z80_ld_d_ix((i8)(disp + 3));
-        z80_ld_l_ix(disp);
-        z80_ld_h_ix((i8)(disp + 1));
-        emit8(Z80_PUSH_BC);
-        emit8(Z80_PUSH_DE);
-        emit8(Z80_PUSH_HL);
+        u8 i;
+        emit8_16(Z80_LD_HL_NN, (u16)(off + 5));
+        emit8(Z80_ADD_HL_SP);
+        for (i = 0; i < 3; i++) {
+            emit8(Z80_LD_D_MHL);
+            emit8(Z80_DEC_HL);
+            emit8(Z80_LD_E_MHL);
+            if (i < 2) emit8(Z80_DEC_HL);
+            emit8(Z80_PUSH_DE);
+        }
     } else {
-        z80_ld_l_ix(disp);
-        z80_ld_h_ix((i8)(disp + 1));
-        emit8(Z80_PUSH_HL);
+        emit8_16(Z80_LD_HL_NN, off);
+        emit8(Z80_ADD_HL_SP);
+        emit8(Z80_LD_E_MHL);
+        emit8(Z80_INC_HL);
+        emit8(Z80_LD_D_MHL);
+        emit8(Z80_PUSH_DE);
     }
 }
 
-static void z80_local_set(u8 slot, u8 type) {
-    i8 disp = z80_local_disp[slot];
+static void z80_local_set(u8 slot, u8 type, u16 stack_bytes) {
+    u16 off = (u16)(z80_local_off[slot] + stack_bytes);
     if (type == TY_F) {
-        emit8(Z80_POP_HL);
-        emit8(Z80_POP_DE);
-        emit8(Z80_POP_BC);
-        z80_ld_ix_l(disp);
-        z80_ld_ix_h((i8)(disp + 1));
-        z80_ld_ix_e((i8)(disp + 2));
-        z80_ld_ix_d((i8)(disp + 3));
-        z80_ld_ix_c((i8)(disp + 4));
-        z80_ld_ix_b((i8)(disp + 5));
+        u8 i;
+        emit8_16(Z80_LD_HL_NN, (u16)(off + 6));
+        emit8(Z80_ADD_HL_SP);
+        for (i = 0; i < 3; i++) {
+            emit8(Z80_POP_DE);
+            emit8(Z80_LD_MHL_E);
+            emit8(Z80_INC_HL);
+            emit8(Z80_LD_MHL_D);
+            if (i < 2) emit8(Z80_INC_HL);
+        }
     } else {
-        emit8(Z80_POP_HL);
-        z80_ld_ix_l(disp);
-        z80_ld_ix_h((i8)(disp + 1));
+        emit8(Z80_POP_DE);
+        emit8_16(Z80_LD_HL_NN, off);
+        emit8(Z80_ADD_HL_SP);
+        emit8(Z80_LD_MHL_E);
+        emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D);
     }
 }
 

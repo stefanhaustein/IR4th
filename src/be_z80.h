@@ -75,6 +75,7 @@ enum {
     Z80_ADD_HL_HL  = 0x29,
     Z80_ADD_HL_SP  = 0x39,
     Z80_INC_HL     = 0x23,
+    Z80_DEC_HL     = 0x2B,
     Z80_INC_SP     = 0x33,
 
     /* Control flow */

@@ -147,8 +147,8 @@ typedef struct {
     void (*push_a)(u32 val);
     void (*push_f)(double val);
     void (*push_data)(u16 data_offset);
-    void (*local_get)(u8 slot, u8 type);
-    void (*local_set)(u8 slot, u8 type);
+    void (*local_get)(u8 slot, u8 type, u16 stack_bytes);
+    void (*local_set)(u8 slot, u8 type, u16 stack_bytes);
 
     void (*stack_op)(u8 op, u8 t1, u8 t2);
     void (*alu_op)(u8 op);

@@ -131,16 +131,18 @@ static void a64_push_data(u16 offset) {
     push_x0();
 }
 
-static void a64_local_get(u8 slot, u8 type) {
+static void a64_local_get(u8 slot, u8 type, u16 stack_bytes) {
     u32 off = (u32)(slot + 1) * 8;
     (void)type;
+    (void)stack_bytes;
     emit32(0xF84003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* LDUR X0, [X29, #-off] */
     push_x0();
 }
 
-static void a64_local_set(u8 slot, u8 type) {
+static void a64_local_set(u8 slot, u8 type, u16 stack_bytes) {
     u32 off = (u32)(slot + 1) * 8;
     (void)type;
+    (void)stack_bytes;
     pop_x0();
     emit32(0xF80003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-off] */
 }
