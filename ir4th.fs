@@ -6,8 +6,10 @@
 \ At compile time in word bodies, A: is a no-op prefix before an address literal
 : A: ; immediate
 
-\ Fixed-size named data buffers: <size> buffer: <name>
+\ Fixed-size named data buffers & initialized data:
 : buffer: ( n "name" -- ) create align allot ;
+: i8, ( n -- ) c, ;
+: i16, ( n -- ) dup c, 8 rshift c, ;
 
 \ Override '{ ... }' to support '| <locals>' zero-initialization in Gforth 0.7.3
 create ir4-hdr 256 allot

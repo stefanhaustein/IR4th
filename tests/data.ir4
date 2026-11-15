@@ -1,0 +1,53 @@
+\ Test create, i8,, i16,, , and align
+
+8 buffer: scratch
+
+create bytes_tbl
+  10 i8, 255 i8, -5 i8,
+
+create words16_tbl
+  1000 i16, -1234 i16,
+
+create w_pos
+  42 ,
+
+create w_neg
+  -7 ,
+
+create mixed_tbl
+  7 i8, align 99 ,
+
+16 buffer: tail_buf
+
+: word_bytes { -- W: }
+  1 16 lshift 0 = if 2 else 8 then
+;
+
+: main { -- W: }
+  \ Check i8, values (unsigned & signed reads)
+  bytes_tbl u8@ 10 <> if 1 exit then
+  bytes_tbl 1 a+ u8@ 255 <> if 2 exit then
+  bytes_tbl 2 a+ i8@ -5 <> if 3 exit then
+
+  \ Check i16, values (unsigned & signed reads)
+  words16_tbl i16@ 1000 <> if 4 exit then
+  words16_tbl 2 a+ i16@ -1234 <> if 5 exit then
+
+  \ Check , (native word)
+  w_pos @ 42 <> if 6 exit then
+  w_neg @ -7 <> if 7 exit then
+
+  \ Check mid-table align before ,
+  mixed_tbl u8@ 7 <> if 8 exit then
+  mixed_tbl word_bytes a+ @ 99 <> if 9 exit then
+
+  \ Check writable buffers still work alongside create
+  99 scratch i8!
+  77 tail_buf i8!
+  scratch u8@ 99 <> if 10 exit then
+  tail_buf u8@ 77 <> if 11 exit then
+
+  \ Re-verify create data wasn't disturbed
+  w_pos @ 42 <> if 12 exit then
+  0
+;

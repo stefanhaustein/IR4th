@@ -654,6 +654,8 @@ static void compile_word(void) {
 void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be) {
     char tok[MAX_TOK];
     i32 num_val;
+    i32 ct_stack[MAX_STACK];
+    int ct_sp = 0;
     const char *root_path = (path != NULL) ? path : "<stdin>";
     size_t plen = strlen(root_path);
 
@@ -672,16 +674,28 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be) {
 
     while (next_tok(tok)) {
         if (strcmp(tok, ":") == 0) {
+            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
             compile_word();
         } else if (strcmp(tok, "require") == 0) {
+            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
             if (!next_tok(tok)) ir4_die("expected filename after 'require'");
             push_require(tok);
-        } else if (parse_int(tok, &num_val)) {
+        } else if (strcmp(tok, "create") == 0) {
+            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
+            if (buffer_count >= MAX_SYMS) ir4_die("too many buffers");
+            if (!next_tok(buffers[buffer_count].name)) {
+                ir4_die("expected name after 'create'");
+            }
+            buffers[buffer_count].offset = cb_alloc_data(0, be->word_bytes);
+            buffer_count++;
+        } else if (strcmp(tok, "align") == 0) {
+            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
+            cb_alloc_data(0, be->word_bytes);
+        } else if (strcmp(tok, "buffer:") == 0) {
+            if (ct_sp < 1) ir4_die("expected size before 'buffer:'");
+            num_val = ct_stack[--ct_sp];
             if (num_val <= 0 || num_val > MAX_DATA) {
                 ir4_die("invalid buffer size");
-            }
-            if (!next_tok(tok) || strcmp(tok, "buffer:") != 0) {
-                ir4_die("expected 'buffer:' after top-level integer");
             }
             if (buffer_count >= MAX_SYMS) {
                 ir4_die("too many buffers");
@@ -691,8 +705,29 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be) {
             }
             buffers[buffer_count].offset = cb_alloc_data((u16)num_val, be->word_bytes);
             buffer_count++;
+        } else if (strcmp(tok, "i8,") == 0) {
+            if (ct_sp < 1) ir4_die("expected integer before 'i8,'");
+            num_val = ct_stack[--ct_sp];
+            if (num_val < -128 || num_val > 255) ir4_die("i8, value out of range");
+            cb_emit_data_u8((u8)(num_val & 0xFF));
+        } else if (strcmp(tok, "i16,") == 0) {
+            if (ct_sp < 1) ir4_die("expected integer before 'i16,'");
+            num_val = ct_stack[--ct_sp];
+            if (num_val < -32768 || num_val > 65535) ir4_die("i16, value out of range");
+            cb_emit_data_u16((u16)(num_val & 0xFFFF));
+        } else if (strcmp(tok, ",") == 0) {
+            if (ct_sp < 1) ir4_die("expected integer before ','");
+            num_val = ct_stack[--ct_sp];
+            if (be->word_bytes == 2 && (num_val < -32768 || num_val > 65535)) {
+                ir4_die(", value out of range");
+            }
+            cb_emit_data_word(num_val, be->word_bytes);
+        } else if (parse_int(tok, &num_val)) {
+            if (ct_sp >= MAX_STACK) ir4_die("top-level stack overflow");
+            ct_stack[ct_sp++] = num_val;
         } else {
-            ir4_die("expected top-level ':', 'require', or '<size> buffer:'");
+            ir4_die("expected top-level ':', 'require', 'create', 'buffer:', 'align', or data");
         }
     }
+    if (ct_sp != 0) ir4_die("unconsumed integer at top level");
 }

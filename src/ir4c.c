@@ -103,6 +103,13 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
+    if (be != &be_arm64 && cb_init_data_size() > 0) {
+        if (fwrite(cb_init_data(), 1, cb_init_data_size(), out_fp) != (size_t)cb_init_data_size()) {
+            perror("fwrite");
+            fclose(out_fp);
+            return 1;
+        }
+    }
     fclose(out_fp);
 
     printf("Compiled %s -> %s (target: %s, base: 0x%04X, size: %u bytes)\n",

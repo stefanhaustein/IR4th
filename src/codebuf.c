@@ -11,15 +11,19 @@ typedef struct {
 static u8        code_buf[MAX_CODE];
 static u16       code_pc   = 0;
 static u16       base_addr = 0x0100; /* Default: CP/M .COM load address */
+static u8        data_buf[MAX_DATA];
 static u16       data_size = 0;
+static u16       data_init_size = 0;
 static DataReloc relocs[MAX_RELOCS];
 static u16       reloc_cnt = 0;
 
 void cb_reset(u16 base) {
-    code_pc   = 0;
-    base_addr = base;
-    data_size = 0;
-    reloc_cnt = 0;
+    code_pc        = 0;
+    base_addr      = base;
+    data_size      = 0;
+    data_init_size = 0;
+    reloc_cnt      = 0;
+    memset(data_buf, 0, sizeof(data_buf));
 }
 
 u16 cb_pc(void) {
@@ -92,6 +96,44 @@ u16 cb_alloc_data(u16 size, u8 align) {
 
 u16 cb_data_size(void) {
     return data_size;
+}
+
+void cb_emit_data_u8(u8 b) {
+    if (data_size >= MAX_DATA) {
+        ir4_die("data segment overflow");
+    }
+    data_buf[data_size++] = b;
+    data_init_size = data_size;
+}
+
+void cb_emit_data_u16(u16 w) {
+    cb_emit_data_u8((u8)(w & 0xFF));
+    cb_emit_data_u8((u8)((w >> 8) & 0xFF));
+}
+
+void cb_emit_data_word(i32 val, u8 word_bytes) {
+    u32 lo = (u32)val;
+    u8 fill = (val < 0) ? 0xFF : 0x00;
+    u8 i;
+    if (word_bytes == 2) {
+        cb_emit_data_u16((u16)lo);
+        return;
+    }
+    for (i = 0; i < 4; i++) {
+        cb_emit_data_u8((u8)(lo & 0xFF));
+        lo >>= 8;
+    }
+    for (i = 4; i < word_bytes; i++) {
+        cb_emit_data_u8(fill);
+    }
+}
+
+const u8 *cb_init_data(void) {
+    return data_buf;
+}
+
+u16 cb_init_data_size(void) {
+    return data_init_size;
 }
 
 void cb_add_data_reloc(u16 patch_offset, u16 data_offset) {

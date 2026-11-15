@@ -14,7 +14,7 @@ IR4th is designed so that word-only programs are directly executable under **Gfo
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token ending with a trailing colon (`:`) is strictly a type specifier (`W:`, `A:`, `F:`).
-* **Keywords:** Reserved syntax and control-flow tokens (`:`, `;`, `buffer:`, `to`, `exit`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `{`, `}`, `|`, `--`).
+* **Keywords:** Reserved syntax and control-flow tokens (`:`, `;`, `require`, `buffer:`, `create`, `i8,`, `i16,`, `,`, `align`, `to`, `exit`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `{`, `}`, `|`, `--`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a trailing colon that is not a keyword.
 
@@ -70,6 +70,22 @@ Top-level fixed-size writable buffers can be declared outside word definitions:
 
 * `<size>` is a positive byte count. Each buffer is allocated in the target's writable data segment, aligned to the target's native word size.
 * Referencing `<name>` inside a word pushes its base address onto the stack with type **`A:`** (`( -- A: )`).
+
+### 3.2b Pre-Initialized Data (`create`, `i8,`, `i16,`, `,`, `align`)
+Top-level read-only tables and constants can be defined outside word definitions:
+
+```forth
+create <name>
+  10 i8, -5 i8, 1000 i16,
+align
+create words_tbl
+  100 , -200 ,
+```
+
+* `create <name>` aligns the data pointer to the target's native word size and binds `<name>` (`( -- A: )`).
+* `i8,` emits 1 byte (`-128..255`). `i16,` emits 2 little-endian bytes (`-32768..65535`). `,` emits 1 native word (`word_bytes`).
+* `align` advances the data pointer to the next multiple of `word_bytes`.
+* `create` data is semantically read-only.
 
 ### 3.3 Including Files (`require`)
 Top-level `require` loads another `.ir4` source file at most once (include-once semantics):
@@ -206,6 +222,8 @@ set-order r> >order
 : w>a ;
 : a>w ;
 : buffer: ( n "name" -- ) create align allot ;
+: i8, ( n -- ) c, ;
+: i16, ( n -- ) dup c, 8 rshift c, ;
 
 \ Bridge Gforth's separate F-stack to IR4th's unified stack
 fvariable ir4-ftmp

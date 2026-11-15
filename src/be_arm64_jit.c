@@ -63,6 +63,9 @@ void be_arm64_run_jit(u8 main_idx) {
             munmap(mem, MAX_CODE);
             exit(1);
         }
+        if (cb_init_data_size() > 0) {
+            memcpy(data_mem, cb_init_data(), cb_init_data_size());
+        }
     }
 
     pthread_jit_write_protect_np(0);
