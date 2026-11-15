@@ -165,10 +165,93 @@ const FuncSig *ir4_func_sig(u8 idx) {
     return &funcs[idx];
 }
 
+enum { CAT_ALU, CAT_CMP, CAT_MEM, CAT_CONV };
+
+typedef struct {
+    const char *name;
+    u8 cat;
+    u8 op;
+    u8 in1;
+    u8 in2;
+    u8 out;
+} BuiltinDef;
+
+static const BuiltinDef builtins[] = {
+    /* Word ALU & bitwise */
+    { "+",       CAT_ALU, OP_ADD,     TY_W, TY_W,    TY_W },
+    { "-",       CAT_ALU, OP_SUB,     TY_W, TY_W,    TY_W },
+    { "*",       CAT_ALU, OP_MUL,     TY_W, TY_W,    TY_W },
+    { "/",       CAT_ALU, OP_DIV,     TY_W, TY_W,    TY_W },
+    { "mod",     CAT_ALU, OP_MOD,     TY_W, TY_W,    TY_W },
+    { "u/",      CAT_ALU, OP_UDIV,    TY_W, TY_W,    TY_W },
+    { "umod",    CAT_ALU, OP_UMOD,    TY_W, TY_W,    TY_W },
+    { "and",     CAT_ALU, OP_AND,     TY_W, TY_W,    TY_W },
+    { "or",      CAT_ALU, OP_OR,      TY_W, TY_W,    TY_W },
+    { "xor",     CAT_ALU, OP_XOR,     TY_W, TY_W,    TY_W },
+    { "invert",  CAT_ALU, OP_INVERT,  TY_W, TY_NONE, TY_W },
+    { "lshift",  CAT_ALU, OP_LSHIFT,  TY_W, TY_W,    TY_W },
+    { "arshift", CAT_ALU, OP_ARSHIFT, TY_W, TY_W,    TY_W },
+    { "rshift",  CAT_ALU, OP_RSHIFT,  TY_W, TY_W,    TY_W },
+
+    /* Address arithmetic */
+    { "a+",      CAT_ALU, OP_AADD,    TY_W, TY_A,    TY_A },
+    { "a-",      CAT_ALU, OP_ASUB,    TY_W, TY_A,    TY_A },
+    { "adiff",   CAT_ALU, OP_ADIFF,   TY_A, TY_A,    TY_W },
+
+    /* Floating-point operations */
+    { "f+",      CAT_ALU, OP_FADD,    TY_F, TY_F,    TY_F },
+    { "f-",      CAT_ALU, OP_FSUB,    TY_F, TY_F,    TY_F },
+    { "f*",      CAT_ALU, OP_FMUL,    TY_F, TY_F,    TY_F },
+    { "f/",      CAT_ALU, OP_FDIV,    TY_F, TY_F,    TY_F },
+    { "fnegate", CAT_ALU, OP_FNEG,    TY_F, TY_NONE, TY_F },
+
+    /* Comparisons */
+    { "=",       CAT_CMP, OP_EQ,      TY_W, TY_W,    TY_W },
+    { "<>",      CAT_CMP, OP_NE,      TY_W, TY_W,    TY_W },
+    { "<",       CAT_CMP, OP_LT,      TY_W, TY_W,    TY_W },
+    { ">",       CAT_CMP, OP_GT,      TY_W, TY_W,    TY_W },
+    { "<=",      CAT_CMP, OP_LE,      TY_W, TY_W,    TY_W },
+    { ">=",      CAT_CMP, OP_GE,      TY_W, TY_W,    TY_W },
+    { "u<",      CAT_CMP, OP_ULT,     TY_W, TY_W,    TY_W },
+    { "u>",      CAT_CMP, OP_UGT,     TY_W, TY_W,    TY_W },
+    { "u<=",     CAT_CMP, OP_ULE,     TY_W, TY_W,    TY_W },
+    { "u>=",     CAT_CMP, OP_UGE,     TY_W, TY_W,    TY_W },
+    { "a=",      CAT_CMP, OP_AEQ,     TY_A, TY_A,    TY_W },
+    { "a<>",     CAT_CMP, OP_ANE,     TY_A, TY_A,    TY_W },
+    { "au<",     CAT_CMP, OP_ALT,     TY_A, TY_A,    TY_W },
+    { "au>",     CAT_CMP, OP_AGT,     TY_A, TY_A,    TY_W },
+    { "f=",      CAT_CMP, OP_FEQ,     TY_F, TY_F,    TY_W },
+    { "f<>",     CAT_CMP, OP_FNE,     TY_F, TY_F,    TY_W },
+    { "f<",      CAT_CMP, OP_FLT,     TY_F, TY_F,    TY_W },
+    { "f>",      CAT_CMP, OP_FGT,     TY_F, TY_F,    TY_W },
+
+    /* Memory load/store */
+    { "i8@",     CAT_MEM, OP_I8FETCH,  TY_A, TY_NONE, TY_W },
+    { "u8@",     CAT_MEM, OP_U8FETCH,  TY_A, TY_NONE, TY_W },
+    { "i8!",     CAT_MEM, OP_I8STORE,  TY_A, TY_W,    TY_NONE },
+    { "i16@",    CAT_MEM, OP_I16FETCH, TY_A, TY_NONE, TY_W },
+    { "u16@",    CAT_MEM, OP_U16FETCH, TY_A, TY_NONE, TY_W },
+    { "i16!",    CAT_MEM, OP_I16STORE, TY_A, TY_W,    TY_NONE },
+    { "@",       CAT_MEM, OP_FETCH,    TY_A, TY_NONE, TY_W },
+    { "!",       CAT_MEM, OP_STORE,    TY_A, TY_W,    TY_NONE },
+    { "a@",      CAT_MEM, OP_AFETCH,   TY_A, TY_NONE, TY_A },
+    { "a!",      CAT_MEM, OP_ASTORE,   TY_A, TY_A,    TY_NONE },
+    { "f@",      CAT_MEM, OP_FFETCH,   TY_A, TY_NONE, TY_F },
+    { "f!",      CAT_MEM, OP_FSTORE,   TY_A, TY_F,    TY_NONE },
+
+    /* Type conversions */
+    { "sext",    CAT_CONV, OP_SEXT,    TY_W, TY_NONE, TY_W },
+    { "w>a",     CAT_CONV, OP_W2A,     TY_W, TY_NONE, TY_A },
+    { "a>w",     CAT_CONV, OP_A2W,     TY_A, TY_NONE, TY_W },
+    { "w>f",     CAT_CONV, OP_W2F,     TY_W, TY_NONE, TY_F },
+    { "f>w",     CAT_CONV, OP_F2W,     TY_F, TY_NONE, TY_W }
+};
+
 static int handle_builtin(const char *tok) {
     u8 a, b;
+    size_t i;
 
-    /* Stack manipulation */
+    /* Stack manipulation (polymorphic) */
     if (strcmp(tok, "dup") == 0) {
         a = tpop(); tpush(a); tpush(a);
         be->stack_op(OP_DUP, a, 0); return 1;
@@ -186,74 +269,20 @@ static int handle_builtin(const char *tok) {
         be->stack_op(OP_OVER, b, a); return 1;
     }
 
-    /* Word ALU & bitwise: ( W: W: -- W: ) */
-    if (strcmp(tok, "+") == 0)       { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_ADD); return 1; }
-    if (strcmp(tok, "-") == 0)       { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_SUB); return 1; }
-    if (strcmp(tok, "*") == 0)       { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_MUL); return 1; }
-    if (strcmp(tok, "/") == 0)       { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_DIV); return 1; }
-    if (strcmp(tok, "mod") == 0)     { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_MOD); return 1; }
-    if (strcmp(tok, "u/") == 0)      { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_UDIV); return 1; }
-    if (strcmp(tok, "umod") == 0)    { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_UMOD); return 1; }
-    if (strcmp(tok, "and") == 0)     { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_AND); return 1; }
-    if (strcmp(tok, "or") == 0)      { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_OR); return 1; }
-    if (strcmp(tok, "xor") == 0)     { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_XOR); return 1; }
-    if (strcmp(tok, "invert") == 0)  { tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_INVERT); return 1; }
-    if (strcmp(tok, "lshift") == 0)  { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_LSHIFT); return 1; }
-    if (strcmp(tok, "arshift") == 0) { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_ARSHIFT); return 1; }
-    if (strcmp(tok, "rshift") == 0)  { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->alu_op(OP_RSHIFT); return 1; }
-
-    /* Address arithmetic */
-    if (strcmp(tok, "a+") == 0)      { tpop_expect(TY_W); tpop_expect(TY_A); tpush(TY_A); be->alu_op(OP_AADD); return 1; }
-    if (strcmp(tok, "a-") == 0)      { tpop_expect(TY_W); tpop_expect(TY_A); tpush(TY_A); be->alu_op(OP_ASUB); return 1; }
-    if (strcmp(tok, "adiff") == 0)   { tpop_expect(TY_A); tpop_expect(TY_A); tpush(TY_W); be->alu_op(OP_ADIFF); return 1; }
-
-    /* Floating-point operations */
-    if (strcmp(tok, "f+") == 0)      { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_F); be->alu_op(OP_FADD); return 1; }
-    if (strcmp(tok, "f-") == 0)      { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_F); be->alu_op(OP_FSUB); return 1; }
-    if (strcmp(tok, "f*") == 0)      { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_F); be->alu_op(OP_FMUL); return 1; }
-    if (strcmp(tok, "f/") == 0)      { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_F); be->alu_op(OP_FDIV); return 1; }
-    if (strcmp(tok, "fnegate") == 0) { tpop_expect(TY_F); tpush(TY_F); be->alu_op(OP_FNEG); return 1; }
-
-    /* Comparisons */
-    if (strcmp(tok, "=") == 0)   { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_EQ); return 1; }
-    if (strcmp(tok, "<>") == 0)  { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_NE); return 1; }
-    if (strcmp(tok, "<") == 0)   { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_LT); return 1; }
-    if (strcmp(tok, ">") == 0)   { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_GT); return 1; }
-    if (strcmp(tok, "<=") == 0)  { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_LE); return 1; }
-    if (strcmp(tok, ">=") == 0)  { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_GE); return 1; }
-    if (strcmp(tok, "u<") == 0)  { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_ULT); return 1; }
-    if (strcmp(tok, "u>") == 0)  { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_UGT); return 1; }
-    if (strcmp(tok, "u<=") == 0) { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_ULE); return 1; }
-    if (strcmp(tok, "u>=") == 0) { tpop_expect(TY_W); tpop_expect(TY_W); tpush(TY_W); be->cmp_op(OP_UGE); return 1; }
-    if (strcmp(tok, "a=") == 0)  { tpop_expect(TY_A); tpop_expect(TY_A); tpush(TY_W); be->cmp_op(OP_AEQ); return 1; }
-    if (strcmp(tok, "a<>") == 0) { tpop_expect(TY_A); tpop_expect(TY_A); tpush(TY_W); be->cmp_op(OP_ANE); return 1; }
-    if (strcmp(tok, "au<") == 0) { tpop_expect(TY_A); tpop_expect(TY_A); tpush(TY_W); be->cmp_op(OP_ALT); return 1; }
-    if (strcmp(tok, "au>") == 0) { tpop_expect(TY_A); tpop_expect(TY_A); tpush(TY_W); be->cmp_op(OP_AGT); return 1; }
-    if (strcmp(tok, "f=") == 0)  { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_W); be->cmp_op(OP_FEQ); return 1; }
-    if (strcmp(tok, "f<>") == 0) { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_W); be->cmp_op(OP_FNE); return 1; }
-    if (strcmp(tok, "f<") == 0)  { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_W); be->cmp_op(OP_FLT); return 1; }
-    if (strcmp(tok, "f>") == 0)  { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_W); be->cmp_op(OP_FGT); return 1; }
-
-    /* Memory load/store */
-    if (strcmp(tok, "i8@") == 0)  { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_I8FETCH); return 1; }
-    if (strcmp(tok, "u8@") == 0)  { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_U8FETCH); return 1; }
-    if (strcmp(tok, "i8!") == 0)  { tpop_expect(TY_A); tpop_expect(TY_W); be->mem_op(OP_I8STORE); return 1; }
-    if (strcmp(tok, "i16@") == 0) { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_I16FETCH); return 1; }
-    if (strcmp(tok, "u16@") == 0) { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_U16FETCH); return 1; }
-    if (strcmp(tok, "i16!") == 0) { tpop_expect(TY_A); tpop_expect(TY_W); be->mem_op(OP_I16STORE); return 1; }
-    if (strcmp(tok, "@") == 0)    { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_FETCH); return 1; }
-    if (strcmp(tok, "!") == 0)  { tpop_expect(TY_A); tpop_expect(TY_W); be->mem_op(OP_STORE); return 1; }
-    if (strcmp(tok, "a@") == 0) { tpop_expect(TY_A); tpush(TY_A); be->mem_op(OP_AFETCH); return 1; }
-    if (strcmp(tok, "a!") == 0) { tpop_expect(TY_A); tpop_expect(TY_A); be->mem_op(OP_ASTORE); return 1; }
-    if (strcmp(tok, "f@") == 0) { tpop_expect(TY_A); tpush(TY_F); be->mem_op(OP_FFETCH); return 1; }
-    if (strcmp(tok, "f!") == 0) { tpop_expect(TY_A); tpop_expect(TY_F); be->mem_op(OP_FSTORE); return 1; }
-
-    /* Type conversions */
-    if (strcmp(tok, "sext") == 0) { tpop_expect(TY_W); tpush(TY_W); be->conv_op(OP_SEXT); return 1; }
-    if (strcmp(tok, "w>a") == 0)  { tpop_expect(TY_W); tpush(TY_A); be->conv_op(OP_W2A); return 1; }
-    if (strcmp(tok, "a>w") == 0)  { tpop_expect(TY_A); tpush(TY_W); be->conv_op(OP_A2W); return 1; }
-    if (strcmp(tok, "w>f") == 0)  { tpop_expect(TY_W); tpush(TY_F); be->conv_op(OP_W2F); return 1; }
-    if (strcmp(tok, "f>w") == 0)  { tpop_expect(TY_F); tpush(TY_W); be->conv_op(OP_F2W); return 1; }
+    for (i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {
+        if (strcmp(tok, builtins[i].name) == 0) {
+            tpop_expect(builtins[i].in1);
+            if (builtins[i].in2 != TY_NONE) tpop_expect(builtins[i].in2);
+            if (builtins[i].out != TY_NONE) tpush(builtins[i].out);
+            switch (builtins[i].cat) {
+            case CAT_ALU:  be->alu_op(builtins[i].op); break;
+            case CAT_CMP:  be->cmp_op(builtins[i].op); break;
+            case CAT_MEM:  be->mem_op(builtins[i].op); break;
+            case CAT_CONV: be->conv_op(builtins[i].op); break;
+            }
+            return 1;
+        }
+    }
 
     return 0;
 }
