@@ -49,8 +49,7 @@ Functions are defined at the top level using standard Forth `: ... ;` syntax wit
 ```
 
 * **Inputs (before `|` or `--`):**
-  * **Named parameters:** `TYPE IDENT` pairs (e.g., `A: ptr W: count`). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names.
-  * **Unnamed parameters:** Standalone `TYPE` tokens (e.g., `W: W:`). Arguments remain on the evaluation stack.
+  * Declared as `TYPE IDENT` pairs (e.g., `A: ptr W: count`). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names. Unnamed input parameters are not permitted.
 * **Scratch Locals (optional, after `|` and before `--`):**
   * Declared as `TYPE IDENT` pairs (e.g., `| W: i W: sum F: acc`).
   * Scratch locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `F:`) on function entry.
