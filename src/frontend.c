@@ -538,15 +538,12 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
 static void compile_word(void) {
     char tok[MAX_TOK];
     FuncSig *sig;
+    WordIR *w;
+    IrInstr *ins;
+    u8 fidx;
     u8 param_cnt = 0;
     u8 unreachable = 0;
     i32 num_val;
-
-    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
-    u8 fidx;
-    FuncSig *sig;
-    WordIR *w;
-    IrInstr *ins;
 
     if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
     fidx = func_count++;
@@ -801,6 +798,92 @@ static void compile_word(void) {
     ir4_die("unexpected EOF inside word definition (missing ';')");
 }
 
+static void mark_reachable(u8 fidx) {
+    WordIR *w = &words[fidx];
+    u16 i;
+    if (funcs[fidx].is_extern || w->reachable) return;
+    w->reachable = 1;
+    for (i = 0; i < w->ir_len; i++) {
+        const IrInstr *ins = &ir_buf[w->ir_start + i];
+        if (ins->kind == IR_CALL) {
+            mark_reachable(ins->u.func_idx);
+        }
+    }
+}
+
+typedef struct {
+    u16 patch_offset;
+    u16 target_ir;
+} PendingBr;
+
+static void emit_word(u8 fidx) {
+    FuncSig *sig = &funcs[fidx];
+    WordIR *w = &words[fidx];
+    u16 ir_addr[MAX_IR];
+    PendingBr pending[MAX_BLOCKS * 4];
+    u16 pend_cnt = 0;
+    u16 i, p;
+
+    if (w->ir_len >= MAX_IR) ir4_die("word IR length overflow");
+    sig->addr = be->cur_addr();
+    be->fn_begin(sig->name, w->param_cnt, w->locals, w->local_count);
+
+    for (i = 0; i <= w->ir_len; i++) {
+        for (p = 0; p < pend_cnt; p++) {
+            if (pending[p].target_ir == i) {
+                be->patch_fwd(pending[p].patch_offset);
+            }
+        }
+        if (i == w->ir_len) break;
+        ir_addr[i] = be->cur_addr();
+        {
+            const IrInstr *ins = &ir_buf[w->ir_start + i];
+            switch (ins->kind) {
+            case IR_FN_END:
+                be->fn_end(sig, w->locals, w->local_count);
+                break;
+            case IR_PUSH_W:
+                be->push_w(ins->u.w);
+                break;
+            case IR_PUSH_A:
+                be->push_a(ins->u.a);
+                break;
+            case IR_PUSH_F:
+                be->push_f(ins->u.f);
+                break;
+            case IR_PUSH_DATA:
+                be->push_data(ins->u.offset);
+                break;
+            case IR_LOCAL_OP:
+                be->local_op(ins->u.loc.op, ins->u.loc.slot,
+                             ins->u.loc.type, ins->u.loc.stack_bytes);
+                break;
+            case IR_STACK_OP:
+                be->stack_op(ins->u.stk.op, ins->u.stk.t1, ins->u.stk.t2);
+                break;
+            case IR_ALU_OP:
+                be->op(ins->u.op);
+                break;
+            case IR_CALL:
+                be->call(funcs[ins->u.func_idx].addr);
+                break;
+            case IR_CALL_EXTERN:
+                be->call_extern(&funcs[ins->u.func_idx]);
+                break;
+            case IR_BR_FWD:
+                if (pend_cnt >= MAX_BLOCKS * 4) ir4_die("too many pending branches");
+                pending[pend_cnt].patch_offset = be->emit_br_fwd(ins->u.br.cond);
+                pending[pend_cnt].target_ir = ins->u.br.target;
+                pend_cnt++;
+                break;
+            case IR_BR_BACK:
+                be->emit_br_back(ins->u.br.cond, ir_addr[ins->u.br.target]);
+                break;
+            }
+        }
+    }
+}
+
 void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                         const char *platform) {
     char tok[MAX_TOK];
@@ -823,6 +906,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     platform_name = platform;
     func_count = 0;
     buffer_count = 0;
+    ir_count = 0;
 
     while (next_tok(tok)) {
         if (strcmp(tok, ":") == 0) {
@@ -905,4 +989,24 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
         }
     }
     if (ct_sp != 0) ir4_die("unconsumed integer at top level");
+
+    /* Pass 1.5: Reachability / Dead-Code Elimination from 'main' */
+    {
+        int main_idx = ir4_find_func("main");
+        u8 f;
+        if (main_idx >= 0) {
+            mark_reachable((u8)main_idx);
+        } else {
+            for (f = 0; f < func_count; f++) {
+                if (!funcs[f].is_extern) words[f].reachable = 1;
+            }
+        }
+
+        /* Pass 2: Emit reachable words */
+        for (f = 0; f < func_count; f++) {
+            if (!funcs[f].is_extern && words[f].reachable) {
+                emit_word(f);
+            }
+        }
+    }
 }
