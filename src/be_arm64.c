@@ -24,9 +24,7 @@ static void pop_x0(void)  { emit32(0xF84107E0UL); } /* LDR X0, [SP], #16   */
 static void pop_x1(void)  { emit32(0xF84107E1UL); } /* LDR X1, [SP], #16   */
 static void pop_x2(void)  { emit32(0xF84107E2UL); } /* LDR X2, [SP], #16   */
 
-static void mov_x0_imm(i32 val) {
-    u32 lo = (u32)val;
-    u32 hi = (val < 0) ? 0xFFFFFFFFUL : 0x00000000UL;
+static void mov_x0_u32(u32 lo, u32 hi) {
     emit32(0xD2800000UL | ((lo & 0xFFFFUL) << 5));
     if ((lo >> 16) != 0 || hi != 0) {
         emit32(0xF2A00000UL | (((lo >> 16) & 0xFFFFUL) << 5));
@@ -35,6 +33,10 @@ static void mov_x0_imm(i32 val) {
         emit32(0xF2C00000UL | ((hi & 0xFFFFUL) << 5));
         emit32(0xF2E00000UL | (((hi >> 16) & 0xFFFFUL) << 5));
     }
+}
+
+static void mov_x0_imm(i32 val) {
+    mov_x0_u32((u32)val, (val < 0) ? 0xFFFFFFFFUL : 0x00000000UL);
 }
 
 /* --- Backend Interface --- */
@@ -104,7 +106,7 @@ static void a64_call(u16 target_addr) {
 }
 
 static void a64_push_w(i32 val) { mov_x0_imm(val); push_x0(); }
-static void a64_push_a(u32 val) { mov_x0_imm((i32)val); push_x0(); }
+static void a64_push_a(u32 val) { mov_x0_u32(val, 0); push_x0(); }
 
 static void a64_local_get(u8 slot, u8 type) {
     u32 off = (u32)(slot + 1) * 8;

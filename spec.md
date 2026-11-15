@@ -26,7 +26,7 @@ IR4th v0.3 defines **three stack types** on a **single unified stack** and **no 
 
 | Type Token | Name | Width & Semantics | Z80 / 6502 | ARM32 / RISC-V32 | ARM64 / x86-64 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`W:`** | Native Word | Target-native signed integer (`isize`) | 2 bytes (`i16`) | 4 bytes (`i32`) | TBD |
+| **`W:`** | Native Word | Target-native signed integer (`isize`) | 2 bytes (`i16`) | 4 bytes (`i32`) | 8 bytes (`i64`) |
 | **`A:`** | Address | Target-width memory pointer (`usize`) | 2 bytes (`u16`) | 4 bytes (`u32`) | 8 bytes (`u64`) |
 | **`F:`** | Float | Target-native floating-point | **6 bytes** (Z80) / **5 bytes** (6502) | TBD | TBD |
 
@@ -35,6 +35,7 @@ IR4th v0.3 defines **three stack types** on a **single unified stack** and **no 
 * **Explicitly Typed Literals** prefix the value with a `TYPE` token separated by whitespace:
   * `A: 0x0400` — pushes target-width memory address `0x0400` (`A:`)
   * `F: 3.14` — pushes target-native floating-point value `3.14` (`F:`)
+* **Literal Width Restriction:** In the current implementation, integer and address literals are restricted to 32-bit values (`-2147483648..2147483647` for `W:`, `0..0xFFFFFFFF` for `A:`), even on 64-bit targets.
 
 ---
 
