@@ -121,6 +121,17 @@ static void m6502_push_a(u32 val) {
     m6502_push_w((i32)val);
 }
 
+static void m6502_push_data(u16 offset) {
+    u16 lo_pos, hi_pos;
+    m6502_dex();
+    m6502_dex();
+    emit8(0xA9); lo_pos = cb_pc(); emit8(0x00); /* LDA #<addr */
+    m6502_sta_zpx(ZP_STACK);
+    emit8(0xA9); hi_pos = cb_pc(); emit8(0x00); /* LDA #>addr */
+    m6502_sta_zpx(ZP_STACK + 1);
+    cb_add_data_reloc_split(lo_pos, hi_pos, offset);
+}
+
 static void m6502_local_get(u8 slot, u8 type) {
     u8 zp = (u8)(ZP_LOCALS + slot * 2);
     (void)type;
@@ -448,6 +459,7 @@ const Backend be_6502 = {
     m6502_call,
     m6502_push_w,
     m6502_push_a,
+    m6502_push_data,
     m6502_local_get,
     m6502_local_set,
     m6502_stack_op,

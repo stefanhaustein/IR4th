@@ -25,6 +25,8 @@ typedef signed long    i32;
 #define MAX_STACK  32
 #define MAX_BLOCKS 16
 #define MAX_CODE   16384
+#define MAX_DATA   4096
+#define MAX_RELOCS 128
 
 /* Stack types (v0.3) */
 enum {
@@ -140,6 +142,7 @@ typedef struct {
 
     void (*push_w)(i32 val);
     void (*push_a)(u32 val);
+    void (*push_data)(u16 data_offset);
     void (*local_get)(u8 slot, u8 type);
     void (*local_set)(u8 slot, u8 type);
 
@@ -167,6 +170,11 @@ void      emit8_8(u8 a, u8 b);
 void      emit8_16(u8 a, u16 w);
 void      emit8_8_8(u8 a, u8 b, u8 c);
 void      patch16(u16 patch_offset, u16 target_addr);
+u16       cb_alloc_data(u16 size, u8 align);
+u16       cb_data_size(void);
+void      cb_add_data_reloc(u16 patch_offset, u16 data_offset);
+void      cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset);
+void      cb_patch_data_relocs(u16 data_base);
 
 /* Frontend entry points (implemented in frontend.c) */
 void            ir4_die(const char *msg);

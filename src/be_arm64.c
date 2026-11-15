@@ -108,6 +108,16 @@ static void a64_call(u16 target_addr) {
 static void a64_push_w(i32 val) { mov_x0_imm(val); push_x0(); }
 static void a64_push_a(u32 val) { mov_x0_u32(val, 0); push_x0(); }
 
+static void a64_push_data(u16 offset) {
+    if (offset <= 4095) {
+        emit32(0x91000380UL | (((u32)offset & 0xFFFUL) << 10)); /* ADD X0, X28, #offset */
+    } else {
+        mov_x0_u32((u32)offset, 0);
+        emit32(0x8B000380UL); /* ADD X0, X28, X0 */
+    }
+    push_x0();
+}
+
 static void a64_local_get(u8 slot, u8 type) {
     u32 off = (u32)(slot + 1) * 8;
     (void)type;
@@ -271,6 +281,7 @@ const Backend be_arm64 = {
     a64_call,
     a64_push_w,
     a64_push_a,
+    a64_push_data,
     a64_local_get,
     a64_local_set,
     a64_stack_op,

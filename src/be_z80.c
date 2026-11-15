@@ -232,6 +232,13 @@ static void z80_push_a(u32 val) {
     emit8(Z80_PUSH_HL);
 }
 
+static void z80_push_data(u16 offset) {
+    emit8(Z80_LD_HL_NN);
+    cb_add_data_reloc(cb_pc(), offset);
+    emit16(0x0000);
+    emit8(Z80_PUSH_HL);
+}
+
 static void z80_local_get(u8 slot, u8 type) {
     i8 disp = (i8)(-((slot + 1) * 2));
     (void)type;
@@ -573,6 +580,7 @@ const Backend be_z80 = {
     z80_call,
     z80_push_w,
     z80_push_a,
+    z80_push_data,
     z80_local_get,
     z80_local_set,
     z80_stack_op,

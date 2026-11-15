@@ -21,6 +21,14 @@ static u16            line_num = 1;
 static FuncSig   funcs[MAX_SYMS];
 static u8        func_count = 0;
 
+typedef struct {
+    char name[MAX_TOK];
+    u16  offset;
+} BufferSym;
+
+static BufferSym buffers[MAX_SYMS];
+static u8        buffer_count = 0;
+
 static LocalVar  locals[MAX_LOCALS];
 static u8        local_count = 0;
 static u8        cur_outs[4];
@@ -135,6 +143,14 @@ int ir4_find_func(const char *name) {
     u8 i;
     for (i = 0; i < func_count; i++) {
         if (strcmp(funcs[i].name, name) == 0) return (int)i;
+    }
+    return -1;
+}
+
+static int find_buffer(const char *name) {
+    u8 i;
+    for (i = 0; i < buffer_count; i++) {
+        if (strcmp(buffers[i].name, name) == 0) return (int)i;
     }
     return -1;
 }
@@ -464,6 +480,14 @@ static void compile_word(void) {
             continue;
         }
 
+        /* Buffer address */
+        idx = find_buffer(tok);
+        if (idx >= 0) {
+            tpush(TY_A);
+            be->push_data(buffers[idx].offset);
+            continue;
+        }
+
         /* User word call */
         idx = ir4_find_func(tok);
         if (idx >= 0) {
@@ -488,16 +512,33 @@ static void compile_word(void) {
 
 void ir4_compile_stream(FILE *in, const Backend *target_be) {
     char tok[MAX_TOK];
+    i32 num_val;
     src_fp = in;
     be = target_be;
     line_num = 1;
     func_count = 0;
+    buffer_count = 0;
 
     while (next_tok(tok)) {
         if (strcmp(tok, ":") == 0) {
             compile_word();
+        } else if (parse_int(tok, &num_val)) {
+            if (num_val <= 0 || num_val > MAX_DATA) {
+                ir4_die("invalid buffer size");
+            }
+            if (!next_tok(tok) || strcmp(tok, "buffer:") != 0) {
+                ir4_die("expected 'buffer:' after top-level integer");
+            }
+            if (buffer_count >= MAX_SYMS) {
+                ir4_die("too many buffers");
+            }
+            if (!next_tok(buffers[buffer_count].name)) {
+                ir4_die("expected buffer name after 'buffer:'");
+            }
+            buffers[buffer_count].offset = cb_alloc_data((u16)num_val, be->word_bytes);
+            buffer_count++;
         } else {
-            ir4_die("expected top-level ':' definition");
+            ir4_die("expected top-level ':' or '<size> buffer:'");
         }
     }
 }

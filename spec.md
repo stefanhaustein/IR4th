@@ -14,7 +14,7 @@ IR4th is designed so that word-only programs are directly executable under **Gfo
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token ending with a trailing colon (`:`) is strictly a type specifier (`W:`, `A:`, `F:`).
-* **Keywords:** Reserved syntax and control-flow tokens (`:`, `;`, `to`, `exit`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `{`, `}`, `|`, `--`).
+* **Keywords:** Reserved syntax and control-flow tokens (`:`, `;`, `buffer:`, `to`, `exit`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `{`, `}`, `|`, `--`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a trailing colon that is not a keyword.
 
@@ -60,6 +60,16 @@ Functions are defined at the top level using standard Forth `: ... ;` syntax wit
 ### 3.1 Accessing & Mutating Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
 * **Write (`to <ident>`):** Pops the top value from the stack (verifying its type matches `<ident>`'s declared type `T`) and stores it into `<ident>`.
+
+### 3.2 Named Data Buffers (`buffer:`)
+Top-level fixed-size writable buffers can be declared outside word definitions:
+
+```forth
+<size> buffer: <name>
+```
+
+* `<size>` is a positive byte count. Each buffer is allocated in the target's writable data segment, aligned to the target's native word size.
+* Referencing `<name>` inside a word pushes its base address onto the stack with type **`A:`** (`( -- A: )`).
 
 ---
 
@@ -182,6 +192,7 @@ set-order r> >order
 : sext $FF and dup $80 and if -256 or then ;
 : w>a ;
 : a>w ;
+: buffer: ( n "name" -- ) create align allot ;
 
 \ Bridge Gforth's separate F-stack to IR4th's unified stack
 fvariable ir4-ftmp
