@@ -1,0 +1,142 @@
+/* be_6502_sim.c - sim65 (cc65 6502 simulator) header & exit/print stub (Strict C89) */
+#include "ir4c.h"
+
+#define SIM65_WRITE 0xFFF7
+#define SIM65_EXIT  0xFFF9
+#define SIM65_SP_ZP 0x10
+
+void be_6502_sim_begin(void) {
+    /* Reserve JMP 0x0000 at base; patched by be_6502_sim_end() */
+    emit8(0x4C);
+    emit16(0x0000);
+}
+
+int be_6502_sim_write_hdr(FILE *fp, u16 load_addr, u16 reset_addr) {
+    u8 hdr[12];
+    hdr[0] = 's'; hdr[1] = 'i'; hdr[2] = 'm'; hdr[3] = '6'; hdr[4] = '5';
+    hdr[5] = 0x02; /* version 2 */
+    hdr[6] = 0x00; /* 6502 */
+    hdr[7] = SIM65_SP_ZP;
+    hdr[8] = (u8)(load_addr & 0xFF);
+    hdr[9] = (u8)(load_addr >> 8);
+    hdr[10] = (u8)(reset_addr & 0xFF);
+    hdr[11] = (u8)(reset_addr >> 8);
+    return fwrite(hdr, 1, sizeof(hdr), fp) == sizeof(hdr);
+}
+
+void be_6502_sim_end(u8 main_idx) {
+    const FuncSig *sig = ir4_func_sig(main_idx);
+    u16 entry_addr = cb_cur_addr();
+    u16 putchar_call1 = 0;
+    u16 putchar_call2 = 0;
+    u16 putchar_call3 = 0;
+    u16 print_call1 = 0;
+    u16 print_call2 = 0;
+    u16 print_u16_addr;
+    u16 putchar_addr;
+    u16 div_loop_pc;
+
+    if (sig->in_count != 0 || sig->out_count > 1) {
+        fprintf(stderr, "--sim65 requires 'main' with 0 inputs and at most 1 output\n");
+        exit(1);
+    }
+
+    /* Patch the initial JMP 0x0000 at offset 0 (base + 1) to jump here */
+    patch16(1, entry_addr);
+
+    /* CLD; LDX #$FF; TXS; LDX #$00 */
+    emit8(0xD8);
+    emit8(0xA2); emit8(0xFF);
+    emit8(0x9A);
+    emit8(0xA2); emit8(0x00);
+
+    /* JSR main */
+    emit8(0x20); emit16(sig->addr);
+
+    if (sig->out_count == 1) {
+        u16 stk_off = be_6502_stack_data_off();
+        /* Pop 16-bit signed value from (stack_base,X) into $04/$05 */
+        emit8(0xBD); cb_add_data_reloc(cb_pc(), stk_off); emit16(0x0000);
+        emit8(0x85); emit8(0x04); /* STA $04 */
+        emit8(0xBD); cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1)); emit16(0x0000);
+        emit8(0x85); emit8(0x05); /* STA $05 */
+        emit8(0xE8); emit8(0xE8); /* INX; INX */
+
+        /* If $05 < 0, print '-' and negate $04/$05 */
+        emit8(0xA5); emit8(0x05); /* LDA $05 */
+        emit8(0x10); emit8(18);   /* BPL +18 */
+
+        emit8(0xA9); emit8('-');  /* LDA #'-' */
+        emit8(0x20); putchar_call1 = cb_pc(); emit16(0x0000);
+        emit8(0x38);              /* SEC */
+        emit8(0xA9); emit8(0x00); /* LDA #0 */
+        emit8(0xE5); emit8(0x04); /* SBC $04 */
+        emit8(0x85); emit8(0x04); /* STA $04 */
+        emit8(0xA9); emit8(0x00); /* LDA #0 */
+        emit8(0xE5); emit8(0x05); /* SBC $05 */
+        emit8(0x85); emit8(0x05); /* STA $05 */
+
+        /* JSR print_u16 */
+        emit8(0x20); print_call1 = cb_pc(); emit16(0x0000);
+
+        /* Print '\n' */
+        emit8(0xA9); emit8('\n');
+        emit8(0x20); putchar_call2 = cb_pc(); emit16(0x0000);
+    }
+
+    /* Exit with code 0 via sim65 paravirt exit ($FFF9) */
+    emit8(0xA9); emit8(0x00);
+    emit8(0x4C); emit16(SIM65_EXIT);
+
+    if (sig->out_count == 1) {
+        print_u16_addr = cb_cur_addr();
+        patch16(print_call1, print_u16_addr);
+
+        /* div10: $04/$05 /= 10, A = remainder */
+        emit8(0xA9); emit8(0x00); /* LDA #0 */
+        emit8(0xA0); emit8(16);   /* LDY #16 */
+        div_loop_pc = cb_pc();
+        emit8(0x06); emit8(0x04); /* ASL $04 */
+        emit8(0x26); emit8(0x05); /* ROL $05 */
+        emit8(0x2A);              /* ROL A */
+        emit8(0xC9); emit8(10);   /* CMP #10 */
+        emit8(0x90); emit8(4);    /* BCC +4 */
+        emit8(0xE9); emit8(10);   /* SBC #10 */
+        emit8(0xE6); emit8(0x04); /* INC $04 */
+        emit8(0x88);              /* DEY */
+        emit8(0xD0); emit8((u8)(div_loop_pc - (cb_pc() + 1))); /* BNE div_loop */
+
+        emit8(0x48);              /* PHA */
+        emit8(0xA5); emit8(0x04); /* LDA $04 */
+        emit8(0x05); emit8(0x05); /* ORA $05 */
+        emit8(0xF0); emit8(3);    /* BEQ +3 */
+        emit8(0x20); print_call2 = cb_pc(); emit16(0x0000);
+        patch16(print_call2, print_u16_addr);
+
+        emit8(0x68);              /* PLA */
+        emit8(0x18);              /* CLC */
+        emit8(0x69); emit8('0');  /* ADC #'0' */
+        emit8(0x20); putchar_call3 = cb_pc(); emit16(0x0000);
+        emit8(0x60);              /* RTS */
+
+        putchar_addr = cb_cur_addr();
+        patch16(putchar_call1, putchar_addr);
+        patch16(putchar_call2, putchar_addr);
+        patch16(putchar_call3, putchar_addr);
+
+        /* putchar_a: write 1 byte in A to stdout (fd=1) via sim65 _write ($FFF7) */
+        emit8(0x85); emit8(0x16); /* STA $16 (char buf) */
+        emit8(0x86); emit8(0x17); /* STX $17 (save X) */
+        emit8(0xA9); emit8(0x16); emit8(0x85); emit8(0x12); /* buf = $0016 */
+        emit8(0xA9); emit8(0x00); emit8(0x85); emit8(0x13);
+        emit8(0xA9); emit8(0x01); emit8(0x85); emit8(0x14); /* fd = 1 */
+        emit8(0xA9); emit8(0x00); emit8(0x85); emit8(0x15);
+        emit8(0xA9); emit8(0x12); emit8(0x85); emit8(SIM65_SP_ZP);
+        emit8(0xA9); emit8(0x00); emit8(0x85); emit8(SIM65_SP_ZP + 1);
+        emit8(0xA9); emit8(0x01); /* count lo = 1 */
+        emit8(0xA2); emit8(0x00); /* count hi = 0 */
+        emit8(0x20); emit16(SIM65_WRITE);
+        emit8(0xA6); emit8(0x17); /* LDX $17 */
+        emit8(0x60);              /* RTS */
+    }
+}

@@ -3,10 +3,10 @@ CFLAGS  = -std=c89 -Wall -Wextra -O2 -Isrc
 
 BUILD   = build
 TARGET  = $(BUILD)/ir4c
-SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_arm64.c src/be_arm64_jit.c
+SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_6502_sim.c src/be_arm64.c src/be_arm64_jit.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
-.PHONY: all test test-z80 test-gforth rt-z80 clean
+.PHONY: all test test-z80 test-6502 test-gforth rt-z80 clean
 
 all: $(TARGET)
 
@@ -80,6 +80,36 @@ test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 
 		test "$$out" = "OK0"; \
 	else \
 		echo "tnylpo not found; skipping Z80 execution"; \
+	fi
+
+test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/fib_sim65.bin  tests/fib.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/core_sim65.bin tests/core.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/mem_sim65.bin  tests/mem.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/req_sim65.bin  tests/req.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/data_sim65.bin tests/data.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/ext_sim65.bin  tests/ext.ir4
+	@if command -v sim65 >/dev/null 2>&1; then \
+		out=$$(sim65 $(BUILD)/fib_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 fib_sim65.bin -> $$out"; \
+		test "$$out" = "110"; \
+		out=$$(sim65 $(BUILD)/core_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 core_sim65.bin -> $$out"; \
+		test "$$out" = "0"; \
+		out=$$(sim65 $(BUILD)/mem_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 mem_sim65.bin -> $$out"; \
+		test "$$out" = "0"; \
+		out=$$(sim65 $(BUILD)/req_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 req_sim65.bin -> $$out"; \
+		test "$$out" = "0"; \
+		out=$$(sim65 $(BUILD)/data_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 data_sim65.bin -> $$out"; \
+		test "$$out" = "0"; \
+		out=$$(sim65 $(BUILD)/ext_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 ext_sim65.bin -> $$out"; \
+		test "$$out" = "OK0"; \
+	else \
+		echo "sim65 not found; skipping 6502 execution"; \
 	fi
 
 test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4

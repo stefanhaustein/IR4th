@@ -26,7 +26,7 @@ typedef signed long    i32;
 #define MAX_BLOCKS 16
 #define MAX_CODE   16384
 #define MAX_DATA   4096
-#define MAX_RELOCS 128
+#define MAX_RELOCS 4096
 
 /* Stack types (v0.3) */
 typedef enum {
@@ -206,6 +206,11 @@ extern const Backend be_arm64;
 
 void be_z80_cpm_begin(void);
 void be_z80_cpm_end(u8 main_idx);
+void be_6502_set_zp(u8 zp);
+u16  be_6502_stack_data_off(void);
+void be_6502_sim_begin(void);
+int  be_6502_sim_write_hdr(FILE *fp, u16 load_addr, u16 reset_addr);
+void be_6502_sim_end(u8 main_idx);
 void be_arm64_run_jit(u8 main_idx);
 
 #endif /* IR4C_H */

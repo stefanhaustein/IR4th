@@ -96,7 +96,7 @@ require <filename>
 
 * `<filename>` is resolved relative to the directory of the file containing `require`.
 * For relative paths, `require` searches in order:
-  1. `<dir>/<cpu>/<platform>/<filename>` (when `--platform <name>` or `--cpm` is active, e.g. `z80/cpm/io.ir4`)
+  1. `<dir>/<cpu>/<platform>/<filename>` (when `--platform <name>`, `--cpm`, or `--sim65` is active, e.g. `z80/cpm/io.ir4` or `6502/sim65/io.ir4`)
   2. `<dir>/<cpu>/<filename>` (e.g. `arm64/io.ir4`, `z80/math.ir4`, or `gforth/io.ir4` under `ir4th.fs`)
   3. `<dir>/<filename>` (portable fallback)
 * Repeated `require` directives for an already-loaded file path are ignored.

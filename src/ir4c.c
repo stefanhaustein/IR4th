@@ -2,7 +2,7 @@
 #include "ir4c.h"
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64] [-b hex_addr] [-o out.bin] [--platform name] [--run] [--cpm] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--run] [--cpm] [--sim65] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {
@@ -14,6 +14,7 @@ int main(int argc, char **argv) {
     int base_set = 0;
     int run_jit = 0;
     int cpm_stub = 0;
+    int sim65_stub = 0;
     int i;
     FILE *in_fp;
     FILE *out_fp;
@@ -44,11 +45,17 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--platform") == 0 && i + 1 < argc) {
             i++;
             platform = argv[i];
+        } else if (strcmp(argv[i], "--zp") == 0 && i + 1 < argc) {
+            i++;
+            be_6502_set_zp((u8)strtoul(argv[i], NULL, 0));
         } else if (strcmp(argv[i], "--run") == 0) {
             run_jit = 1;
         } else if (strcmp(argv[i], "--cpm") == 0) {
             cpm_stub = 1;
             if (!platform) platform = "cpm";
+        } else if (strcmp(argv[i], "--sim65") == 0) {
+            sim65_stub = 1;
+            if (!platform) platform = "sim65";
         } else if (argv[i][0] == '-') {
             print_usage();
             return 1;
@@ -73,10 +80,20 @@ int main(int argc, char **argv) {
         fclose(in_fp);
         return 1;
     }
+    if (sim65_stub && be != &be_6502) {
+        fprintf(stderr, "--sim65 requires -t 6502\n");
+        fclose(in_fp);
+        return 1;
+    }
+    if (sim65_stub && !base_set) {
+        base = 0x0200;
+    }
 
     cb_reset(base);
     if (cpm_stub) {
         be_z80_cpm_begin();
+    } else if (sim65_stub) {
+        be_6502_sim_begin();
     }
     ir4_compile_stream(in_fp, in_path, be, platform);
     fclose(in_fp);
@@ -88,6 +105,13 @@ int main(int argc, char **argv) {
             return 1;
         }
         be_z80_cpm_end((u8)main_idx);
+    } else if (sim65_stub) {
+        int main_idx = ir4_find_func("main");
+        if (main_idx < 0) {
+            fprintf(stderr, "--sim65 requires a 'main' function\n");
+            return 1;
+        }
+        be_6502_sim_end((u8)main_idx);
     }
 
     /* Place data segment right after code on 16-bit targets */
@@ -99,6 +123,14 @@ int main(int argc, char **argv) {
     if (!out_fp) {
         perror("fopen output");
         return 1;
+    }
+
+    if (sim65_stub) {
+        if (!be_6502_sim_write_hdr(out_fp, base, base)) {
+            perror("fwrite");
+            fclose(out_fp);
+            return 1;
+        }
     }
 
     if (cb_pc() > 0) {
