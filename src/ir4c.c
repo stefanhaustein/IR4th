@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
     if (cpm_stub) {
         be_z80_cpm_begin();
     }
-    ir4_compile_stream(in_fp, be);
+    ir4_compile_stream(in_fp, in_path, be);
     fclose(in_fp);
 
     if (cpm_stub) {

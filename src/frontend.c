@@ -14,9 +14,21 @@ typedef struct {
     u8  if_unreach;
 } BlockInfo;
 
-static FILE          *src_fp;
+#define MAX_INCLUDE_DEPTH 16
+#define MAX_INCLUDES      64
+#define MAX_PATH         256
+
+typedef struct {
+    FILE *fp;
+    char  path[MAX_PATH];
+    u16   line_num;
+} SrcFile;
+
+static SrcFile        src_stack[MAX_INCLUDE_DEPTH];
+static u8             src_depth = 0;
+static char           seen_files[MAX_INCLUDES][MAX_PATH];
+static u8             seen_count = 0;
 static const Backend *be;
-static u16            line_num = 1;
 
 static FuncSig   funcs[MAX_SYMS];
 static u8        func_count = 0;
@@ -41,7 +53,12 @@ static BlockInfo blocks[MAX_BLOCKS];
 static u8        bsp = 0;
 
 void ir4_die(const char *msg) {
-    fprintf(stderr, "ir4c error (line %u): %s\n", line_num, msg);
+    if (src_depth > 0) {
+        const SrcFile *cur = &src_stack[src_depth - 1];
+        fprintf(stderr, "ir4c error (%s:%u): %s\n", cur->path, cur->line_num, msg);
+    } else {
+        fprintf(stderr, "ir4c error: %s\n", msg);
+    }
     exit(1);
 }
 
@@ -64,25 +81,98 @@ static int next_tok(char *buf) {
     u8 len = 0;
 
     for (;;) {
-        c = fgetc(src_fp);
-        if (c == EOF) return 0;
-        if (c == '\n') { line_num++; continue; }
+        SrcFile *cur;
+        if (src_depth == 0) return 0;
+        cur = &src_stack[src_depth - 1];
+        c = fgetc(cur->fp);
+        if (c == EOF) {
+            if (src_depth > 1) {
+                fclose(cur->fp);
+                src_depth--;
+                continue;
+            }
+            return 0;
+        }
+        if (c == '\n') { cur->line_num++; continue; }
         if (isspace((unsigned char)c)) continue;
         if (c == '\\') {
-            while ((c = fgetc(src_fp)) != EOF && c != '\n') ;
-            if (c == '\n') line_num++;
+            while ((c = fgetc(cur->fp)) != EOF && c != '\n') ;
+            if (c == '\n') cur->line_num++;
             continue;
         }
         break;
     }
 
-    while (c != EOF && !isspace((unsigned char)c)) {
-        if (len < MAX_TOK - 1) buf[len++] = (char)c;
-        c = fgetc(src_fp);
+    {
+        SrcFile *cur = &src_stack[src_depth - 1];
+        while (c != EOF && !isspace((unsigned char)c)) {
+            if (len < MAX_TOK - 1) buf[len++] = (char)c;
+            c = fgetc(cur->fp);
+        }
+        if (c == '\n') cur->line_num++;
     }
-    if (c == '\n') line_num++;
     buf[len] = '\0';
     return 1;
+}
+
+static void resolve_path(const char *base_path, const char *rel, char *out, size_t out_sz) {
+    const char *slash;
+    size_t dir_len = 0;
+    size_t rel_len;
+
+    while (rel[0] == '.' && rel[1] == '/') {
+        rel += 2;
+    }
+
+    if (rel[0] != '/' && base_path != NULL) {
+        slash = strrchr(base_path, '/');
+        if (slash != NULL) {
+            dir_len = (size_t)(slash - base_path + 1);
+        }
+    }
+
+    rel_len = strlen(rel);
+    if (dir_len + rel_len >= out_sz) {
+        ir4_die("required file path too long");
+    }
+    if (dir_len > 0) {
+        memcpy(out, base_path, dir_len);
+    }
+    memcpy(out + dir_len, rel, rel_len + 1);
+}
+
+static void push_require(const char *name) {
+    char path[MAX_PATH];
+    u8 i;
+    FILE *fp;
+
+    resolve_path(src_stack[src_depth - 1].path, name, path, sizeof(path));
+
+    for (i = 0; i < seen_count; i++) {
+        if (strcmp(seen_files[i], path) == 0) {
+            return;
+        }
+    }
+    if (seen_count >= MAX_INCLUDES) {
+        ir4_die("too many required files");
+    }
+    if (src_depth >= MAX_INCLUDE_DEPTH) {
+        ir4_die("require nesting too deep");
+    }
+
+    fp = fopen(path, "r");
+    if (!fp) {
+        const SrcFile *cur = &src_stack[src_depth - 1];
+        fprintf(stderr, "ir4c error (%s:%u): cannot open required file '%s'\n",
+                cur->path, cur->line_num, path);
+        exit(1);
+    }
+
+    memcpy(seen_files[seen_count++], path, strlen(path) + 1);
+    src_stack[src_depth].fp = fp;
+    memcpy(src_stack[src_depth].path, path, strlen(path) + 1);
+    src_stack[src_depth].line_num = 1;
+    src_depth++;
 }
 
 static int parse_int(const char *s, i32 *val) {
@@ -128,8 +218,9 @@ static u8 tpop(void) {
 static void tpop_expect(u8 expected) {
     u8 got = tpop();
     if (got != expected) {
-        fprintf(stderr, "ir4c error (line %u): expected %s, got %s\n",
-                line_num, type_name(expected), type_name(got));
+        const SrcFile *cur = &src_stack[src_depth - 1];
+        fprintf(stderr, "ir4c error (%s:%u): expected %s, got %s\n",
+                cur->path, cur->line_num, type_name(expected), type_name(got));
         exit(1);
     }
 }
@@ -549,25 +640,42 @@ static void compile_word(void) {
             continue;
         }
 
-        fprintf(stderr, "ir4c error (line %u): unknown word '%s'\n", line_num, tok);
+        {
+            const SrcFile *cur = &src_stack[src_depth - 1];
+            fprintf(stderr, "ir4c error (%s:%u): unknown word '%s'\n",
+                    cur->path, cur->line_num, tok);
+        }
         exit(1);
     }
 
     ir4_die("unexpected EOF inside word definition (missing ';')");
 }
 
-void ir4_compile_stream(FILE *in, const Backend *target_be) {
+void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be) {
     char tok[MAX_TOK];
     i32 num_val;
-    src_fp = in;
+    const char *root_path = (path != NULL) ? path : "<stdin>";
+    size_t plen = strlen(root_path);
+
+    if (plen >= MAX_PATH) ir4_die("input file path too long");
+    src_depth = 1;
+    src_stack[0].fp = in;
+    memcpy(src_stack[0].path, root_path, plen + 1);
+    src_stack[0].line_num = 1;
+
+    seen_count = 1;
+    memcpy(seen_files[0], root_path, plen + 1);
+
     be = target_be;
-    line_num = 1;
     func_count = 0;
     buffer_count = 0;
 
     while (next_tok(tok)) {
         if (strcmp(tok, ":") == 0) {
             compile_word();
+        } else if (strcmp(tok, "require") == 0) {
+            if (!next_tok(tok)) ir4_die("expected filename after 'require'");
+            push_require(tok);
         } else if (parse_int(tok, &num_val)) {
             if (num_val <= 0 || num_val > MAX_DATA) {
                 ir4_die("invalid buffer size");
@@ -584,7 +692,7 @@ void ir4_compile_stream(FILE *in, const Backend *target_be) {
             buffers[buffer_count].offset = cb_alloc_data((u16)num_val, be->word_bytes);
             buffer_count++;
         } else {
-            ir4_die("expected top-level ':' or '<size> buffer:'");
+            ir4_die("expected top-level ':', 'require', or '<size> buffer:'");
         }
     }
 }

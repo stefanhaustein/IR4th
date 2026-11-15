@@ -36,13 +36,17 @@ test: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 test
 	./$(TARGET) -t arm64 -o $(BUILD)/mem_arm64.bin   --run tests/mem.ir4
 	./$(TARGET) -t z80   -o $(BUILD)/float_z80.bin     tests/float.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/float_arm64.bin --run tests/float.ir4
+	./$(TARGET) -t z80   -o $(BUILD)/req_z80.bin       tests/req.ir4
+	./$(TARGET) -t 6502  -o $(BUILD)/req_6502.bin      tests/req.ir4
+	./$(TARGET) -t arm64 -o $(BUILD)/req_arm64.bin   --run tests/req.ir4
 
-test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4
+test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4
 	./$(TARGET) -t z80 --cpm -o $(BUILD)/fib.com    tests/fib.ir4
 	./$(TARGET) -t z80 --cpm -o $(BUILD)/core.com   tests/core.ir4
 	./$(TARGET) -t z80 --cpm -o $(BUILD)/muldiv.com tests/muldiv.ir4
 	./$(TARGET) -t z80 --cpm -o $(BUILD)/mem.com    tests/mem.ir4
 	./$(TARGET) -t z80 --cpm -o $(BUILD)/float.com  tests/float.ir4
+	./$(TARGET) -t z80 --cpm -o $(BUILD)/req.com    tests/req.ir4
 	@if command -v tnylpo >/dev/null 2>&1; then \
 		out=$$(cd $(BUILD) && tnylpo fib.com | tr -d '\r\n'); \
 		echo "tnylpo fib.com -> $$out"; \
@@ -59,11 +63,14 @@ test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 
 		out=$$(cd $(BUILD) && tnylpo float.com | tr -d '\r\n'); \
 		echo "tnylpo float.com -> $$out"; \
 		test "$$out" = "0"; \
+		out=$$(cd $(BUILD) && tnylpo req.com | tr -d '\r\n'); \
+		echo "tnylpo req.com -> $$out"; \
+		test "$$out" = "0"; \
 	else \
 		echo "tnylpo not found; skipping Z80 execution"; \
 	fi
 
-test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4
+test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4
 	@out=$$(gforth ir4th.fs tests/fib.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth fib.ir4 -> $$out"; \
 	test "$$out" = "110"
@@ -72,6 +79,9 @@ test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4
 	test "$$out" = "0"
 	@out=$$(gforth ir4th.fs tests/mem.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth mem.ir4 -> $$out"; \
+	test "$$out" = "0"
+	@out=$$(cd tests && gforth ../ir4th.fs req.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
+	echo "gforth req.ir4 -> $$out"; \
 	test "$$out" = "0"
 
 rt-z80:

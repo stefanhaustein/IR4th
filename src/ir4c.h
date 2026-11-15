@@ -183,7 +183,7 @@ void      cb_patch_data_relocs(u16 data_base);
 
 /* Frontend entry points (implemented in frontend.c) */
 void            ir4_die(const char *msg);
-void            ir4_compile_stream(FILE *in, const Backend *target_be);
+void            ir4_compile_stream(FILE *in, const char *path, const Backend *target_be);
 int             ir4_find_func(const char *name);
 u16             ir4_func_addr(u8 idx);
 const FuncSig  *ir4_func_sig(u8 idx);

@@ -1,0 +1,7 @@
+require req_base.ir4
+require req_mid.ir4
+require req_base.ir4
+
+: main { -- W: }
+  40 inc2 42 -
+;

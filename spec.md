@@ -71,6 +71,16 @@ Top-level fixed-size writable buffers can be declared outside word definitions:
 * `<size>` is a positive byte count. Each buffer is allocated in the target's writable data segment, aligned to the target's native word size.
 * Referencing `<name>` inside a word pushes its base address onto the stack with type **`A:`** (`( -- A: )`).
 
+### 3.3 Including Files (`require`)
+Top-level `require` loads another `.ir4` source file at most once (include-once semantics):
+
+```forth
+require <filename>
+```
+
+* `<filename>` is resolved relative to the directory of the file containing `require`.
+* Repeated `require` directives for an already-loaded file path are ignored.
+
 ---
 
 ## 4. Core Instruction Set (Non-Polymorphic)

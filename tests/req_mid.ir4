@@ -1,0 +1,5 @@
+require req_base.ir4
+
+: inc2 { W: n -- W: }
+  n inc1 inc1
+;
