@@ -187,9 +187,13 @@ int             ir4_find_func(const char *name);
 u16             ir4_func_addr(u8 idx);
 const FuncSig  *ir4_func_sig(u8 idx);
 
-/* Available backends */
+/* Available backends & platform stubs */
 extern const Backend be_z80;
 extern const Backend be_6502;
 extern const Backend be_arm64;
+
+void be_z80_cpm_begin(void);
+void be_z80_cpm_end(u8 main_idx);
+void be_arm64_run_jit(u8 main_idx);
 
 #endif /* IR4C_H */

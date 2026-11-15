@@ -3,7 +3,7 @@ CFLAGS  = -std=c89 -Wall -Wextra -O2 -Isrc
 
 BUILD   = build
 TARGET  = $(BUILD)/ir4c
-SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_6502.c src/be_arm64.c
+SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_arm64.c src/be_arm64_jit.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
 .PHONY: all test test-z80 test-gforth rt-z80 clean
@@ -16,7 +16,8 @@ $(BUILD):
 $(BUILD)/%.o: src/%.c src/ir4c.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/be_z80.o: src/be_z80_math48.h
+$(BUILD)/be_z80.o: src/be_z80.h src/be_z80_math48.h
+$(BUILD)/be_z80_cpm.o: src/be_z80.h
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET) -lm

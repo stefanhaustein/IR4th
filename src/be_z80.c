@@ -4,6 +4,7 @@
  *   - Frame pointer: IX (locals stored at IX-2, IX-4, ...)
  */
 #include "ir4c.h"
+#include "be_z80.h"
 #include "be_z80_math48.h"
 #include <math.h>
 
@@ -12,92 +13,6 @@ static u16 rt_udivmod_addr = 0;
 static u16 rt_sdivmod_addr = 0;
 static u16 rt_math48_addr  = 0;
 static i8  z80_local_disp[MAX_LOCALS];
-
-/* File-local Z80 single-byte opcode constants */
-enum {
-    /* 8-bit load / ALU */
-    Z80_LD_A_N     = 0x3E,
-    Z80_LD_A_H     = 0x7C,
-    Z80_LD_A_L     = 0x7D,
-    Z80_LD_A_D     = 0x7A,
-    Z80_LD_B_H     = 0x44,
-    Z80_LD_B_E     = 0x43,
-    Z80_LD_C_L     = 0x4D,
-    Z80_LD_H_N     = 0x26,
-    Z80_LD_H_A     = 0x67,
-    Z80_LD_H_B     = 0x60,
-    Z80_LD_L_A     = 0x6F,
-    Z80_LD_L_C     = 0x69,
-    Z80_LD_E_A     = 0x5F,
-    Z80_LD_D_A     = 0x57,
-    Z80_LD_B_MHL   = 0x46,
-    Z80_LD_C_MHL   = 0x4E,
-    Z80_LD_D_MHL   = 0x56,
-    Z80_LD_E_MHL   = 0x5E,
-    Z80_LD_H_MHL   = 0x66,
-    Z80_LD_L_MHL   = 0x6E,
-    Z80_LD_A_MHL   = 0x7E,
-    Z80_LD_MHL_E   = 0x73,
-    Z80_LD_MHL_D   = 0x72,
-    Z80_INC_B      = 0x04,
-    Z80_INC_C      = 0x0C,
-    Z80_DEC_C      = 0x0D,
-    Z80_DEC_A      = 0x3D,
-    Z80_RLA        = 0x17,
-    Z80_CPL        = 0x2F,
-    Z80_SUB_D      = 0x92,
-    Z80_SUB_E      = 0x93,
-    Z80_SUB_H      = 0x94,
-    Z80_SUB_L      = 0x95,
-    Z80_SBC_A_A    = 0x9F,
-    Z80_AND_D      = 0xA2,
-    Z80_AND_E      = 0xA3,
-    Z80_XOR_D      = 0xAA,
-    Z80_XOR_E      = 0xAB,
-    Z80_XOR_A      = 0xAF,
-    Z80_OR_D       = 0xB2,
-    Z80_OR_E       = 0xB3,
-    Z80_OR_L       = 0xB5,
-    Z80_OR_A       = 0xB7,
-
-    /* 16-bit load / stack / exchange / arithmetic */
-    Z80_LD_BC_NN   = 0x01,
-    Z80_LD_DE_NN   = 0x11,
-    Z80_LD_HL_NN   = 0x21,
-    Z80_LD_SP_HL   = 0xF9,
-    Z80_PUSH_BC    = 0xC5,
-    Z80_POP_BC     = 0xC1,
-    Z80_PUSH_DE    = 0xD5,
-    Z80_POP_DE     = 0xD1,
-    Z80_PUSH_HL    = 0xE5,
-    Z80_POP_HL     = 0xE1,
-    Z80_PUSH_AF    = 0xF5,
-    Z80_POP_AF     = 0xF1,
-    Z80_EX_DE_HL   = 0xEB,
-    Z80_EX_SP_HL   = 0xE3,
-    Z80_EXX        = 0xD9,
-    Z80_ADD_HL_DE  = 0x19,
-    Z80_ADD_HL_HL  = 0x29,
-    Z80_ADD_HL_SP  = 0x39,
-    Z80_INC_HL     = 0x23,
-    Z80_INC_SP     = 0x33,
-
-    /* Control flow */
-    Z80_DJNZ       = 0x10,
-    Z80_JR         = 0x18,
-    Z80_JR_NZ      = 0x20,
-    Z80_JR_Z       = 0x28,
-    Z80_JR_NC      = 0x30,
-    Z80_JR_C       = 0x38,
-    Z80_JP         = 0xC3,
-    Z80_JP_Z       = 0xCA,
-    Z80_JP_PE      = 0xEA,
-    Z80_JP_P       = 0xF2,
-    Z80_JP_M       = 0xFA,
-    Z80_JP_HL      = 0xE9,
-    Z80_CALL       = 0xCD,
-    Z80_RET        = 0xC9
-};
 
 /* --- Prefixed & Multi-byte Z80 Helpers --- */
 static void z80_sbc_hl_de(void)     { emit8_8(0xED, 0x52); }
