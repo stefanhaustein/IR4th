@@ -2,7 +2,7 @@
 
 **IR4th** (*Typed Forth as an Intermediate Representation*) is a minimal, statically typed, monomorphic concatenative intermediate language designed for retro-computing CPUs (such as the Z80 and 6502) and constrained embedded systems.
 
-IR4th is designed so that word-only programs are directly executable under **Gforth** (with a minimal compatibility prelude) while compiling via single-pass direct machine-code generation to native Z80 and 6502 binaries.
+IR4th is designed so that word-only programs are directly executable under **Gforth** (with a minimal compatibility prelude) while compiling via single-pass direct machine-code generation to native Z80, 6502, and modern binaries.
 
 ---
 
@@ -22,17 +22,17 @@ IR4th is designed so that word-only programs are directly executable under **Gfo
 
 ## 2. Type System (Monomorphic v0.1)
 
-IR4th v0.1 defines **four primitive types** on a **single unified stack** and **no operator polymorphism**. Integer widths (`C:` and `W:`) are strictly fixed across all architectures, while `A:` and `F:` match the target platform's native pointer and floating-point formats.
+IR4th v0.1 defines **four primitive types** on a **single unified stack** and **no operator polymorphism**. `C:` is fixed to 8 bits across all targets, while `W:`, `A:`, and `F:` match the target platform's native word, pointer, and floating-point widths.
 
-| Type Token | Name | Width & Semantics | Z80 | 6502 | ARM / RISC-V / x86-64 |
+| Type Token | Name | Width & Semantics | Z80 / 6502 | ARM32 / RISC-V32 | ARM64 / x86-64 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`C:`** | Char / Byte | Fixed 8-bit integer (`i8`/`u8`) | 1 byte | 1 byte | 1 byte |
-| **`W:`** | Word | **Fixed 16-bit integer** (`i16`/`u16`) | 2 bytes | 2 bytes | 2 bytes |
-| **`A:`** | Address | **Target-width memory pointer** (`usize`) | 2 bytes | 2 bytes | 4 or 8 bytes |
-| **`F:`** | Float | **Target-native floating-point** | **6 bytes** (48-bit) | **5 bytes** (40-bit MBF) | **4 or 8 bytes** (IEEE-754) |
+| **`W:`** | Native Word | **Target-native signed integer** (`isize`) | 2 bytes | 4 bytes | 8 bytes |
+| **`A:`** | Address | **Target-width memory pointer** (`usize`) | 2 bytes | 4 bytes | 8 bytes |
+| **`F:`** | Float | **Target-native floating-point** | 6 bytes (Z80) / 5 bytes (6502) | 4 bytes (IEEE-754) | 8 bytes (IEEE-754) |
 
 ### 2.1 Literal Typing Rules
-* **Bare Integer Literals** (`0`, `1`, `-42`, `0x10`) implicitly default to **`W:`** (16-bit word).
+* **Bare Integer Literals** (`0`, `1`, `-42`, `0x10`) implicitly default to **`W:`** (target-native word).
 * **Explicitly Typed Literals** prefix the value with a `TYPE` token separated by whitespace:
   * `C: 65` — pushes 8-bit byte `65` (`C:`)
   * `A: 0x0400` — pushes target-width memory address `0x0400` (`A:`)
@@ -82,33 +82,33 @@ In stack-effect notation `( before -- after )`, the rightmost item is the top of
 | `rot` | `( t1 t2 t3 -- t2 t3 t1 )` | Rotate third item to top |
 
 ### 4.2 Word Arithmetic & Bitwise Operations (`W:`)
-All standard Forth math and bitwise operators operate strictly on **fixed 16-bit words (`W:`)** with two's complement wraparound semantics.
+All standard Forth math and bitwise operators operate strictly on **target-native words (`W:`)** with two's complement wraparound semantics.
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `+` | `( W: W: -- W: )` | 16-bit word addition |
-| `-` | `( W: W: -- W: )` | 16-bit word subtraction (`a - b`) |
-| `*` | `( W: W: -- W: )` | 16-bit word multiplication (low 16 bits) |
-| `/` | `( W: W: -- W: )` | Signed 16-bit word division (`a / b`) |
-| `mod` | `( W: W: -- W: )` | Signed 16-bit word remainder (`a mod b`) |
-| `u/` | `( W: W: -- W: )` | Unsigned 16-bit word division |
-| `umod` | `( W: W: -- W: )` | Unsigned 16-bit word remainder |
-| `and` | `( W: W: -- W: )` | 16-bit bitwise AND |
-| `or` | `( W: W: -- W: )` | 16-bit bitwise OR |
-| `xor` | `( W: W: -- W: )` | 16-bit bitwise XOR |
-| `invert` | `( W: -- W: )` | 16-bit bitwise one's complement |
-| `lshift` | `( W: W: -- W: )` | 16-bit logical shift left (`a << b`) |
-| `arshift` | `( W: W: -- W: )` | 16-bit arithmetic (sign-preserving) shift right (`a >> b`) |
-| `rshift` | `( W: W: -- W: )` | 16-bit logical (zero-filling) shift right (`a u>> b`) |
+| `+` | `( W: W: -- W: )` | Native word addition |
+| `-` | `( W: W: -- W: )` | Native word subtraction (`a - b`) |
+| `*` | `( W: W: -- W: )` | Native word multiplication (low word) |
+| `/` | `( W: W: -- W: )` | Signed native word division (`a / b`) |
+| `mod` | `( W: W: -- W: )` | Signed native word remainder (`a mod b`) |
+| `u/` | `( W: W: -- W: )` | Unsigned native word division |
+| `umod` | `( W: W: -- W: )` | Unsigned native word remainder |
+| `and` | `( W: W: -- W: )` | Bitwise AND |
+| `or` | `( W: W: -- W: )` | Bitwise OR |
+| `xor` | `( W: W: -- W: )` | Bitwise XOR |
+| `invert` | `( W: -- W: )` | Bitwise one's complement |
+| `lshift` | `( W: W: -- W: )` | Logical shift left (`a << b`) |
+| `arshift` | `( W: W: -- W: )` | Arithmetic (sign-preserving) shift right (`a >> b`) |
+| `rshift` | `( W: W: -- W: )` | Logical (zero-filling) shift right (`a u>> b`) |
 
 ### 4.3 Address Arithmetic (`A:`)
-Pointer offset math uses dedicated address operators. On 32-bit and 64-bit targets, `a+` and `a-` sign-extend the 16-bit `W:` offset to the width of `A:` before adding or subtracting.
+Pointer offset math uses dedicated address operators. Because `W:` matches the target's native register/address width, byte offsets add and subtract natively without sign-extension mismatches.
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `a+` | `( A: W: -- A: )` | Add signed 16-bit byte offset `W:` to address `A:` |
-| `a-` | `( A: W: -- A: )` | Subtract signed 16-bit byte offset `W:` from address `A:` |
-| `adiff` | `( A: A: -- W: )` | Byte distance between two addresses (`a1 - a2`), truncated to 16-bit `W:` |
+| `a+` | `( A: W: -- A: )` | Add signed byte offset `W:` to address `A:` |
+| `a-` | `( A: W: -- A: )` | Subtract signed byte offset `W:` from address `A:` |
+| `adiff` | `( A: A: -- W: )` | Signed byte distance between two addresses (`a1 - a2`) |
 
 ### 4.4 Floating-Point Operations (`F:`)
 All floating-point operations operate on platform-native `F:` values on the unified stack.
@@ -122,13 +122,13 @@ All floating-point operations operate on platform-native `F:` values on the unif
 | `fnegate` | `( F: -- F: )` | Floating-point negation (`-a`) |
 
 ### 4.5 Comparisons (`W:`, `A:`, and `F:`)
-All comparisons consume two values and push a boolean flag of type **`W:`** (`-1` (`0xFFFF`) or non-zero for true, `0` for false).
+All comparisons consume two values and push a boolean flag of type **`W:`** (`-1` or non-zero for true, `0` for false).
 
 | Instruction | Stack Effect | Semantics |
 | :--- | :--- | :--- |
-| `=` , `<>` | `( W: W: -- W: )` | 16-bit word equal / not equal |
-| `<` , `>` , `<=` , `>=` | `( W: W: -- W: )` | Signed 16-bit word comparisons |
-| `u<` , `u>` , `u<=` , `u>=` | `( W: W: -- W: )` | Unsigned 16-bit word comparisons |
+| `=` , `<>` | `( W: W: -- W: )` | Native word equal / not equal |
+| `<` , `>` , `<=` , `>=` | `( W: W: -- W: )` | Signed native word comparisons |
+| `u<` , `u>` , `u<=` , `u>=` | `( W: W: -- W: )` | Unsigned native word comparisons |
 | `a=` , `a<>` , `au<` , `au>` | `( A: A: -- W: )` | Address equality and unsigned pointer comparisons |
 | `f=` , `f<>` , `f<` , `f>` | `( F: F: -- W: )` | Floating-point comparisons |
 
@@ -139,8 +139,8 @@ Memory operations take a target-width address of type `A:` on top of the stack.
 | :--- | :--- | :--- |
 | `c@` | `( A: -- C: )` | Fetch 8-bit byte from address |
 | `c!` | `( C: A: -- )` | Store 8-bit byte to address |
-| `@` | `( A: -- W: )` | Fetch 16-bit word (`W:`) from address |
-| `!` | `( W: A: -- )` | Store 16-bit word (`W:`) to address |
+| `@` | `( A: -- W: )` | Fetch target-native word (`W:`) from address |
+| `!` | `( W: A: -- )` | Store target-native word (`W:`) to address |
 | `a@` | `( A: -- A: )` | Fetch target-width pointer (`A:`) from address |
 | `a!` | `( A: A: -- )` | Store target-width pointer (`A:`) to address |
 | `f@` | `( A: -- F: )` | Fetch target-width float (`F:`) from address |
@@ -150,13 +150,13 @@ Memory operations take a target-width address of type `A:` on top of the stack.
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `c>w` | `( C: -- W: )` | Zero-extend 8-bit `C:` to 16-bit `W:` |
-| `sext` | `( C: -- W: )` | Sign-extend 8-bit `C:` to 16-bit `W:` |
-| `w>c` | `( W: -- C: )` | Truncate 16-bit `W:` to low 8 bits `C:` |
-| `w>a` | `( W: -- A: )` | Zero-extend 16-bit `W:` to target address width `A:` |
-| `a>w` | `( A: -- W: )` | Truncate target address `A:` to low 16 bits `W:` |
-| `w>f` | `( W: -- F: )` | Convert signed 16-bit word `W:` to float `F:` |
-| `f>w` | `( F: -- W: )` | Truncate float `F:` to signed 16-bit word `W:` |
+| `c>w` | `( C: -- W: )` | Zero-extend 8-bit `C:` to native word `W:` |
+| `sext` | `( C: -- W: )` | Sign-extend 8-bit `C:` to native word `W:` |
+| `w>c` | `( W: -- C: )` | Truncate native word `W:` to low 8 bits `C:` |
+| `w>a` | `( W: -- A: )` | Reinterpret native word `W:` as address `A:` |
+| `a>w` | `( A: -- W: )` | Reinterpret address `A:` as native word `W:` |
+| `w>f` | `( W: -- F: )` | Convert signed native word `W:` to float `F:` |
+| `f>w` | `( F: -- W: )` | Truncate float `F:` to signed native word `W:` |
 
 ---
 
@@ -220,10 +220,10 @@ set-order r> >order
 : a@ @ ;
 : a! ! ;
 : c>w $FF and ;
-: sext $FF and dup $80 and if $FF00 or then ;
+: sext $FF and dup $80 and if -256 or then ;
 : w>c $FF and ;
-: w>a $FFFF and ;
-: a>w $FFFF and ;
+: w>a ;
+: a>w ;
 
 \ Bridge Gforth's separate F-stack to IR4th's unified stack via scratch float slot
 fvariable ir4-ftmp
@@ -253,7 +253,7 @@ fvariable ir4-ftmp
   dst len a+
 ;
 
-\ Sum an array of signed 8-bit bytes into a 16-bit word
+\ Sum an array of signed 8-bit bytes into a native word
 : sum_signed_bytes { A: ptr W: count | W: i W: acc -- W: }
   0 to i
   0 to acc
