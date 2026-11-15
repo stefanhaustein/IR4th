@@ -33,7 +33,7 @@ test: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 test
 	./$(TARGET) -t z80   -o $(BUILD)/mem_z80.bin     tests/mem.ir4
 	./$(TARGET) -t 6502  -o $(BUILD)/mem_6502.bin    tests/mem.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/mem_arm64.bin   --run tests/mem.ir4
-	./$(TARGET) -t z80   -o build/float_z80.bin     tests/float.ir4
+	./$(TARGET) -t z80   -o $(BUILD)/float_z80.bin     tests/float.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/float_arm64.bin --run tests/float.ir4
 
 test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4

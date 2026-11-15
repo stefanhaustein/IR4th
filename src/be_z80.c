@@ -73,7 +73,6 @@ enum {
     Z80_POP_HL     = 0xE1,
     Z80_PUSH_AF    = 0xF5,
     Z80_POP_AF     = 0xF1,
-    Z80_EX_AF_AF   = 0x08,
     Z80_EX_DE_HL   = 0xEB,
     Z80_EX_SP_HL   = 0xE3,
     Z80_EXX        = 0xD9,
