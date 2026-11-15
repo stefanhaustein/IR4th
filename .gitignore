@@ -2,3 +2,5 @@ build/
 *.o
 *.bin
 ir4c
+__pycache__/
+*.pyc

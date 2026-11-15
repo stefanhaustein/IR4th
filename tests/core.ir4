@@ -9,7 +9,7 @@
 ;
 
 : test_stack { -- W: }
-  \ dup, drop, swap, over, rot
+  \ dup, drop, swap, over
   10 dup + 20 1 assert_eq
   dup 0 <> if exit then drop
   10 20 drop 10 2 assert_eq
@@ -17,11 +17,6 @@
   10 20 swap - 10 3 assert_eq
   dup 0 <> if exit then drop
   10 20 over + + 40 4 assert_eq
-  dup 0 <> if exit then drop
-  1 2 3 rot + + 6 5 assert_eq
-  dup 0 <> if exit then drop
-  \ Verify rot order: ( 1 2 3 -- 2 3 1 ) -> drop -> ( 2 3 ) -> swap -> ( 3 2 ) -> drop -> 3
-  1 2 3 rot drop swap drop 3 6 assert_eq
 ;
 
 : test_alu { -- W: }

@@ -4,10 +4,14 @@
  *   - Frame pointer: IX (locals stored at IX-2, IX-4, ...)
  */
 #include "ir4c.h"
+#include "be_z80_math48.h"
+#include <math.h>
 
 static u16 rt_mul_addr     = 0;
 static u16 rt_udivmod_addr = 0;
 static u16 rt_sdivmod_addr = 0;
+static u16 rt_math48_addr  = 0;
+static i8  z80_local_disp[MAX_LOCALS];
 
 /* File-local Z80 single-byte opcode constants */
 enum {
@@ -26,9 +30,13 @@ enum {
     Z80_LD_L_C     = 0x69,
     Z80_LD_E_A     = 0x5F,
     Z80_LD_D_A     = 0x57,
-    Z80_LD_L_MHL   = 0x6E,
-    Z80_LD_E_MHL   = 0x5E,
+    Z80_LD_B_MHL   = 0x46,
+    Z80_LD_C_MHL   = 0x4E,
     Z80_LD_D_MHL   = 0x56,
+    Z80_LD_E_MHL   = 0x5E,
+    Z80_LD_H_MHL   = 0x66,
+    Z80_LD_L_MHL   = 0x6E,
+    Z80_LD_A_MHL   = 0x7E,
     Z80_LD_MHL_E   = 0x73,
     Z80_LD_MHL_D   = 0x72,
     Z80_INC_B      = 0x04,
@@ -53,6 +61,8 @@ enum {
     Z80_OR_A       = 0xB7,
 
     /* 16-bit load / stack / exchange / arithmetic */
+    Z80_LD_BC_NN   = 0x01,
+    Z80_LD_DE_NN   = 0x11,
     Z80_LD_HL_NN   = 0x21,
     Z80_LD_SP_HL   = 0xF9,
     Z80_PUSH_BC    = 0xC5,
@@ -63,6 +73,7 @@ enum {
     Z80_POP_HL     = 0xE1,
     Z80_PUSH_AF    = 0xF5,
     Z80_POP_AF     = 0xF1,
+    Z80_EX_AF_AF   = 0x08,
     Z80_EX_DE_HL   = 0xEB,
     Z80_EX_SP_HL   = 0xE3,
     Z80_EXX        = 0xD9,
@@ -105,8 +116,16 @@ static void z80_pop_ix(void)        { emit8_8(0xDD, 0xE1); }
 static void z80_ld_ix_imm(u16 v)    { emit8_8(0xDD, 0x21); emit16(v); }
 static void z80_add_ix_sp(void)     { emit8_8(0xDD, 0x39); }
 static void z80_ld_sp_ix(void)      { emit8_8(0xDD, 0xF9); }
+static void z80_ld_b_ix(i8 disp)    { emit8_8_8(0xDD, 0x46, (u8)disp); }
+static void z80_ld_c_ix(i8 disp)    { emit8_8_8(0xDD, 0x4E, (u8)disp); }
+static void z80_ld_d_ix(i8 disp)    { emit8_8_8(0xDD, 0x56, (u8)disp); }
+static void z80_ld_e_ix(i8 disp)    { emit8_8_8(0xDD, 0x5E, (u8)disp); }
 static void z80_ld_l_ix(i8 disp)    { emit8_8_8(0xDD, 0x6E, (u8)disp); }
 static void z80_ld_h_ix(i8 disp)    { emit8_8_8(0xDD, 0x66, (u8)disp); }
+static void z80_ld_ix_b(i8 disp)    { emit8_8_8(0xDD, 0x70, (u8)disp); }
+static void z80_ld_ix_c(i8 disp)    { emit8_8_8(0xDD, 0x71, (u8)disp); }
+static void z80_ld_ix_d(i8 disp)    { emit8_8_8(0xDD, 0x72, (u8)disp); }
+static void z80_ld_ix_e(i8 disp)    { emit8_8_8(0xDD, 0x73, (u8)disp); }
 static void z80_ld_ix_l(i8 disp)    { emit8_8_8(0xDD, 0x75, (u8)disp); }
 static void z80_ld_ix_h(i8 disp)    { emit8_8_8(0xDD, 0x74, (u8)disp); }
 static void z80_ld_ix_a(i8 disp)    { emit8_8_8(0xDD, 0x77, (u8)disp); }
@@ -137,83 +156,108 @@ static u16 z80_cur_addr(void) {
 static void z80_fn_begin(const char *name, u8 param_cnt,
                          const LocalVar *locals, u8 total_locals) {
     u8 i;
+    u16 frame_bytes = 0;
+    u16 src_disp = 4;
     (void)name;
-    (void)locals;
 
     if (cb_pc() <= 3) {
         rt_mul_addr     = 0;
         rt_udivmod_addr = 0;
         rt_sdivmod_addr = 0;
+        rt_math48_addr  = 0;
+    }
+
+    for (i = 0; i < total_locals; i++) {
+        u8 sz = (locals[i].type == TY_F) ? 6 : 2;
+        frame_bytes += sz;
+        if (frame_bytes > 128) ir4_die("Z80 local frame exceeds IX range");
+        z80_local_disp[i] = (i8)(-(i16)frame_bytes);
     }
 
     z80_push_ix();
     z80_ld_ix_imm(0x0000);
     z80_add_ix_sp();
 
-    /* Allocate local frame: LD HL, -(total_locals * 2); ADD HL, SP; LD SP, HL */
-    if (total_locals > 0) {
-        u16 frame_bytes = (u16)total_locals * 2;
+    if (frame_bytes > 0) {
         emit8_16(Z80_LD_HL_NN, (u16)(0 - frame_bytes));
         emit8(Z80_ADD_HL_SP);
         emit8(Z80_LD_SP_HL);
     }
 
-    /* Copy incoming args (at IX+4, IX+6...) into local slots IX-2, IX-4, ... */
-    for (i = 0; i < param_cnt; i++) {
-        i8 src_disp = (i8)(4 + (param_cnt - 1 - i) * 2);
-        i8 dst_disp = (i8)(-((i + 1) * 2));
-        z80_ld_l_ix(src_disp);
-        z80_ld_h_ix((i8)(src_disp + 1));
-        z80_ld_ix_l(dst_disp);
-        z80_ld_ix_h((i8)(dst_disp + 1));
+    /* Copy incoming args (at IX+4, ...) into local slots */
+    for (i = param_cnt; i > 0; i--) {
+        u8 idx = (u8)(i - 1);
+        u8 sz = (locals[idx].type == TY_F) ? 6 : 2;
+        i8 dst_disp = z80_local_disp[idx];
+        u8 b;
+        for (b = 0; b < sz; b++) {
+            z80_ld_l_ix((i8)(src_disp + b));
+            z80_ld_ix_l((i8)(dst_disp + b));
+        }
+        src_disp += sz;
     }
 
     if (total_locals > param_cnt) {
         emit8(Z80_XOR_A);
         for (i = param_cnt; i < total_locals; i++) {
-            i8 dst_disp = (i8)(-((i + 1) * 2));
-            z80_ld_ix_a(dst_disp);
-            z80_ld_ix_a((i8)(dst_disp + 1));
+            u8 sz = (locals[i].type == TY_F) ? 6 : 2;
+            i8 dst_disp = z80_local_disp[i];
+            u8 b;
+            for (b = 0; b < sz; b++) {
+                z80_ld_ix_a((i8)(dst_disp + b));
+            }
         }
     }
 }
 
-static void z80_fn_end(u8 param_cnt, u8 total_locals, u8 out_count) {
+static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_locals) {
     u8 i;
+    u16 param_bytes = 0;
+    u16 out_bytes = 0;
+    u8 out_words;
+    (void)locals;
     (void)total_locals;
 
+    for (i = 0; i < sig->in_count; i++) {
+        param_bytes += (sig->in_types[i] == TY_F) ? 6 : 2;
+    }
+    for (i = 0; i < sig->out_count; i++) {
+        out_bytes += (sig->out_types[i] == TY_F) ? 6 : 2;
+    }
+    out_words = (u8)(out_bytes / 2);
+    if (out_words > 4) ir4_die("Z80 return values exceed 8 bytes");
+
     /* Pop return values from evaluation stack before unwinding frame */
-    if (out_count >= 1) emit8(Z80_POP_DE);
-    if (out_count >= 2) emit8(Z80_POP_BC);
-    if (out_count >= 3) {
+    if (out_words >= 1) emit8(Z80_POP_DE);
+    if (out_words >= 2) emit8(Z80_POP_BC);
+    if (out_words >= 3) {
         emit8(Z80_EXX);
         emit8(Z80_POP_DE);
-        if (out_count >= 4) emit8(Z80_POP_BC);
+        if (out_words >= 4) emit8(Z80_POP_BC);
         emit8(Z80_EXX);
     }
 
     z80_ld_sp_ix();
     z80_pop_ix();
 
-    if (param_cnt == 0 && out_count == 0) {
+    if (param_bytes == 0 && out_words == 0) {
         emit8(Z80_RET);
         return;
     }
 
     emit8(Z80_POP_HL); /* Return address */
-    for (i = 0; i < param_cnt; i++) {
-        emit8(Z80_INC_SP);
-        emit8(Z80_INC_SP);
+    for (i = 0; i < (u8)(param_bytes / 2); i++) {
+        emit8(Z80_POP_AF);
     }
 
-    if (out_count >= 3) {
+    if (out_words >= 3) {
         emit8(Z80_EXX);
-        if (out_count >= 4) emit8(Z80_PUSH_BC);
+        if (out_words >= 4) emit8(Z80_PUSH_BC);
         emit8(Z80_PUSH_DE);
         emit8(Z80_EXX);
     }
-    if (out_count >= 2) emit8(Z80_PUSH_BC);
-    if (out_count >= 1) emit8(Z80_PUSH_DE);
+    if (out_words >= 2) emit8(Z80_PUSH_BC);
+    if (out_words >= 1) emit8(Z80_PUSH_DE);
 
     emit8(Z80_JP_HL);
 }
@@ -232,6 +276,44 @@ static void z80_push_a(u32 val) {
     emit8(Z80_PUSH_HL);
 }
 
+static void z80_push_f(double val) {
+    u8 bytes[6];
+    if (val == 0.0) {
+        memset(bytes, 0, sizeof(bytes));
+    } else {
+        int e, i;
+        int sign = (val < 0.0);
+        double m = frexp(sign ? -val : val, &e);
+        m += 0.5 / 1099511627776.0; /* round to 40-bit mantissa (2^-41) */
+        if (m >= 1.0) {
+            m *= 0.5;
+            e++;
+        }
+        if (e + 128 <= 0) {
+            memset(bytes, 0, sizeof(bytes));
+        } else if (e + 128 > 255) {
+            ir4_die("Z80 float literal overflow");
+        } else {
+            for (i = 0; i < 5; i++) {
+                int b;
+                m *= 256.0;
+                b = (int)m;
+                if (b > 255) b = 255;
+                m -= (double)b;
+                bytes[5 - i] = (u8)b;
+            }
+            bytes[5] = (u8)((bytes[5] & 0x7F) | (sign ? 0x80 : 0x00));
+            bytes[0] = (u8)(e + 128);
+        }
+    }
+    emit8_16(Z80_LD_HL_NN, (u16)(bytes[4] | ((u16)bytes[5] << 8)));
+    emit8(Z80_PUSH_HL);
+    emit8_16(Z80_LD_HL_NN, (u16)(bytes[2] | ((u16)bytes[3] << 8)));
+    emit8(Z80_PUSH_HL);
+    emit8_16(Z80_LD_HL_NN, (u16)(bytes[0] | ((u16)bytes[1] << 8)));
+    emit8(Z80_PUSH_HL);
+}
+
 static void z80_push_data(u16 offset) {
     emit8(Z80_LD_HL_NN);
     cb_add_data_reloc(cb_pc(), offset);
@@ -240,46 +322,118 @@ static void z80_push_data(u16 offset) {
 }
 
 static void z80_local_get(u8 slot, u8 type) {
-    i8 disp = (i8)(-((slot + 1) * 2));
-    (void)type;
-    z80_ld_l_ix(disp);
-    z80_ld_h_ix((i8)(disp + 1));
-    emit8(Z80_PUSH_HL);
+    i8 disp = z80_local_disp[slot];
+    if (type == TY_F) {
+        z80_ld_c_ix((i8)(disp + 4));
+        z80_ld_b_ix((i8)(disp + 5));
+        z80_ld_e_ix((i8)(disp + 2));
+        z80_ld_d_ix((i8)(disp + 3));
+        z80_ld_l_ix(disp);
+        z80_ld_h_ix((i8)(disp + 1));
+        emit8(Z80_PUSH_BC);
+        emit8(Z80_PUSH_DE);
+        emit8(Z80_PUSH_HL);
+    } else {
+        z80_ld_l_ix(disp);
+        z80_ld_h_ix((i8)(disp + 1));
+        emit8(Z80_PUSH_HL);
+    }
 }
 
 static void z80_local_set(u8 slot, u8 type) {
-    i8 disp = (i8)(-((slot + 1) * 2));
-    (void)type;
-    emit8(Z80_POP_HL);
-    z80_ld_ix_l(disp);
-    z80_ld_ix_h((i8)(disp + 1));
+    i8 disp = z80_local_disp[slot];
+    if (type == TY_F) {
+        emit8(Z80_POP_HL);
+        emit8(Z80_POP_DE);
+        emit8(Z80_POP_BC);
+        z80_ld_ix_l(disp);
+        z80_ld_ix_h((i8)(disp + 1));
+        z80_ld_ix_e((i8)(disp + 2));
+        z80_ld_ix_d((i8)(disp + 3));
+        z80_ld_ix_c((i8)(disp + 4));
+        z80_ld_ix_b((i8)(disp + 5));
+    } else {
+        emit8(Z80_POP_HL);
+        z80_ld_ix_l(disp);
+        z80_ld_ix_h((i8)(disp + 1));
+    }
 }
 
-static void z80_stack_op(u8 op) {
+static void z80_pop_f_ac(void) {
+    emit8(Z80_POP_HL);
+    emit8(Z80_POP_DE);
+    emit8(Z80_POP_BC);
+}
+
+static void z80_push_f_ac(void) {
+    emit8(Z80_PUSH_BC);
+    emit8(Z80_PUSH_DE);
+    emit8(Z80_PUSH_HL);
+}
+
+static void z80_stack_op(u8 op, u8 t1, u8 t2) {
     if (op == OP_DUP) {
-        emit8(Z80_POP_HL);
-        emit8(Z80_PUSH_HL);
-        emit8(Z80_PUSH_HL);
+        if (t1 == TY_F) {
+            z80_pop_f_ac();
+            z80_push_f_ac();
+            z80_push_f_ac();
+        } else {
+            emit8(Z80_POP_HL);
+            emit8(Z80_PUSH_HL);
+            emit8(Z80_PUSH_HL);
+        }
     } else if (op == OP_DROP) {
         emit8(Z80_POP_HL);
+        if (t1 == TY_F) {
+            emit8(Z80_POP_HL);
+            emit8(Z80_POP_HL);
+        }
     } else if (op == OP_SWAP) {
-        emit8(Z80_POP_HL);
-        emit8(Z80_EX_SP_HL);
-        emit8(Z80_PUSH_HL);
+        if (t1 != TY_F && t2 != TY_F) {
+            emit8(Z80_POP_HL);
+            emit8(Z80_EX_SP_HL);
+            emit8(Z80_PUSH_HL);
+        } else if (t1 == TY_F && t2 == TY_F) {
+            z80_pop_f_ac();
+            emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX);
+            z80_push_f_ac();
+            emit8(Z80_EXX); z80_push_f_ac(); emit8(Z80_EXX);
+        } else if (t1 == TY_F) {
+            z80_pop_f_ac();
+            emit8(Z80_POP_AF);
+            z80_push_f_ac();
+            emit8(Z80_PUSH_AF);
+        } else {
+            emit8(Z80_POP_AF);
+            z80_pop_f_ac();
+            emit8(Z80_PUSH_AF);
+            z80_push_f_ac();
+        }
     } else if (op == OP_OVER) {
-        emit8(Z80_POP_DE);
-        emit8(Z80_POP_HL);
-        emit8(Z80_PUSH_HL);
-        emit8(Z80_PUSH_DE);
-        emit8(Z80_PUSH_HL);
-    } else if (op == OP_ROT) {
-        /* ( a b c -- b c a ) */
-        emit8(Z80_POP_BC); /* c */
-        emit8(Z80_POP_DE); /* b */
-        emit8(Z80_POP_HL); /* a */
-        emit8(Z80_PUSH_DE);
-        emit8(Z80_PUSH_BC);
-        emit8(Z80_PUSH_HL);
+        if (t1 != TY_F && t2 != TY_F) {
+            emit8(Z80_POP_DE);
+            emit8(Z80_POP_HL);
+            emit8(Z80_PUSH_HL);
+            emit8(Z80_PUSH_DE);
+            emit8(Z80_PUSH_HL);
+        } else if (t1 == TY_F && t2 == TY_F) {
+            z80_pop_f_ac();
+            emit8(Z80_EXX); z80_pop_f_ac(); z80_push_f_ac(); emit8(Z80_EXX);
+            z80_push_f_ac();
+            emit8(Z80_EXX); z80_push_f_ac(); emit8(Z80_EXX);
+        } else if (t1 == TY_F) {
+            z80_pop_f_ac();
+            emit8(Z80_POP_AF);
+            emit8(Z80_PUSH_AF);
+            z80_push_f_ac();
+            emit8(Z80_PUSH_AF);
+        } else {
+            emit8(Z80_POP_AF);
+            z80_pop_f_ac();
+            z80_push_f_ac();
+            emit8(Z80_PUSH_AF);
+            z80_push_f_ac();
+        }
     }
 }
 
@@ -380,12 +534,61 @@ static void z80_emit_sdivmod(void) {
     z80_call(rt_sdivmod_addr);
 }
 
+static void z80_ensure_math48(void) {
+    u16 skip_patch;
+    u16 base_off;
+    u16 i;
+
+    if (rt_math48_addr != 0) return;
+
+    emit8(Z80_JP);
+    skip_patch = cb_pc();
+    emit16(0x0000);
+
+    rt_math48_addr = cb_cur_addr();
+    base_off = cb_pc();
+    for (i = 0; i < (u16)sizeof(be_z80_math48); i++) {
+        emit8(be_z80_math48[i]);
+    }
+    for (i = 0; i < BE_Z80_MATH48_RELOC_CNT; i++) {
+        u16 rel_off = be_z80_math48_relocs[i];
+        u16 rel_val = (u16)(be_z80_math48[rel_off] |
+                            ((u16)be_z80_math48[rel_off + 1] << 8));
+        patch16((u16)(base_off + rel_off), (u16)(rt_math48_addr + rel_val));
+    }
+
+    patch16(skip_patch, cb_cur_addr());
+}
+
+static void z80_call_math48(u16 entry_offset) {
+    z80_ensure_math48();
+    z80_call((u16)(rt_math48_addr + entry_offset));
+}
+
 static void z80_alu_op(u8 op) {
     if (op == OP_INVERT) {
         emit8(Z80_POP_HL);
         emit8(Z80_LD_A_L); emit8(Z80_CPL); emit8(Z80_LD_L_A);
         emit8(Z80_LD_A_H); emit8(Z80_CPL); emit8(Z80_LD_H_A);
         emit8(Z80_PUSH_HL);
+        return;
+    }
+
+    if (op == OP_FNEG) {
+        z80_pop_f_ac();
+        z80_call_math48(RT_FP_NEG);
+        z80_push_f_ac();
+        return;
+    }
+
+    if (op == OP_FADD || op == OP_FSUB || op == OP_FMUL || op == OP_FDIV) {
+        u16 entry = (op == OP_FADD) ? RT_FP_ADD :
+                    (op == OP_FSUB) ? RT_FP_SUB :
+                    (op == OP_FMUL) ? RT_FP_MUL : RT_FP_DIV;
+        emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* rhs -> AC' */
+        z80_pop_f_ac();                                  /* lhs -> AC */
+        z80_call_math48(entry);
+        z80_push_f_ac();
         return;
     }
 
@@ -442,6 +645,22 @@ static void z80_alu_op(u8 op) {
 }
 
 static void z80_cmp_op(u8 op) {
+    if (op == OP_FEQ || op == OP_FNE || op == OP_FLT || op == OP_FGT) {
+        if (op == OP_FGT) {
+            z80_pop_f_ac();                                  /* rhs -> AC */
+            emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* lhs -> AC' */
+        } else {
+            emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX); /* rhs -> AC' */
+            z80_pop_f_ac();                                  /* lhs -> AC */
+        }
+        z80_call_math48(RT_FP_CMP);
+        emit8_16(Z80_LD_HL_NN, 0xFFFF);
+        emit8_8((op == OP_FEQ) ? Z80_JR_Z : (op == OP_FNE) ? Z80_JR_NZ : Z80_JR_C, 3);
+        emit8_16(Z80_LD_HL_NN, 0x0000);
+        emit8(Z80_PUSH_HL);
+        return;
+    }
+
     emit8(Z80_POP_DE); /* rhs */
     emit8(Z80_POP_HL); /* lhs */
 
@@ -495,30 +714,61 @@ static void z80_cmp_op(u8 op) {
 }
 
 static void z80_mem_op(u8 op) {
-    if (op == OP_CFETCH) {
+    if (op == OP_U8FETCH) {
         emit8(Z80_POP_HL);
         emit8(Z80_LD_L_MHL);
         emit8_8(Z80_LD_H_N, 0x00);
         emit8(Z80_PUSH_HL);
-    } else if (op == OP_CSTORE) {
+    } else if (op == OP_I8FETCH) {
+        emit8(Z80_POP_HL);
+        emit8(Z80_LD_L_MHL);
+        emit8(Z80_LD_A_L);
+        emit8(Z80_RLA);
+        emit8(Z80_SBC_A_A);
+        emit8(Z80_LD_H_A);
+        emit8(Z80_PUSH_HL);
+    } else if (op == OP_I8STORE) {
         emit8(Z80_POP_HL); /* addr */
         emit8(Z80_POP_DE); /* val */
         emit8(Z80_LD_MHL_E);
-    } else if (op == OP_FETCH || op == OP_AFETCH) {
+    } else if (op == OP_FETCH || op == OP_AFETCH || op == OP_I16FETCH || op == OP_U16FETCH) {
         emit8(Z80_POP_HL);
         emit8(Z80_LD_E_MHL);
         emit8(Z80_INC_HL);
         emit8(Z80_LD_D_MHL);
         emit8(Z80_EX_DE_HL);
         emit8(Z80_PUSH_HL);
-    } else if (op == OP_STORE || op == OP_ASTORE) {
+    } else if (op == OP_STORE || op == OP_ASTORE || op == OP_I16STORE) {
         emit8(Z80_POP_HL); /* addr */
         emit8(Z80_POP_DE); /* val */
         emit8(Z80_LD_MHL_E);
         emit8(Z80_INC_HL);
         emit8(Z80_LD_MHL_D);
+    } else if (op == OP_FFETCH) {
+        emit8(Z80_POP_HL);
+        emit8(Z80_LD_E_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_D_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_C_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_B_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_A_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_H_MHL);
+        emit8(Z80_LD_L_A);
+        emit8(Z80_PUSH_HL);
+        emit8(Z80_PUSH_BC);
+        emit8(Z80_PUSH_DE);
+    } else if (op == OP_FSTORE) {
+        emit8(Z80_POP_HL);
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D);
     } else {
-        ir4_die("unimplemented Z80 float memory op");
+        ir4_die("unimplemented Z80 memory op");
     }
 }
 
@@ -532,8 +782,16 @@ static void z80_conv_op(u8 op) {
         emit8(Z80_PUSH_HL);
     } else if (op == OP_W2A || op == OP_A2W) {
         /* 16-bit word and 16-bit address are identical on Z80: zero-cost no-op */
+    } else if (op == OP_W2F) {
+        emit8(Z80_POP_HL);
+        z80_call_math48(RT_FP_ITOF);
+        z80_push_f_ac();
+    } else if (op == OP_F2W) {
+        z80_pop_f_ac();
+        z80_call_math48(RT_FP_FTOI);
+        emit8(Z80_PUSH_HL);
     } else {
-        ir4_die("unimplemented Z80 float conversion op");
+        ir4_die("unimplemented Z80 conversion op");
     }
 }
 
@@ -580,6 +838,7 @@ const Backend be_z80 = {
     z80_call,
     z80_push_w,
     z80_push_a,
+    z80_push_f,
     z80_push_data,
     z80_local_get,
     z80_local_set,

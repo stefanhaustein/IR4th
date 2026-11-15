@@ -1,0 +1,77 @@
+\ float.ir4 - Z80 math48 floating-point tests
+\ Expected main() return value: 0
+
+6 buffer: fbuf
+
+: assert_true { W: cond W: code -- W: }
+  cond 0 <> if 0 exit then
+  code
+;
+
+: add_mul_f { F: a F: b W: k | F: acc -- F: }
+  a b f+ to acc
+  acc k w>f f*
+;
+
+: main { | F: x -- W: }
+  \ Basic arithmetic & literals
+  F: 1.5 F: 2.25 f+ F: 3.75 f= 1 assert_true
+  dup 0 <> if exit then drop
+
+  F: 10.5 F: 3.25 f- F: 7.25 f= 2 assert_true
+  dup 0 <> if exit then drop
+
+  F: -2.5 F: 4.0 f* F: -10.0 f= 3 assert_true
+  dup 0 <> if exit then drop
+
+  F: 9.0 F: 2.0 f/ F: 4.5 f= 4 assert_true
+  dup 0 <> if exit then drop
+
+  F: 3.5 fnegate F: -3.5 f= 5 assert_true
+  dup 0 <> if exit then drop
+
+  \ Conversions w>f and f>w
+  -42 w>f F: -42.0 f= 6 assert_true
+  dup 0 <> if exit then drop
+
+  F: 123.75 f>w 123 = 7 assert_true
+  dup 0 <> if exit then drop
+
+  F: -17.25 f>w -17 = 8 assert_true
+  dup 0 <> if exit then drop
+
+  \ Comparisons (f=, f<>, f<, f>)
+  F: 1.5 F: 2.5 f< 9 assert_true
+  dup 0 <> if exit then drop
+
+  F: -3.0 F: -1.0 f< 10 assert_true
+  dup 0 <> if exit then drop
+
+  F: 5.0 F: 2.0 f> 11 assert_true
+  dup 0 <> if exit then drop
+
+  F: 1.0 F: 2.0 f<> 12 assert_true
+  dup 0 <> if exit then drop
+
+  \ Stack ops on F: and mixed (W: F:)
+  F: 3.0 dup f+ F: 6.0 f= 13 assert_true
+  dup 0 <> if exit then drop
+
+  F: 1.0 F: 2.0 swap f- F: 1.0 f= 14 assert_true
+  dup 0 <> if exit then drop
+
+  F: 2.0 F: 3.0 over f+ f+ F: 7.0 f= 15 assert_true
+  dup 0 <> if exit then drop
+
+  10 F: 2.5 swap w>f f+ F: 12.5 f= 16 assert_true
+  dup 0 <> if exit then drop
+
+  \ F: params, locals, and return value
+  F: 1.5 F: 2.5 3 add_mul_f to x
+  x F: 12.0 f= 17 assert_true
+  dup 0 <> if exit then drop
+
+  \ f! and f@
+  F: -6.25 fbuf f!
+  fbuf f@ F: -6.25 f= 18 assert_true
+;

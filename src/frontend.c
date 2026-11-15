@@ -166,28 +166,24 @@ const FuncSig *ir4_func_sig(u8 idx) {
 }
 
 static int handle_builtin(const char *tok) {
-    u8 a, b, c;
+    u8 a, b;
 
     /* Stack manipulation */
     if (strcmp(tok, "dup") == 0) {
         a = tpop(); tpush(a); tpush(a);
-        be->stack_op(OP_DUP); return 1;
+        be->stack_op(OP_DUP, a, 0); return 1;
     }
     if (strcmp(tok, "drop") == 0) {
-        tpop();
-        be->stack_op(OP_DROP); return 1;
+        a = tpop();
+        be->stack_op(OP_DROP, a, 0); return 1;
     }
     if (strcmp(tok, "swap") == 0) {
         b = tpop(); a = tpop(); tpush(b); tpush(a);
-        be->stack_op(OP_SWAP); return 1;
+        be->stack_op(OP_SWAP, b, a); return 1;
     }
     if (strcmp(tok, "over") == 0) {
         b = tpop(); a = tpop(); tpush(a); tpush(b); tpush(a);
-        be->stack_op(OP_OVER); return 1;
-    }
-    if (strcmp(tok, "rot") == 0) {
-        c = tpop(); b = tpop(); a = tpop(); tpush(b); tpush(c); tpush(a);
-        be->stack_op(OP_ROT); return 1;
+        be->stack_op(OP_OVER, b, a); return 1;
     }
 
     /* Word ALU & bitwise: ( W: W: -- W: ) */
@@ -239,9 +235,13 @@ static int handle_builtin(const char *tok) {
     if (strcmp(tok, "f>") == 0)  { tpop_expect(TY_F); tpop_expect(TY_F); tpush(TY_W); be->cmp_op(OP_FGT); return 1; }
 
     /* Memory load/store */
-    if (strcmp(tok, "c@") == 0) { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_CFETCH); return 1; }
-    if (strcmp(tok, "c!") == 0) { tpop_expect(TY_A); tpop_expect(TY_W); be->mem_op(OP_CSTORE); return 1; }
-    if (strcmp(tok, "@") == 0)  { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_FETCH); return 1; }
+    if (strcmp(tok, "i8@") == 0)  { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_I8FETCH); return 1; }
+    if (strcmp(tok, "u8@") == 0)  { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_U8FETCH); return 1; }
+    if (strcmp(tok, "i8!") == 0)  { tpop_expect(TY_A); tpop_expect(TY_W); be->mem_op(OP_I8STORE); return 1; }
+    if (strcmp(tok, "i16@") == 0) { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_I16FETCH); return 1; }
+    if (strcmp(tok, "u16@") == 0) { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_U16FETCH); return 1; }
+    if (strcmp(tok, "i16!") == 0) { tpop_expect(TY_A); tpop_expect(TY_W); be->mem_op(OP_I16STORE); return 1; }
+    if (strcmp(tok, "@") == 0)    { tpop_expect(TY_A); tpush(TY_W); be->mem_op(OP_FETCH); return 1; }
     if (strcmp(tok, "!") == 0)  { tpop_expect(TY_A); tpop_expect(TY_W); be->mem_op(OP_STORE); return 1; }
     if (strcmp(tok, "a@") == 0) { tpop_expect(TY_A); tpush(TY_A); be->mem_op(OP_AFETCH); return 1; }
     if (strcmp(tok, "a!") == 0) { tpop_expect(TY_A); tpop_expect(TY_A); be->mem_op(OP_ASTORE); return 1; }
@@ -325,7 +325,7 @@ static void compile_word(void) {
             if (bsp != 0) ir4_die("unclosed control block at ';'");
             if (!unreachable) {
                 check_return_stack();
-                be->fn_end(param_cnt, local_count, cur_out_count);
+                be->fn_end(sig, locals, local_count);
             }
             return;
         }
@@ -333,13 +333,13 @@ static void compile_word(void) {
         if (strcmp(tok, "exit") == 0) {
             if (!unreachable) {
                 check_return_stack();
-                be->fn_end(param_cnt, local_count, cur_out_count);
+                be->fn_end(sig, locals, local_count);
                 unreachable = 1;
             }
             continue;
         }
 
-        /* Prefixed typed literal: A: 0x0400 */
+        /* Prefixed typed literal: A: 0x0400, F: 3.14 */
         ty = parse_type_tok(tok);
         if (ty != TY_NONE) {
             if (!next_tok(tok)) ir4_die("expected literal after type prefix");
@@ -352,7 +352,13 @@ static void compile_word(void) {
                 tpush(TY_W);
                 be->push_w(num_val);
             } else {
-                ir4_die("F: literals not yet implemented in v0.1 emitter");
+                char *endp;
+                double fval;
+                if (tok[0] == '\0') ir4_die("expected float literal after F:");
+                fval = strtod(tok, &endp);
+                if (*endp != '\0') ir4_die("expected float literal after F:");
+                tpush(TY_F);
+                be->push_f(fval);
             }
             continue;
         }

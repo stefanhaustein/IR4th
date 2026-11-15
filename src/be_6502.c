@@ -86,10 +86,10 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
     }
 }
 
-static void m6502_fn_end(u8 param_cnt, u8 total_locals, u8 out_count) {
+static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_locals) {
     u8 i;
-    (void)param_cnt;
-    (void)out_count;
+    (void)sig;
+    (void)locals;
 
     /* Restore caller's ZP local slots in reverse order */
     for (i = total_locals; i > 0; i--) {
@@ -119,6 +119,11 @@ static void m6502_push_w(i32 val) {
 
 static void m6502_push_a(u32 val) {
     m6502_push_w((i32)val);
+}
+
+static void m6502_push_f(double val) {
+    (void)val;
+    ir4_die("unimplemented 6502 float literal");
 }
 
 static void m6502_push_data(u16 offset) {
@@ -154,7 +159,10 @@ static void m6502_local_set(u8 slot, u8 type) {
     m6502_inx();
 }
 
-static void m6502_stack_op(u8 op) {
+static void m6502_stack_op(u8 op, u8 t1, u8 t2) {
+    if (t1 == TY_F || t2 == TY_F) {
+        ir4_die("unimplemented 6502 float stack op");
+    }
     if (op == OP_DUP) {
         m6502_dex();
         m6502_dex();
@@ -183,22 +191,6 @@ static void m6502_stack_op(u8 op) {
         m6502_lda_zpx(ZP_STACK + 4);
         m6502_sta_zpx(ZP_STACK);
         m6502_lda_zpx(ZP_STACK + 5);
-        m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_ROT) {
-        m6502_ldy_zpx(ZP_STACK + 4);
-        m6502_lda_zpx(ZP_STACK + 2);
-        m6502_sta_zpx(ZP_STACK + 4);
-        m6502_lda_zpx(ZP_STACK);
-        m6502_sta_zpx(ZP_STACK + 2);
-        m6502_tya();
-        m6502_sta_zpx(ZP_STACK);
-
-        m6502_ldy_zpx(ZP_STACK + 5);
-        m6502_lda_zpx(ZP_STACK + 3);
-        m6502_sta_zpx(ZP_STACK + 5);
-        m6502_lda_zpx(ZP_STACK + 1);
-        m6502_sta_zpx(ZP_STACK + 3);
-        m6502_tya();
         m6502_sta_zpx(ZP_STACK + 1);
     }
 }
@@ -369,23 +361,30 @@ static void m6502_mem_op(u8 op) {
     m6502_sta_zp(ZP_SCRATCH + 1);
     m6502_ldy_imm(0x00);
 
-    if (op == OP_CFETCH) {
+    if (op == OP_U8FETCH) {
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK);
         m6502_lda_imm(0x00);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_CSTORE) {
+    } else if (op == OP_I8FETCH) {
+        m6502_lda_indy(ZP_SCRATCH);
+        m6502_sta_zpx(ZP_STACK);
+        emit8_8(0x10, 0x01); /* BPL +1 */
+        emit8(0x88);         /* DEY */
+        emit8(0x98);         /* TYA */
+        m6502_sta_zpx(ZP_STACK + 1);
+    } else if (op == OP_I8STORE) {
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sta_indy(ZP_SCRATCH);
         m6502_inx(); m6502_inx();
         m6502_inx(); m6502_inx();
-    } else if (op == OP_FETCH || op == OP_AFETCH) {
+    } else if (op == OP_FETCH || op == OP_AFETCH || op == OP_I16FETCH || op == OP_U16FETCH) {
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK);
         emit8(0xC8); /* INY */
         m6502_lda_indy(ZP_SCRATCH);
         m6502_sta_zpx(ZP_STACK + 1);
-    } else if (op == OP_STORE || op == OP_ASTORE) {
+    } else if (op == OP_STORE || op == OP_ASTORE || op == OP_I16STORE) {
         m6502_lda_zpx(ZP_STACK + 2);
         m6502_sta_indy(ZP_SCRATCH);
         emit8(0xC8); /* INY */
@@ -459,6 +458,7 @@ const Backend be_6502 = {
     m6502_call,
     m6502_push_w,
     m6502_push_a,
+    m6502_push_f,
     m6502_push_data,
     m6502_local_get,
     m6502_local_set,

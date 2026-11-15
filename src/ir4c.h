@@ -41,8 +41,7 @@ enum {
     OP_DUP = 0,
     OP_DROP,
     OP_SWAP,
-    OP_OVER,
-    OP_ROT
+    OP_OVER
 };
 
 /* ALU & bitwise operations */
@@ -95,8 +94,12 @@ enum {
 
 /* Memory operations */
 enum {
-    OP_CFETCH = 0,
-    OP_CSTORE,
+    OP_I8FETCH = 0,
+    OP_U8FETCH,
+    OP_I8STORE,
+    OP_I16FETCH,
+    OP_U16FETCH,
+    OP_I16STORE,
     OP_FETCH,
     OP_STORE,
     OP_AFETCH,
@@ -137,16 +140,17 @@ typedef struct {
 
     u16  (*cur_addr)(void);
     void (*fn_begin)(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals);
-    void (*fn_end)(u8 param_cnt, u8 total_locals, u8 out_count);
+    void (*fn_end)(const FuncSig *sig, const LocalVar *locals, u8 total_locals);
     void (*call)(u16 target_addr);
 
     void (*push_w)(i32 val);
     void (*push_a)(u32 val);
+    void (*push_f)(double val);
     void (*push_data)(u16 data_offset);
     void (*local_get)(u8 slot, u8 type);
     void (*local_set)(u8 slot, u8 type);
 
-    void (*stack_op)(u8 op);
+    void (*stack_op)(u8 op, u8 t1, u8 t2);
     void (*alu_op)(u8 op);
     void (*cmp_op)(u8 op);
     void (*mem_op)(u8 op);

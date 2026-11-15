@@ -22,7 +22,7 @@ IR4th is designed so that word-only programs are directly executable under **Gfo
 
 ## 2. Type System (Monomorphic v0.3)
 
-IR4th v0.3 defines **three stack types** on a **single unified stack** and **no operator polymorphism**. Nothing smaller than a native machine word `W:` exists on the stack; byte-level memory access (`c@` and `c!`) implicitly widens to and truncates from `W:`, matching standard Forth and Gforth.
+IR4th v0.3 defines **three stack types** on a **single unified stack** and **no operator polymorphism**. Nothing smaller than a native machine word `W:` exists on the stack; byte- and 16-bit memory accesses (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) implicitly widen to and truncate from `W:`.
 
 | Type Token | Name | Width & Semantics | Z80 / 6502 | ARM32 / RISC-V32 | ARM64 / x86-64 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -86,7 +86,6 @@ In stack-effect notation `( before -- after )`, the rightmost item is the top of
 | `drop` | `( t -- )` | Discard top stack item |
 | `swap` | `( t1 t2 -- t2 t1 )` | Exchange top two stack items |
 | `over` | `( t1 t2 -- t1 t2 t1 )` | Copy second stack item to top |
-| `rot` | `( t1 t2 t3 -- t2 t3 t1 )` | Rotate third item to top |
 
 ### 4.2 Word Arithmetic & Bitwise Operations (`W:`)
 
@@ -138,12 +137,16 @@ All comparisons consume two values and push a boolean flag of type **`W:`** (`-1
 | `f=` , `f<>` , `f<` , `f>` | `( F: F: -- W: )` | Floating-point comparisons |
 
 ### 4.6 Memory Load & Store (Standard Forth Operators)
-Byte operations (`c@`, `c!`) implicitly zero-extend to `W:` on load and truncate the low 8 bits of `W:` on store.
+Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) widen to `W:` on load and truncate the low bits of `W:` on store.
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `c@` | `( A: -- W: )` | Fetch 8-bit byte from address, zero-extended to `W:` |
-| `c!` | `( W: A: -- )` | Store low 8 bits of `W:` to address |
+| `i8@` | `( A: -- W: )` | Fetch signed 8-bit byte from address, sign-extended to `W:` |
+| `u8@` | `( A: -- W: )` | Fetch unsigned 8-bit byte from address, zero-extended to `W:` |
+| `i8!` | `( W: A: -- )` | Store low 8 bits of `W:` to address |
+| `i16@` | `( A: -- W: )` | Fetch signed 16-bit integer from address, sign-extended to `W:` |
+| `u16@` | `( A: -- W: )` | Fetch unsigned 16-bit integer from address, zero-extended to `W:` |
+| `i16!` | `( W: A: -- )` | Store low 16 bits of `W:` to address |
 | `@` | `( A: -- W: )` | Fetch native word (`W:`) from address |
 | `!` | `( W: A: -- )` | Store native word (`W:`) to address |
 | `a@` | `( A: -- A: )` | Fetch target-width pointer (`A:`) from address |
@@ -216,7 +219,7 @@ fvariable ir4-ftmp
   begin
     i len u<
   while
-    val dst i a+ c!
+    val dst i a+ i8!
     i 1 + to i
   repeat
   dst len a+
@@ -229,7 +232,7 @@ fvariable ir4-ftmp
   begin
     i count <
   while
-    ptr i a+ c@ sext
+    ptr i a+ i8@
     acc + to acc
     i 1 + to i
   repeat

@@ -1,0 +1,21 @@
+IR4th
+Copyright (c) 2026 Stefan Haustein
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+See GPLv3 for the full text of the GNU General Public License v3.0.
+
+Third-Party Components (Z80 math48)
+-----------------------------------
+Optional Z80 48-bit floating-point support via math48 (tools/math48.asm and
+src/be_z80_math48.h) is NOT covered by the GPLv3+. math48 is copyrighted by
+Anders Hejlsberg (1980) and is subject to its own terms.
+
+Compiled Output Exception
+-------------------------
+Standalone binaries, machine code, and runtime stubs emitted by ir4c are not
+covered by the GNU General Public License. You may distribute compiled output
+under any license of your choice.

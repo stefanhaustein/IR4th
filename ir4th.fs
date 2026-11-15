@@ -63,6 +63,12 @@ variable ir4-mode \ 0=inputs, 1=locals, 2=outputs
 : a@ @ ;
 : a! ! ;
 : sext $FF and dup $80 and if -256 or then ;
+: i8@ c@ sext ;
+: u8@ c@ ;
+: i8! c! ;
+: i16@ sw@ ;
+: u16@ uw@ ;
+: i16! w! ;
 : w>a ;
 : a>w ;
 : arshift 0 ?do 2/ loop ;
