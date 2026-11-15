@@ -42,15 +42,17 @@ test: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 test
 	./$(TARGET) -t z80   -o $(BUILD)/data_z80.bin      tests/data.ir4
 	./$(TARGET) -t 6502  -o $(BUILD)/data_6502.bin     tests/data.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/data_arm64.bin  --run tests/data.ir4
+	./$(TARGET) -t arm64 -o $(BUILD)/ext_arm64.bin   --run tests/ext.ir4
 
-test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4
-	./$(TARGET) -t z80 --cpm -o $(BUILD)/fib.com    tests/fib.ir4
-	./$(TARGET) -t z80 --cpm -o $(BUILD)/core.com   tests/core.ir4
-	./$(TARGET) -t z80 --cpm -o $(BUILD)/muldiv.com tests/muldiv.ir4
-	./$(TARGET) -t z80 --cpm -o $(BUILD)/mem.com    tests/mem.ir4
-	./$(TARGET) -t z80 --cpm -o $(BUILD)/float.com  tests/float.ir4
-	./$(TARGET) -t z80 --cpm -o $(BUILD)/req.com    tests/req.ir4
-	./$(TARGET) -t z80 --cpm -o $(BUILD)/data.com   tests/data.ir4
+test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
+	./$(TARGET) -t z80 --cpm -o build/fib.com    tests/fib.ir4
+	./$(TARGET) -t z80 --cpm -o build/core.com   tests/core.ir4
+	./$(TARGET) -t z80 --cpm -o build/muldiv.com tests/muldiv.ir4
+	./$(TARGET) -t z80 --cpm -o build/mem.com    tests/mem.ir4
+	./$(TARGET) -t z80 --cpm -o build/float.com  tests/float.ir4
+	./$(TARGET) -t z80 --cpm -o build/req.com    tests/req.ir4
+	./$(TARGET) -t z80 --cpm -o build/data.com   tests/data.ir4
+	./$(TARGET) -t z80 --cpm -o build/ext.com    tests/ext.ir4
 	@if command -v tnylpo >/dev/null 2>&1; then \
 		out=$$(cd $(BUILD) && tnylpo fib.com | tr -d '\r\n'); \
 		echo "tnylpo fib.com -> $$out"; \
@@ -73,11 +75,14 @@ test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 
 		out=$$(cd $(BUILD) && tnylpo data.com | tr -d '\r\n'); \
 		echo "tnylpo data.com -> $$out"; \
 		test "$$out" = "0"; \
+		out=$$(cd $(BUILD) && tnylpo ext.com | tr -d '\r\n'); \
+		echo "tnylpo ext.com -> $$out"; \
+		test "$$out" = "OK0"; \
 	else \
 		echo "tnylpo not found; skipping Z80 execution"; \
 	fi
 
-test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4
+test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
 	@out=$$(gforth ir4th.fs tests/fib.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth fib.ir4 -> $$out"; \
 	test "$$out" = "110"
@@ -87,12 +92,15 @@ test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 t
 	@out=$$(gforth ir4th.fs tests/mem.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth mem.ir4 -> $$out"; \
 	test "$$out" = "0"
-	@out=$$(cd tests && gforth ../ir4th.fs req.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
+	@out=$$(gforth ir4th.fs tests/req.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth req.ir4 -> $$out"; \
 	test "$$out" = "0"
 	@out=$$(gforth ir4th.fs tests/data.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth data.ir4 -> $$out"; \
 	test "$$out" = "0"
+	@out=$$(gforth ir4th.fs tests/ext.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
+	echo "gforth ext.ir4 -> $$out"; \
+	test "$$out" = "OK0"
 
 rt-z80:
 	python3 tools/gen_math48.py --input tools/math48.asm --output src/be_z80_math48.h

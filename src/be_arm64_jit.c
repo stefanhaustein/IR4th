@@ -5,6 +5,12 @@
 #include <sys/mman.h>
 #include <pthread.h>
 #include <libkern/OSCacheControl.h>
+#include <dlfcn.h>
+
+static void jit_patch32(u16 offset, u32 insn) {
+    patch16(offset, (u16)(insn & 0xFFFFU));
+    patch16((u16)(offset + 2), (u16)((insn >> 16) & 0xFFFFU));
+}
 
 /* Tiny ARM64 C-to-IR4th wrapper emitted at the end of code_buf:
  *   STP X29, X30, [SP, #-16]!
@@ -65,6 +71,25 @@ void be_arm64_run_jit(u8 main_idx) {
         }
         if (cb_init_data_size() > 0) {
             memcpy(data_mem, cb_init_data(), cb_init_data_size());
+        }
+    }
+
+    {
+        u16 i;
+        for (i = 0; i < cb_extern_reloc_count(); i++) {
+            u16 off;
+            const char *name = cb_extern_reloc_name(i, &off);
+            void *sym = dlsym(RTLD_DEFAULT, name);
+            unsigned long addr;
+            if (!sym) {
+                fprintf(stderr, "JIT: unresolved extern '%s'\n", name);
+                exit(1);
+            }
+            addr = (unsigned long)sym;
+            jit_patch32(off,      (u32)(0xD2800009UL | (((addr >>  0) & 0xFFFFUL) << 5)));
+            jit_patch32(off + 4,  (u32)(0xF2A00009UL | (((addr >> 16) & 0xFFFFUL) << 5)));
+            jit_patch32(off + 8,  (u32)(0xF2C00009UL | (((addr >> 32) & 0xFFFFUL) << 5)));
+            jit_patch32(off + 12, (u32)(0xF2E00009UL | (((addr >> 48) & 0xFFFFUL) << 5)));
         }
     }
 

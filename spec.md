@@ -14,7 +14,7 @@ IR4th is designed so that word-only programs are directly executable under **Gfo
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token ending with a trailing colon (`:`) is strictly a type specifier (`W:`, `A:`, `F:`).
-* **Keywords:** Reserved syntax and control-flow tokens (`:`, `;`, `require`, `buffer:`, `create`, `i8,`, `i16,`, `,`, `align`, `to`, `exit`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `{`, `}`, `|`, `--`).
+* **Keywords:** Reserved syntax and control-flow tokens (`:`, `;`, `require`, `extern`, `buffer:`, `create`, `i8,`, `i16,`, `,`, `align`, `to`, `exit`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `{`, `}`, `|`, `--`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a trailing colon that is not a keyword.
 
@@ -95,7 +95,23 @@ require <filename>
 ```
 
 * `<filename>` is resolved relative to the directory of the file containing `require`.
+* For relative paths, `require` searches in order:
+  1. `<dir>/<cpu>/<platform>/<filename>` (when `--platform <name>` or `--cpm` is active, e.g. `z80/cpm/io.ir4`)
+  2. `<dir>/<cpu>/<filename>` (e.g. `arm64/io.ir4`, `z80/math.ir4`, or `gforth/io.ir4` under `ir4th.fs`)
+  3. `<dir>/<filename>` (portable fallback)
 * Repeated `require` directives for an already-loaded file path are ignored.
+
+### 3.4 External Functions (`extern`)
+Top-level `extern` declares an external platform/OS function:
+
+```forth
+extern putchar { W: c -- W: }                  \ ARM64 JIT (dlsym, C ABI)
+extern bdos 0x0005 { W: C W: DE -- W: A }      \ Z80 CP/M (fixed addr + registers)
+```
+
+* Signatures use `{ inputs -- outputs }` without `|` locals and with at most 1 return value.
+* On ARM64 JIT (`--run`), no address is given; symbols are resolved via `dlsym` and called using the ARM64 C ABI (`X0..X7`, `D0..D7`).
+* On 16-bit targets (Z80 / 6502), a fixed 16-bit address is required and parameter/return names specify CPU registers (`A, B, C, D, E, H, L, BC, DE, HL` on Z80; `A, Y` on 6502).
 
 ---
 

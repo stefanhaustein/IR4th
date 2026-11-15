@@ -8,14 +8,21 @@ typedef struct {
     u16 data_offset;
 } DataReloc;
 
-static u8        code_buf[MAX_CODE];
-static u16       code_pc   = 0;
-static u16       base_addr = 0x0100; /* Default: CP/M .COM load address */
-static u8        data_buf[MAX_DATA];
-static u16       data_size = 0;
-static u16       data_init_size = 0;
-static DataReloc relocs[MAX_RELOCS];
-static u16       reloc_cnt = 0;
+typedef struct {
+    u16  patch_offset;
+    char name[MAX_TOK];
+} ExternReloc;
+
+static u8          code_buf[MAX_CODE];
+static u16         code_pc   = 0;
+static u16         base_addr = 0x0100; /* Default: CP/M .COM load address */
+static u8          data_buf[MAX_DATA];
+static u16         data_size = 0;
+static u16         data_init_size = 0;
+static DataReloc   relocs[MAX_RELOCS];
+static u16         reloc_cnt = 0;
+static ExternReloc ext_relocs[MAX_RELOCS];
+static u16         ext_reloc_cnt = 0;
 
 void cb_reset(u16 base) {
     code_pc        = 0;
@@ -23,6 +30,7 @@ void cb_reset(u16 base) {
     data_size      = 0;
     data_init_size = 0;
     reloc_cnt      = 0;
+    ext_reloc_cnt  = 0;
     memset(data_buf, 0, sizeof(data_buf));
 }
 
@@ -169,4 +177,27 @@ void cb_patch_data_relocs(u16 data_base) {
             patch16(relocs[i].off1, addr);
         }
     }
+}
+
+void cb_add_extern_reloc(u16 patch_offset, const char *name) {
+    size_t len;
+    if (ext_reloc_cnt >= MAX_RELOCS) {
+        ir4_die("too many extern relocations");
+    }
+    len = strlen(name);
+    if (len >= MAX_TOK) {
+        ir4_die("extern name too long");
+    }
+    ext_relocs[ext_reloc_cnt].patch_offset = patch_offset;
+    memcpy(ext_relocs[ext_reloc_cnt].name, name, len + 1);
+    ext_reloc_cnt++;
+}
+
+u16 cb_extern_reloc_count(void) {
+    return ext_reloc_cnt;
+}
+
+const char *cb_extern_reloc_name(u16 idx, u16 *patch_offset) {
+    *patch_offset = ext_relocs[idx].patch_offset;
+    return ext_relocs[idx].name;
 }

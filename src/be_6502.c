@@ -107,6 +107,42 @@ static void m6502_call(u16 target_addr) {
     m6502_jsr(target_addr);
 }
 
+static void m6502_call_extern(const FuncSig *sig) {
+    u8 i;
+    if (!sig->has_addr) ir4_die("6502 extern requires a fixed address");
+    if (sig->out_count > 1) ir4_die("6502 extern supports at most 1 return value");
+
+    for (i = sig->in_count; i > 0; i--) {
+        const char *r = sig->in_regs[i - 1];
+        if (strcmp(r, "A") == 0) {
+            m6502_lda_zpx(ZP_STACK);
+            m6502_inx(); m6502_inx();
+        } else if (strcmp(r, "Y") == 0) {
+            m6502_ldy_zpx(ZP_STACK);
+            m6502_inx(); m6502_inx();
+        } else {
+            ir4_die("6502 extern only supports A and Y registers");
+        }
+    }
+
+    m6502_jsr(sig->addr);
+
+    if (sig->out_count == 1) {
+        const char *r = sig->out_reg;
+        m6502_dex(); m6502_dex();
+        if (strcmp(r, "A") == 0) {
+            m6502_sta_zpx(ZP_STACK);
+        } else if (strcmp(r, "Y") == 0) {
+            emit8(0x98); /* TYA */
+            m6502_sta_zpx(ZP_STACK);
+        } else {
+            ir4_die("6502 extern return only supports A and Y registers");
+        }
+        m6502_lda_imm(0x00);
+        m6502_sta_zpx(ZP_STACK + 1);
+    }
+}
+
 static void m6502_push_w(i32 val) {
     u16 v = (u16)val;
     m6502_dex();
@@ -528,6 +564,7 @@ const Backend be_6502 = {
     m6502_fn_begin,
     m6502_fn_end,
     m6502_call,
+    m6502_call_extern,
     m6502_push_w,
     m6502_push_a,
     m6502_push_f,

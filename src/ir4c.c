@@ -2,13 +2,14 @@
 #include "ir4c.h"
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64] [-b hex_addr] [-o out.bin] [--run] [--cpm] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64] [-b hex_addr] [-o out.bin] [--platform name] [--run] [--cpm] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {
     const Backend *be = &be_z80;
     const char *in_path = NULL;
     const char *out_path = "out.bin";
+    const char *platform = NULL;
     u16 base = 0x0100;
     int base_set = 0;
     int run_jit = 0;
@@ -40,10 +41,14 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             i++;
             out_path = argv[i];
+        } else if (strcmp(argv[i], "--platform") == 0 && i + 1 < argc) {
+            i++;
+            platform = argv[i];
         } else if (strcmp(argv[i], "--run") == 0) {
             run_jit = 1;
         } else if (strcmp(argv[i], "--cpm") == 0) {
             cpm_stub = 1;
+            if (!platform) platform = "cpm";
         } else if (argv[i][0] == '-') {
             print_usage();
             return 1;
@@ -73,7 +78,7 @@ int main(int argc, char **argv) {
     if (cpm_stub) {
         be_z80_cpm_begin();
     }
-    ir4_compile_stream(in_fp, in_path, be);
+    ir4_compile_stream(in_fp, in_path, be, platform);
     fclose(in_fp);
 
     if (cpm_stub) {

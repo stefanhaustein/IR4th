@@ -29,6 +29,7 @@ static u8             src_depth = 0;
 static char           seen_files[MAX_INCLUDES][MAX_PATH];
 static u8             seen_count = 0;
 static const Backend *be;
+static const char    *platform_name = NULL;
 
 static FuncSig   funcs[MAX_SYMS];
 static u8        func_count = 0;
@@ -142,30 +143,54 @@ static void resolve_path(const char *base_path, const char *rel, char *out, size
 }
 
 static void push_require(const char *name) {
+    char cands[3][MAX_PATH];
+    int n_cands = 0;
+    int c;
     char path[MAX_PATH];
     u8 i;
-    FILE *fp;
+    FILE *fp = NULL;
 
-    resolve_path(src_stack[src_depth - 1].path, name, path, sizeof(path));
-
-    for (i = 0; i < seen_count; i++) {
-        if (strcmp(seen_files[i], path) == 0) {
-            return;
+    if (name[0] != '/') {
+        if (platform_name != NULL && platform_name[0] != '\0') {
+            if (strlen(be->name) + 1 + strlen(platform_name) + 1 + strlen(name) >= MAX_PATH) {
+                ir4_die("required file path too long");
+            }
+            sprintf(cands[n_cands++], "%s/%s/%s", be->name, platform_name, name);
         }
+        if (strlen(be->name) + 1 + strlen(name) >= MAX_PATH) {
+            ir4_die("required file path too long");
+        }
+        sprintf(cands[n_cands++], "%s/%s", be->name, name);
     }
-    if (seen_count >= MAX_INCLUDES) {
-        ir4_die("too many required files");
+    if (strlen(name) >= MAX_PATH) {
+        ir4_die("required file path too long");
     }
-    if (src_depth >= MAX_INCLUDE_DEPTH) {
-        ir4_die("require nesting too deep");
+    strcpy(cands[n_cands++], name);
+
+    for (c = 0; c < n_cands; c++) {
+        resolve_path(src_stack[src_depth - 1].path, cands[c], path, sizeof(path));
+        for (i = 0; i < seen_count; i++) {
+            if (strcmp(seen_files[i], path) == 0) {
+                return;
+            }
+        }
+        fp = fopen(path, "r");
+        if (fp) break;
     }
 
-    fp = fopen(path, "r");
     if (!fp) {
         const SrcFile *cur = &src_stack[src_depth - 1];
         fprintf(stderr, "ir4c error (%s:%u): cannot open required file '%s'\n",
-                cur->path, cur->line_num, path);
+                cur->path, cur->line_num, name);
         exit(1);
+    }
+    if (seen_count >= MAX_INCLUDES) {
+        fclose(fp);
+        ir4_die("too many required files");
+    }
+    if (src_depth >= MAX_INCLUDE_DEPTH) {
+        fclose(fp);
+        ir4_die("require nesting too deep");
     }
 
     memcpy(seen_files[seen_count++], path, strlen(path) + 1);
@@ -381,36 +406,38 @@ static int handle_builtin(const char *tok) {
     return 0;
 }
 
-static void compile_word(void) {
+static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
     char tok[MAX_TOK];
-    FuncSig *sig;
     u8 param_cnt = 0;
     u8 in_locals = 0;
     u8 in_outs = 0;
-    u8 unreachable = 0;
-    i32 num_val;
-
-    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
-    sig = &funcs[func_count++];
-    memset(sig, 0, sizeof(FuncSig));
-
-    if (!next_tok(sig->name)) ir4_die("expected word name after ':'");
-    if (!next_tok(tok) || strcmp(tok, "{") != 0) ir4_die("expected '{' after word name");
 
     local_count = 0;
     cur_out_count = 0;
-    tsp = 0;
-    bsp = 0;
 
-    /* Parse { inputs | locals -- outputs } */
+    /* Parse inputs | locals -- outputs } (after '{' has been consumed) */
     while (next_tok(tok)) {
         u8 ty;
-        if (strcmp(tok, "}") == 0) break;
-        if (strcmp(tok, "|") == 0) { in_locals = 1; continue; }
+        if (strcmp(tok, "}") == 0) {
+            if (param_cnt_out) *param_cnt_out = param_cnt;
+            return;
+        }
+        if (strcmp(tok, "|") == 0) {
+            if (!allow_locals) ir4_die("locals '|' not allowed in extern signature");
+            in_locals = 1;
+            continue;
+        }
         if (strcmp(tok, "--") == 0) { in_outs = 1; continue; }
 
         ty = parse_type_tok(tok);
-        if (ty == TY_NONE) ir4_die("expected type token (W:, A:, F:) in signature");
+        if (ty == TY_NONE) {
+            if (!allow_locals && in_outs && cur_out_count == 1 && sig->out_reg[0] == '\0') {
+                size_t len = strlen(tok);
+                memcpy(sig->out_reg, tok, len + 1);
+                continue;
+            }
+            ir4_die("expected type token (W:, A:, F:) in signature");
+        }
 
         if (in_outs) {
             if (cur_out_count >= 4) ir4_die("too many return types");
@@ -429,12 +456,35 @@ static void compile_word(void) {
             locals[local_count].slot = local_count;
             if (!in_locals) {
                 if (sig->in_count >= 8) ir4_die("too many parameters");
-                sig->in_types[sig->in_count++] = ty;
+                sig->in_types[sig->in_count] = ty;
+                memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
+                       strlen(locals[local_count].name) + 1);
+                sig->in_count++;
                 param_cnt++;
             }
             local_count++;
         }
     }
+
+    ir4_die("unexpected EOF in signature (missing '}')");
+}
+
+static void compile_word(void) {
+    char tok[MAX_TOK];
+    FuncSig *sig;
+    u8 param_cnt = 0;
+    u8 unreachable = 0;
+    i32 num_val;
+
+    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+    sig = &funcs[func_count++];
+    memset(sig, 0, sizeof(FuncSig));
+
+    if (!next_tok(sig->name)) ir4_die("expected word name after ':'");
+    if (!next_tok(tok) || strcmp(tok, "{") != 0) ir4_die("expected '{' after word name");
+    tsp = 0;
+    bsp = 0;
+    parse_sig_body(sig, &param_cnt, 1);
 
     sig->addr = be->cur_addr();
     be->fn_begin(sig->name, param_cnt, locals, local_count);
@@ -628,7 +678,11 @@ static void compile_word(void) {
             for (i = 0; i < callee->out_count; i++) {
                 tpush(callee->out_types[i]);
             }
-            be->call(callee->addr);
+            if (callee->is_extern) {
+                be->call_extern(callee);
+            } else {
+                be->call(callee->addr);
+            }
             continue;
         }
 
@@ -643,7 +697,8 @@ static void compile_word(void) {
     ir4_die("unexpected EOF inside word definition (missing ';')");
 }
 
-void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be) {
+void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
+                        const char *platform) {
     char tok[MAX_TOK];
     i32 num_val;
     i32 ct_stack[MAX_STACK];
@@ -661,6 +716,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be) {
     memcpy(seen_files[0], root_path, plen + 1);
 
     be = target_be;
+    platform_name = platform;
     func_count = 0;
     buffer_count = 0;
 
@@ -668,6 +724,29 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be) {
         if (strcmp(tok, ":") == 0) {
             if (ct_sp != 0) ir4_die("unconsumed integer at top level");
             compile_word();
+        } else if (strcmp(tok, "extern") == 0) {
+            FuncSig *sig;
+            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
+            if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+            sig = &funcs[func_count++];
+            memset(sig, 0, sizeof(FuncSig));
+            sig->is_extern = 1;
+            if (!next_tok(sig->name)) ir4_die("expected word name after 'extern'");
+            if (!next_tok(tok)) ir4_die("expected address or '{' after extern name");
+            if (strcmp(tok, "{") == 0) {
+                sig->has_addr = 0;
+            } else if (parse_int(tok, &num_val)) {
+                if (num_val < 0 || num_val > 0xFFFF) ir4_die("invalid extern address");
+                sig->addr = (u16)num_val;
+                sig->has_addr = 1;
+                if (!next_tok(tok) || strcmp(tok, "{") != 0) {
+                    ir4_die("expected '{' after extern address");
+                }
+            } else {
+                ir4_die("expected address or '{' after extern name");
+            }
+            parse_sig_body(sig, NULL, 0);
+            if (sig->out_count > 1) ir4_die("extern supports at most 1 return value");
         } else if (strcmp(tok, "require") == 0) {
             if (ct_sp != 0) ir4_die("unconsumed integer at top level");
             if (!next_tok(tok)) ir4_die("expected filename after 'require'");

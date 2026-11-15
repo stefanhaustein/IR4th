@@ -129,9 +129,13 @@ typedef struct {
 typedef struct {
     char name[MAX_TOK];
     u16  addr;
+    u8   is_extern;
+    u8   has_addr;
     u8   in_types[8];
+    char in_regs[8][MAX_TOK];
     u8   in_count;
     u8   out_types[4];
+    char out_reg[MAX_TOK];
     u8   out_count;
 } FuncSig;
 
@@ -145,6 +149,7 @@ typedef struct {
     void (*fn_begin)(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals);
     void (*fn_end)(const FuncSig *sig, const LocalVar *locals, u8 total_locals);
     void (*call)(u16 target_addr);
+    void (*call_extern)(const FuncSig *sig);
 
     void (*push_w)(i32 val);
     void (*push_a)(u32 val);
@@ -182,10 +187,14 @@ u16       cb_init_data_size(void);
 void      cb_add_data_reloc(u16 patch_offset, u16 data_offset);
 void      cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset);
 void      cb_patch_data_relocs(u16 data_base);
+void        cb_add_extern_reloc(u16 patch_offset, const char *name);
+u16         cb_extern_reloc_count(void);
+const char *cb_extern_reloc_name(u16 idx, u16 *patch_offset);
 
 /* Frontend entry points (implemented in frontend.c) */
 void            ir4_die(const char *msg);
-void            ir4_compile_stream(FILE *in, const char *path, const Backend *target_be);
+void            ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
+                                   const char *platform);
 int             ir4_find_func(const char *name);
 u16             ir4_func_addr(u8 idx);
 const FuncSig  *ir4_func_sig(u8 idx);

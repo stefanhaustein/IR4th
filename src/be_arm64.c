@@ -109,6 +109,46 @@ static void a64_call(u16 target_addr) {
     emit32(0x94000000UL | (((u32)(diff >> 2)) & 0x03FFFFFFUL));
 }
 
+static void a64_call_extern(const FuncSig *sig) {
+    u8 int_cnt = 0;
+    u8 flt_cnt = 0;
+    u8 i;
+
+    if (sig->has_addr) {
+        ir4_die("ARM64 extern does not take a fixed address");
+    }
+
+    for (i = 0; i < sig->in_count; i++) {
+        if (sig->in_types[i] == TY_F) flt_cnt++;
+        else                          int_cnt++;
+    }
+    if (int_cnt > 8 || flt_cnt > 8) {
+        ir4_die("ARM64 extern supports at most 8 int and 8 float args");
+    }
+
+    for (i = sig->in_count; i > 0; i--) {
+        if (sig->in_types[i - 1] == TY_F) {
+            flt_cnt--;
+            emit32(0xFC4107E0UL | (u32)flt_cnt); /* LDR D<k>, [SP], #16 */
+        } else {
+            int_cnt--;
+            emit32(0xF84107E0UL | (u32)int_cnt); /* LDR X<k>, [SP], #16 */
+        }
+    }
+
+    cb_add_extern_reloc(cb_pc(), sig->name);
+    emit32(0xD2800009UL); /* MOVZ X9, #0 */
+    emit32(0xF2A00009UL); /* MOVK X9, #0, LSL #16 */
+    emit32(0xF2C00009UL); /* MOVK X9, #0, LSL #32 */
+    emit32(0xF2E00009UL); /* MOVK X9, #0, LSL #48 */
+    emit32(0xD63F0120UL); /* BLR X9 */
+
+    if (sig->out_count == 1) {
+        if (sig->out_types[0] == TY_F) push_d0();
+        else                           push_x0();
+    }
+}
+
 static void a64_push_w(i32 val) { mov_x0_imm(val); push_x0(); }
 static void a64_push_a(u32 val) { mov_x0_u32(val, 0); push_x0(); }
 static void a64_push_f(double val) {
@@ -409,6 +449,7 @@ const Backend be_arm64 = {
     a64_fn_begin,
     a64_fn_end,
     a64_call,
+    a64_call_extern,
     a64_push_w,
     a64_push_a,
     a64_push_f,

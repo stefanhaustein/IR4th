@@ -1,0 +1,5 @@
+extern bdos 0x0005 { W: C W: DE -- W: A }
+
+: putchar { W: c -- W: }
+  2 c bdos drop c
+;

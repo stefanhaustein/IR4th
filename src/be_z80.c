@@ -195,6 +195,70 @@ static void z80_call(u16 target_addr) {
     emit8_16(Z80_CALL, target_addr);
 }
 
+static void z80_call_extern(const FuncSig *sig) {
+    u8 used_bc = 0;
+    u8 used_de = 0;
+    u8 used_hl = 0;
+    u8 i;
+
+    if (!sig->has_addr) ir4_die("Z80 extern requires a fixed address");
+    if (sig->out_count > 1) ir4_die("Z80 extern supports at most 1 return value");
+
+    z80_peep_barrier();
+    for (i = sig->in_count; i > 0; i--) {
+        const char *r = sig->in_regs[i - 1];
+        if (strcmp(r, "BC") == 0 || strcmp(r, "C") == 0) {
+            emit8(Z80_POP_BC); used_bc = 1;
+        } else if (strcmp(r, "B") == 0) {
+            emit8(Z80_POP_BC); emit8(0x41); used_bc = 1; /* LD B, C */
+        } else if (strcmp(r, "DE") == 0 || strcmp(r, "E") == 0) {
+            emit8(Z80_POP_DE); used_de = 1;
+        } else if (strcmp(r, "D") == 0) {
+            emit8(Z80_POP_DE); emit8(0x53); used_de = 1; /* LD D, E */
+        } else if (strcmp(r, "HL") == 0 || strcmp(r, "L") == 0) {
+            emit8(Z80_POP_HL); used_hl = 1;
+        } else if (strcmp(r, "H") == 0) {
+            emit8(Z80_POP_HL); emit8(0x65); used_hl = 1; /* LD H, L */
+        } else if (strcmp(r, "A") == 0) {
+            if (!used_hl)      { emit8(Z80_POP_HL); emit8(Z80_LD_A_L); }
+            else if (!used_de) { emit8(Z80_POP_DE); emit8(0x7B); } /* LD A, E */
+            else if (!used_bc) { emit8(Z80_POP_BC); emit8(0x79); } /* LD A, C */
+            else ir4_die("Z80 extern: no free register pair for A");
+        } else {
+            ir4_die("unknown Z80 extern register");
+        }
+    }
+
+    emit8_16(Z80_CALL, sig->addr);
+
+    if (sig->out_count == 1) {
+        const char *r = sig->out_reg;
+        if (strcmp(r, "HL") == 0) {
+            z80_push(Z80_PUSH_HL);
+        } else if (strcmp(r, "DE") == 0) {
+            z80_push(Z80_PUSH_DE);
+        } else if (strcmp(r, "BC") == 0) {
+            emit8(Z80_PUSH_BC);
+        } else if (strcmp(r, "A") == 0) {
+            emit8(Z80_LD_L_A); emit8_8(Z80_LD_H_N, 0x00); z80_push(Z80_PUSH_HL);
+        } else if (strcmp(r, "B") == 0) {
+            emit8(0x68); emit8_8(Z80_LD_H_N, 0x00); z80_push(Z80_PUSH_HL);
+        } else if (strcmp(r, "C") == 0) {
+            emit8(Z80_LD_L_C); emit8_8(Z80_LD_H_N, 0x00); z80_push(Z80_PUSH_HL);
+        } else if (strcmp(r, "D") == 0) {
+            emit8(0x6A); emit8_8(Z80_LD_H_N, 0x00); z80_push(Z80_PUSH_HL);
+        } else if (strcmp(r, "E") == 0) {
+            emit8(Z80_LD_L_E); emit8_8(Z80_LD_H_N, 0x00); z80_push(Z80_PUSH_HL);
+        } else if (strcmp(r, "H") == 0) {
+            emit8(0x6C); emit8_8(Z80_LD_H_N, 0x00); z80_push(Z80_PUSH_HL);
+        } else if (strcmp(r, "L") == 0) {
+            emit8_8(Z80_LD_H_N, 0x00); z80_push(Z80_PUSH_HL);
+        } else {
+            ir4_die("unknown Z80 extern return register");
+        }
+    }
+}
+
 static void z80_push_w(i32 val) {
     emit8_16(Z80_LD_HL_NN, (u16)val);
     z80_push(Z80_PUSH_HL);
@@ -837,6 +901,7 @@ const Backend be_z80 = {
     z80_fn_begin,
     z80_fn_end,
     z80_call,
+    z80_call_extern,
     z80_push_w,
     z80_push_a,
     z80_push_f,

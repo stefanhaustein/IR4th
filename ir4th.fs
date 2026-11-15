@@ -11,6 +11,48 @@
 : i8, ( n -- ) c, ;
 : i16, ( n -- ) dup c, 8 rshift c, ;
 
+\ External declarations (resolved to pre-defined Gforth words)
+: putchar ( c -- c ) dup emit ;
+: getchar ( -- c ) key ;
+: extern ( "name" "{" ... "}" -- )
+  parse-name 2drop
+  begin
+    begin parse-name dup 0= while 2drop refill 0= abort" unexpected EOF in 'extern'" repeat
+    s" }" str=
+  until ;
+
+\ Platform-aware require: checks <dir>gforth/<name> then <dir><name>
+create ir4-req-path 256 allot
+variable ir4-req-len
+variable ir4-dir-len
+
+: ir4-dirname ( addr len -- addr dirlen )
+  begin dup 0> while
+    2dup + 1- c@ [char] / = if exit then
+    1-
+  repeat ;
+
+: ir4-app ( addr len -- )
+  dup ir4-req-len @ + 250 > abort" required path too long"
+  ir4-req-path ir4-req-len @ + swap dup ir4-req-len +! move ;
+
+: ir4-try-req ( dir-a dir-u mid-a mid-u name-a name-u -- flag )
+  0 ir4-req-len !
+  2>r 2>r dup ir4-dir-len ! ir4-app 2r> ir4-app 2r> ir4-app
+  ir4-req-path ir4-req-len @
+  file-status nip 0= if
+    ir4-req-path ir4-req-len @ ir4-dir-len @ /string required true
+  else
+    false
+  then ;
+
+: require ( "name" -- )
+  parse-name 2>r
+  sourcefilename ir4-dirname 2dup s" gforth/" 2r@ ir4-try-req if
+    2drop 2r> 2drop exit
+  then
+  s" " 2r> ir4-try-req 0= abort" cannot open required file" ;
+
 \ Override '{ ... }' to support '| <locals>' zero-initialization in Gforth 0.7.3
 create ir4-hdr 256 allot
 variable ir4-hlen
