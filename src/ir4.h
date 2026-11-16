@@ -128,6 +128,7 @@ typedef struct {
     char name[MAX_TOK];
     u8   type;
     u8   slot;
+    u16  size;
 } LocalVar;
 
 typedef struct {

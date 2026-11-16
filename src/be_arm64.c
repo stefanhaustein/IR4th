@@ -33,12 +33,21 @@ static void mov_x0_imm(i32 val) {
 /* --- Backend Interface --- */
 static u16 a64_cur_addr(void) { return cb_cur_addr(); }
 
+static u32 a64_local_off[MAX_LOCALS];
+
 static void a64_fn_begin(const char *name, u8 param_cnt,
                          const LocalVar *locals, u8 total_locals) {
     u8 i;
-    u32 frame_bytes = (u32)((total_locals + 1) & ~1) * 8;
+    u32 cur_off = 0;
+    u32 frame_bytes;
     (void)name;
-    (void)locals;
+
+    for (i = 0; i < total_locals; i++) {
+        u32 sz = (locals[i].size > 0) ? ((u32)(locals[i].size + 7) & ~7UL) : 8UL;
+        cur_off += sz;
+        a64_local_off[i] = cur_off;
+    }
+    frame_bytes = (cur_off + 15UL) & ~15UL;
 
     /* Note: Incoming parameters were pushed onto caller SP before BL.
      * Save FP/LR, set FP = SP, and copy incoming args from [X29, #16 + k*16] */
@@ -46,21 +55,41 @@ static void a64_fn_begin(const char *name, u8 param_cnt,
     emit32(0x910003FDUL); /* MOV X29, SP */
 
     if (frame_bytes > 0) {
-        emit32(0xD10003FFUL | ((frame_bytes & 0xFFFUL) << 10)); /* SUB SP, SP, #frame */
+        if (frame_bytes <= 4095) {
+            emit32(0xD10003FFUL | ((frame_bytes & 0xFFFUL) << 10)); /* SUB SP, SP, #frame */
+        } else {
+            mov_x0_u32(frame_bytes, 0);
+            emit32(0xCB2063FFUL); /* SUB SP, SP, X0 */
+        }
     }
 
     for (i = 0; i < param_cnt; i++) {
         u32 caller_off = (u32)(16 + (param_cnt - 1 - i) * 16);
-        u32 local_off  = (u32)(i + 1) * 8;
+        u32 local_off  = a64_local_off[i];
         emit32(0xF94003A0UL | ((caller_off >> 3) << 10));         /* LDR X0, [X29, #caller_off] */
-        emit32(0xF80003A0UL | (((0UL - local_off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-local_off] */
+        if (local_off <= 255) {
+            emit32(0xF80003A0UL | (((0UL - local_off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-local_off] */
+        } else {
+            mov_x0_u32(local_off, 0);
+            emit32(0xCB0003A1UL); /* SUB X1, X29, X0 */
+            emit32(0xF94003A0UL | ((caller_off >> 3) << 10));
+            emit32(0xF9000020UL); /* STR X0, [X1] */
+        }
     }
 
     if (total_locals > param_cnt) {
         emit32(0xD2800000UL); /* MOV X0, #0 */
         for (i = param_cnt; i < total_locals; i++) {
-            u32 local_off = (u32)(i + 1) * 8;
-            emit32(0xF80003A0UL | (((0UL - local_off) & 0x1FFUL) << 12));
+            u32 local_off = a64_local_off[i];
+            if (locals[i].size > 0) continue;
+            if (local_off <= 255) {
+                emit32(0xF80003A0UL | (((0UL - local_off) & 0x1FFUL) << 12));
+            } else {
+                mov_x0_u32(local_off, 0);
+                emit32(0xCB0003A1UL); /* SUB X1, X29, X0 */
+                emit32(0xD2800000UL); /* MOV X0, #0 */
+                emit32(0xF9000020UL); /* STR X0, [X1] */
+            }
         }
     }
 }
@@ -162,18 +191,36 @@ static void a64_push_data(u16 offset) {
 }
 
 static void a64_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
-    u32 off = (u32)(slot + 1) * 8;
+    u32 off = a64_local_off[slot];
     (void)type;
     (void)stack_bytes;
     if (op == LOCAL_GET) {
-        emit32(0xF84003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* LDUR X0, [X29, #-off] */
+        if (off <= 255) {
+            emit32(0xF84003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* LDUR X0, [X29, #-off] */
+        } else {
+            mov_x0_u32(off, 0);
+            emit32(0xCB0003A1UL); /* SUB X1, X29, X0 */
+            emit32(0xF9400020UL); /* LDR X0, [X1] */
+        }
         push_x0();
     } else if (op == LOCAL_ADDR) {
-        emit32(0xD10003A0UL | ((off & 0xFFFUL) << 10)); /* SUB X0, X29, #off */
+        if (off <= 4095) {
+            emit32(0xD10003A0UL | ((off & 0xFFFUL) << 10)); /* SUB X0, X29, #off */
+        } else {
+            mov_x0_u32(off, 0);
+            emit32(0xCB0003A0UL); /* SUB X0, X29, X0 */
+        }
         push_x0();
     } else {
-        pop_x0();
-        emit32(0xF80003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-off] */
+        if (off <= 255) {
+            pop_x0();
+            emit32(0xF80003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-off] */
+        } else {
+            mov_x0_u32(off, 0);
+            emit32(0xCB0003A1UL); /* SUB X1, X29, X0 */
+            pop_x0();
+            emit32(0xF9000020UL); /* STR X0, [X1] */
+        }
     }
 }
 

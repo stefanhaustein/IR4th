@@ -105,7 +105,8 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
 
     z80_local_bytes = 0;
     for (i = param_cnt; i < total_locals; i++) {
-        u8 sz = (locals[i].type == TY_F) ? 6 : 2;
+        u16 sz = (locals[i].size > 0) ? (u16)((locals[i].size + 1) & ~1)
+                                      : (u16)((locals[i].type == TY_F) ? 6 : 2);
         z80_local_off[i] = z80_local_bytes;
         z80_local_bytes += sz;
     }
@@ -122,9 +123,28 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
     /* Allocate & zero-initialize non-parameter locals on SP */
     if (z80_local_bytes > 0) {
         u16 words = (u16)(z80_local_bytes / 2);
-        emit8_16(Z80_LD_HL_NN, 0x0000);
-        for (off = 0; off < words; off++) {
-            emit8(Z80_PUSH_HL);
+        if (words <= 8) {
+            emit8_16(Z80_LD_HL_NN, 0x0000);
+            for (off = 0; off < words; off++) {
+                emit8(Z80_PUSH_HL);
+            }
+        } else {
+            emit8_16(Z80_LD_HL_NN, (u16)(0 - z80_local_bytes));
+            emit8(Z80_ADD_HL_SP);
+            emit8(Z80_LD_SP_HL);
+            /* Zero scalar locals only */
+            for (i = param_cnt; i < total_locals; i++) {
+                if (locals[i].size == 0) {
+                    u8 k;
+                    u8 sz = (locals[i].type == TY_F) ? 6 : 2;
+                    emit8_16(Z80_LD_HL_NN, z80_local_off[i]);
+                    emit8(Z80_ADD_HL_SP);
+                    for (k = 0; k < sz; k++) {
+                        emit8_8(0x36, 0x00); /* LD (HL), 0 */
+                        if (k + 1 < sz) emit8(Z80_INC_HL);
+                    }
+                }
+            }
         }
     }
 }

@@ -47,8 +47,9 @@ end
 * **Inputs (before `|` or `)`):**
   * Declared as `IDENT TYPE` pairs (e.g., `ptr :a count :i`). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names. Unnamed input parameters are not permitted.
 * **Scratch Locals (optional, after `|`):**
-  * Declared as `IDENT TYPE` pairs (e.g., `| i :i sum :i acc :f`).
-  * Scratch locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `:f`) on function entry.
+  * Declared as `IDENT TYPE` pairs (e.g., `| i :i sum :i acc :f`) or `IDENT :bytes <size>` for a stack-allocated byte buffer (e.g., `| tmp :bytes 16`).
+  * Scalar locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `:f`) on function entry.
+  * `:bytes <size>` locals allocate `<size>` bytes in the function's stack frame (freed on `end`/`return`), and referencing `<ident>` pushes its `:a` base address onto the stack.
 * **Outputs (optional, after `) ->`):**
   * A nameless sequence of `TYPE` tokens specifying the exact stack state required at `end` or `return` (e.g., `-> :i`, `-> :f`, `-> :a :i`, or omitted for `void`).
 

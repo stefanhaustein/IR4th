@@ -137,19 +137,32 @@ static void pop_reg(u32 reg) {
 /* --- Backend Interface --- */
 static u16 rv_cur_addr(void) { return cb_cur_addr(); }
 
+static i32 rv_local_off[MAX_LOCALS];
+
 static void rv_fn_begin(const char *name, u8 param_cnt,
                         const LocalVar *locals, u8 total_locals) {
     u8 i;
+    i32 cur_off = 0;
     (void)name;
-    (void)locals;
+
+    for (i = 0; i < total_locals; i++) {
+        i32 sz = (locals[i].size > 0) ? (((i32)locals[i].size + 3) & ~3) : 4;
+        cur_off += sz;
+        rv_local_off[i] = -cur_off;
+    }
 
     rv_addi(RV_SP, RV_SP, -8);
     rv_sw(RV_RA, 4, RV_SP);
     rv_sw(RV_FP, 0, RV_SP);
     rv_addi(RV_FP, RV_SP, 0);
 
-    if (total_locals > 0) {
-        rv_addi(RV_SP, RV_SP, -(i32)total_locals * 4);
+    if (cur_off > 0) {
+        if (cur_off <= 2047) {
+            rv_addi(RV_SP, RV_SP, -cur_off);
+        } else {
+            rv_li(RV_T0, (u32)(-cur_off));
+            emit32(enc_r(0x00, RV_T0, RV_SP, 0, RV_SP, 0x33UL)); /* ADD sp, sp, t0 */
+        }
     }
 
     /* Pop incoming arguments from data stack (arg param_cnt-1 is at 0(s1)) */
@@ -157,12 +170,14 @@ static void rv_fn_begin(const char *name, u8 param_cnt,
         for (i = param_cnt; i > 0; i--) {
             u8 slot = (u8)(i - 1);
             pop_reg(RV_T0);
-            rv_sw(RV_T0, -((i32)(slot + 1) * 4), RV_FP);
+            rv_sw(RV_T0, rv_local_off[slot], RV_FP);
         }
     }
 
     for (i = param_cnt; i < total_locals; i++) {
-        rv_sw(RV_ZERO, -((i32)(i + 1) * 4), RV_FP);
+        if (locals[i].size == 0) {
+            rv_sw(RV_ZERO, rv_local_off[i], RV_FP);
+        }
     }
 }
 
@@ -233,14 +248,19 @@ static void rv_push_data(u16 offset) {
 }
 
 static void rv_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
-    i32 off = -((i32)(slot + 1) * 4);
+    i32 off = rv_local_off[slot];
     (void)type;
     (void)stack_bytes;
     if (op == LOCAL_GET) {
         rv_lw(RV_T0, off, RV_FP);
         push_reg(RV_T0);
     } else if (op == LOCAL_ADDR) {
-        rv_addi(RV_T0, RV_FP, off);
+        if (off >= -2048 && off <= 2047) {
+            rv_addi(RV_T0, RV_FP, off);
+        } else {
+            rv_li(RV_T0, (u32)off);
+            emit32(enc_r(0x00, RV_T0, RV_FP, 0, RV_T0, 0x33UL)); /* ADD t0, fp, t0 */
+        }
         push_reg(RV_T0);
     } else {
         pop_reg(RV_T0);

@@ -625,10 +625,23 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
         }
         memcpy(locals[local_count].name, tok, strlen(tok) + 1);
         if (!next_tok(ty_tok)) ir4_die("expected type token (:i, :a, :f) after identifier in signature");
+        if (strcmp(ty_tok, ":bytes") == 0) {
+            i32 sz = 0;
+            if (!in_locals) ir4_die("':bytes' only allowed in '|' locals");
+            if (!next_tok(ty_tok) || !parse_int(ty_tok, &sz) || sz <= 0 || sz > MAX_DATA) {
+                ir4_die("invalid byte count after ':bytes'");
+            }
+            locals[local_count].type = TY_A;
+            locals[local_count].slot = local_count;
+            locals[local_count].size = (u16)sz;
+            local_count++;
+            continue;
+        }
         ty = parse_type_tok(ty_tok);
         if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
         locals[local_count].type = ty;
         locals[local_count].slot = local_count;
+        locals[local_count].size = 0;
         if (!in_locals) {
             if (sig->in_count >= 8) ir4_die("too many parameters");
             sig->in_types[sig->in_count] = ty;
@@ -744,6 +757,7 @@ static void compile_word(void) {
             if (!next_tok(tok)) ir4_die("expected identifier after '&'");
             idx = find_local(tok);
             if (idx < 0) ir4_die("unknown local in '&'");
+            if (locals[idx].size > 0) ir4_die("':bytes' local is already an address");
             ins = emit_ir(IR_LOCAL_OP, w);
             ins->u.loc.op = LOCAL_ADDR;
             ins->u.loc.slot = locals[idx].slot;
@@ -758,6 +772,7 @@ static void compile_word(void) {
             if (!next_tok(tok)) ir4_die("expected identifier after '->'");
             idx = find_local(tok);
             if (idx < 0) ir4_die("unknown local in '->'");
+            if (locals[idx].size > 0) ir4_die("cannot assign to ':bytes' local");
             tpop_expect(locals[idx].type);
             ins = emit_ir(IR_LOCAL_OP, w);
             ins->u.loc.op = LOCAL_SET;
@@ -881,15 +896,15 @@ static void compile_word(void) {
         /* Core built-in word */
         if (handle_builtin(tok, w)) continue;
 
-        /* Local variable read */
+        /* Local variable read (or ':bytes' local base address) */
         idx = find_local(tok);
         if (idx >= 0) {
             ins = emit_ir(IR_LOCAL_OP, w);
-            ins->u.loc.op = LOCAL_GET;
+            ins->u.loc.op = (locals[idx].size > 0) ? LOCAL_ADDR : LOCAL_GET;
             ins->u.loc.slot = locals[idx].slot;
             ins->u.loc.type = (StackType)locals[idx].type;
             ins->u.loc.stack_bytes = tstack_bytes();
-            tpush(locals[idx].type);
+            tpush((locals[idx].size > 0) ? TY_A : locals[idx].type);
             continue;
         }
 
