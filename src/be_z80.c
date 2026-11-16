@@ -894,6 +894,24 @@ static void z80_patch_fwd(u16 patch_offset) {
     patch16(patch_offset, cb_cur_addr());
 }
 
+static int z80_add_imm(i32 imm) {
+    i16 d = (i16)imm;
+    z80_peep_barrier();
+    if (d == 0) return 1;
+    emit8(Z80_POP_HL);
+    if (d >= -3 && d <= 3) {
+        int k;
+        u8 op = (d > 0) ? 0x23 : 0x2B; /* INC HL / DEC HL */
+        int n = (d > 0) ? (int)d : (int)(-d);
+        for (k = 0; k < n; k++) emit8(op);
+    } else {
+        emit8_16(Z80_LD_DE_NN, (u16)d);
+        emit8(Z80_ADD_HL_DE);
+    }
+    emit8(Z80_PUSH_HL);
+    return 1;
+}
+
 const Backend be_z80 = {
     "z80",
     2, 2, 6,
@@ -909,6 +927,8 @@ const Backend be_z80 = {
     z80_local_op,
     z80_stack_op,
     z80_op,
+    z80_add_imm,
+    NULL,
     z80_emit_br_fwd,
     z80_emit_br_back,
     z80_patch_fwd

@@ -539,6 +539,58 @@ static void rv_patch_fwd(u16 patch_offset) {
     }
 }
 
+static int rv_add_imm(i32 imm) {
+    if (imm == 0) return 1;
+    if (imm < -2048 || imm > 2047) return 0;
+    rv_lw(RV_T0, 0, RV_DSP);
+    rv_addi(RV_T0, RV_T0, imm);
+    rv_sw(RV_T0, 0, RV_DSP);
+    return 1;
+}
+
+static int rv_cmp_imm(IrOp op, i32 imm) {
+    if (imm < -2048 || imm > 2047) return 0;
+    if ((op == OP_ULT || op == OP_UGE) && imm < 0) return 0;
+
+    switch (op) {
+    case OP_EQ:
+    case OP_NE:
+        if (imm == -2048) return 0;
+        rv_lw(RV_T0, 0, RV_DSP);
+        if (imm != 0) rv_addi(RV_T0, RV_T0, -imm);
+        if (op == OP_EQ) {
+            emit32(enc_i(1, RV_T0, 3, RV_T0, 0x13UL));            /* SLTIU t0, t0, 1 */
+        } else {
+            emit32(enc_r(0x00, RV_T0, RV_ZERO, 3, RV_T0, 0x33UL)); /* SLTU t0, x0, t0 */
+        }
+        break;
+    case OP_LT:
+    case OP_GE:
+        rv_lw(RV_T0, 0, RV_DSP);
+        emit32(enc_i(imm, RV_T0, 2, RV_T0, 0x13UL)); /* SLTI t0, t0, imm */
+        if (op == OP_GE) emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
+        break;
+    case OP_ULT:
+    case OP_UGE:
+        rv_lw(RV_T0, 0, RV_DSP);
+        emit32(enc_i(imm, RV_T0, 3, RV_T0, 0x13UL)); /* SLTIU t0, t0, imm */
+        if (op == OP_UGE) emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
+        break;
+    case OP_LE:
+    case OP_GT:
+        if (imm == 2047) return 0;
+        rv_lw(RV_T0, 0, RV_DSP);
+        emit32(enc_i(imm + 1, RV_T0, 2, RV_T0, 0x13UL)); /* SLTI t0, t0, imm+1 */
+        if (op == OP_GT) emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
+        break;
+    default:
+        return 0;
+    }
+    emit32(enc_r(0x20, RV_T0, RV_ZERO, 0, RV_T0, 0x33UL)); /* SUB t0, x0, t0 */
+    rv_sw(RV_T0, 0, RV_DSP);
+    return 1;
+}
+
 const Backend be_rv32 = {
     "rv32",
     4, 4, 4,
@@ -554,6 +606,8 @@ const Backend be_rv32 = {
     rv_local_op,
     rv_stack_op,
     rv_op,
+    rv_add_imm,
+    rv_cmp_imm,
     rv_emit_br_fwd,
     rv_emit_br_back,
     rv_patch_fwd

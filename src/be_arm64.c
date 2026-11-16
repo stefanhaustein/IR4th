@@ -252,31 +252,33 @@ static void a64_int_alu(IrOp op) {
     push_x0();
 }
 
+static u32 a64_cmp_cond(IrOp op) {
+    switch (op) {
+    case OP_EQ:
+    case OP_AEQ:  return 0x0;
+    case OP_NE:
+    case OP_ANE:  return 0x1;
+    case OP_LT:   return 0xB;
+    case OP_GE:   return 0xA;
+    case OP_GT:   return 0xC;
+    case OP_LE:   return 0xD;
+    case OP_ULT:
+    case OP_ALT:  return 0x3;
+    case OP_UGE:  return 0x2;
+    case OP_UGT:
+    case OP_AGT:  return 0x8;
+    case OP_ULE:  return 0x9;
+    default:
+        ir4_die("unimplemented ARM64 comparison op");
+        return 0;
+    }
+}
+
 static void a64_int_cmp(IrOp op) {
-    u32 cond = 0;
+    u32 cond = a64_cmp_cond(op);
     pop_x1();
     pop_x0();
     emit32(0xEB01001FUL); /* CMP X0, X1 */
-
-    switch (op) {
-    case OP_EQ:
-    case OP_AEQ:  cond = 0x0; break;
-    case OP_NE:
-    case OP_ANE:  cond = 0x1; break;
-    case OP_LT:   cond = 0xB; break;
-    case OP_GE:   cond = 0xA; break;
-    case OP_GT:   cond = 0xC; break;
-    case OP_LE:   cond = 0xD; break;
-    case OP_ULT:
-    case OP_ALT:  cond = 0x3; break;
-    case OP_UGE:  cond = 0x2; break;
-    case OP_UGT:
-    case OP_AGT:  cond = 0x8; break;
-    case OP_ULE:  cond = 0x9; break;
-    default:
-        ir4_die("unimplemented ARM64 comparison op");
-    }
-
     emit32(0xDA9F03E0UL | ((cond ^ 1UL) << 12)); /* CSETM X0, cond */
     push_x0();
 }
@@ -432,6 +434,34 @@ static void a64_patch_fwd(u16 patch_offset) {
     }
 }
 
+static int a64_add_imm(i32 imm) {
+    if (imm == 0) return 1;
+    if (imm > 0 && imm <= 4095) {
+        emit32(0xF94003E0UL); /* LDR X0, [SP] */
+        emit32(0x91000000UL | ((u32)imm << 10)); /* ADD X0, X0, #imm */
+        emit32(0xF90003E0UL); /* STR X0, [SP] */
+        return 1;
+    }
+    if (imm < 0 && imm >= -4095) {
+        emit32(0xF94003E0UL); /* LDR X0, [SP] */
+        emit32(0xD1000000UL | ((u32)(-imm) << 10)); /* SUB X0, X0, #(-imm) */
+        emit32(0xF90003E0UL); /* STR X0, [SP] */
+        return 1;
+    }
+    return 0;
+}
+
+static int a64_cmp_imm(IrOp op, i32 imm) {
+    u32 cond;
+    if (imm < 0 || imm > 4095) return 0;
+    cond = a64_cmp_cond(op);
+    emit32(0xF94003E0UL); /* LDR X0, [SP] */
+    emit32(0xF100001FUL | ((u32)imm << 10)); /* CMP X0, #imm */
+    emit32(0xDA9F03E0UL | ((cond ^ 1UL) << 12)); /* CSETM X0, cond */
+    emit32(0xF90003E0UL); /* STR X0, [SP] */
+    return 1;
+}
+
 const Backend be_arm64 = {
     "arm64",
     8, 8, 8,
@@ -447,6 +477,8 @@ const Backend be_arm64 = {
     a64_local_op,
     a64_stack_op,
     a64_op,
+    a64_add_imm,
+    a64_cmp_imm,
     a64_emit_br_fwd,
     a64_emit_br_back,
     a64_patch_fwd

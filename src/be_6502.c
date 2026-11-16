@@ -997,6 +997,19 @@ static void m6502_patch_fwd(u16 patch_offset) {
     patch16(patch_offset, cb_cur_addr());
 }
 
+static int m6502_add_imm(i32 imm) {
+    u16 d = (u16)(i16)imm;
+    if (d == 0) return 1;
+    m6502_clc();
+    m6502_lda_stk(0);
+    emit8_8(0x69, (u8)(d & 0xFF)); /* ADC #imm_lo */
+    m6502_sta_stk(0);
+    m6502_lda_stk(1);
+    emit8_8(0x69, (u8)(d >> 8));   /* ADC #imm_hi */
+    m6502_sta_stk(1);
+    return 1;
+}
+
 const Backend be_6502 = {
     "6502",
     2, 2, 4,
@@ -1012,6 +1025,8 @@ const Backend be_6502 = {
     m6502_local_op,
     m6502_stack_op,
     m6502_op,
+    m6502_add_imm,
+    NULL,
     m6502_emit_br_fwd,
     m6502_emit_br_back,
     m6502_patch_fwd

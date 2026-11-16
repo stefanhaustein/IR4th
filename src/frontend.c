@@ -69,6 +69,7 @@ typedef struct {
 
 static IrInstr ir_buf[MAX_IR];
 static u16     ir_count = 0;
+static u16     fold_fence = 0;
 static WordIR  words[MAX_SYMS];
 
 typedef struct {
@@ -436,6 +437,55 @@ static IrInstr *emit_ir(IrKind kind, WordIR *w) {
     return ins;
 }
 
+static int try_fold_const_w(IrOp op, i32 a, i32 b, i32 *out) {
+    if (be->word_bytes == 2) {
+        i16 sa = (i16)a;
+        i16 sb = (i16)b;
+        u16 ua = (u16)sa;
+        u16 ub = (u16)sb;
+        switch (op) {
+        case OP_ADD: *out = (i32)(i16)(ua + ub); return 1;
+        case OP_SUB: *out = (i32)(i16)(ua - ub); return 1;
+        case OP_EQ:  *out = (sa == sb) ? -1 : 0; return 1;
+        case OP_NE:  *out = (sa != sb) ? -1 : 0; return 1;
+        case OP_LT:  *out = (sa <  sb) ? -1 : 0; return 1;
+        case OP_GT:  *out = (sa >  sb) ? -1 : 0; return 1;
+        case OP_LE:  *out = (sa <= sb) ? -1 : 0; return 1;
+        case OP_GE:  *out = (sa >= sb) ? -1 : 0; return 1;
+        case OP_ULT: *out = (ua <  ub) ? -1 : 0; return 1;
+        case OP_UGT: *out = (ua >  ub) ? -1 : 0; return 1;
+        case OP_ULE: *out = (ua <= ub) ? -1 : 0; return 1;
+        case OP_UGE: *out = (ua >= ub) ? -1 : 0; return 1;
+        default: return 0;
+        }
+    }
+    if (be->word_bytes == 8) {
+        if ((op == OP_ADD || op == OP_SUB) &&
+            (a < -0x3FFFFFFF || a > 0x3FFFFFFF || b < -0x3FFFFFFF || b > 0x3FFFFFFF)) {
+            return 0;
+        }
+        if ((op == OP_ULT || op == OP_UGT || op == OP_ULE || op == OP_UGE) &&
+            (a < 0 || b < 0)) {
+            return 0;
+        }
+    }
+    switch (op) {
+    case OP_ADD: *out = (i32)((u32)a + (u32)b); return 1;
+    case OP_SUB: *out = (i32)((u32)a - (u32)b); return 1;
+    case OP_EQ:  *out = (a == b) ? -1 : 0; return 1;
+    case OP_NE:  *out = (a != b) ? -1 : 0; return 1;
+    case OP_LT:  *out = (a <  b) ? -1 : 0; return 1;
+    case OP_GT:  *out = (a >  b) ? -1 : 0; return 1;
+    case OP_LE:  *out = (a <= b) ? -1 : 0; return 1;
+    case OP_GE:  *out = (a >= b) ? -1 : 0; return 1;
+    case OP_ULT: *out = ((u32)a <  (u32)b) ? -1 : 0; return 1;
+    case OP_UGT: *out = ((u32)a >  (u32)b) ? -1 : 0; return 1;
+    case OP_ULE: *out = ((u32)a <= (u32)b) ? -1 : 0; return 1;
+    case OP_UGE: *out = ((u32)a >= (u32)b) ? -1 : 0; return 1;
+    default: return 0;
+    }
+}
+
 static int handle_builtin(const char *tok, WordIR *w) {
     u8 a, b;
     size_t i;
@@ -472,6 +522,18 @@ static int handle_builtin(const char *tok, WordIR *w) {
             tpop_expect(builtins[i].in1);
             if (builtins[i].in2 != TY_NONE) tpop_expect(builtins[i].in2);
             if (builtins[i].out != TY_NONE) tpush(builtins[i].out);
+            if (w->ir_len >= fold_fence + 2) {
+                IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 2];
+                IrInstr *p2 = &ir_buf[w->ir_start + w->ir_len - 1];
+                i32 folded;
+                if (p1->kind == IR_PUSH_W && p2->kind == IR_PUSH_W &&
+                    try_fold_const_w(builtins[i].op, p1->u.w, p2->u.w, &folded)) {
+                    p1->u.w = folded;
+                    w->ir_len--;
+                    ir_count--;
+                    return 1;
+                }
+            }
             ins = emit_ir(IR_ALU_OP, w);
             ins->u.op = builtins[i].op;
             return 1;
@@ -569,6 +631,7 @@ static void compile_word(void) {
 
     w->ir_start = ir_count;
     w->ir_len = 0;
+    fold_fence = 0;
     w->param_cnt = param_cnt;
     w->local_count = local_count;
     if (local_count > 0) {
@@ -679,6 +742,7 @@ static void compile_word(void) {
             ins = emit_ir(IR_BR_FWD, w);
             ins->u.br.cond = BR_JMP;
             ir_buf[w->ir_start + b->patch_else].u.br.target = w->ir_len;
+            fold_fence = w->ir_len;
             continue;
         }
         if (strcmp(tok, "then") == 0) {
@@ -694,6 +758,7 @@ static void compile_word(void) {
                 memcpy(tstack, b->saved_stack, tsp);
                 unreachable = b->saved_unreach;
                 ir_buf[w->ir_start + b->patch_else].u.br.target = w->ir_len;
+            fold_fence = w->ir_len;
             } else {
                 if (!b->if_unreach && !unreachable) {
                     if (tsp != b->else_sp || memcmp(tstack, b->else_stack, tsp) != 0)
@@ -704,7 +769,9 @@ static void compile_word(void) {
                     unreachable = 0;
                 }
                 ir_buf[w->ir_start + b->patch_end].u.br.target = w->ir_len;
+            fold_fence = w->ir_len;
             }
+            fold_fence = w->ir_len;
             continue;
         }
         if (strcmp(tok, "begin") == 0) {
@@ -713,6 +780,7 @@ static void compile_word(void) {
             b = &blocks[bsp++];
             b->kind = BLOCK_BEGIN;
             b->loop_addr = w->ir_len;
+            fold_fence = w->ir_len;
             b->saved_sp = tsp;
             memcpy(b->saved_stack, tstack, tsp);
             continue;
@@ -737,6 +805,7 @@ static void compile_word(void) {
             ins->u.br.cond = BR_JMP;
             ins->u.br.target = b->loop_addr;
             ir_buf[w->ir_start + b->patch_end].u.br.target = w->ir_len;
+            fold_fence = w->ir_len;
             continue;
         }
         if (strcmp(tok, "until") == 0) {
@@ -852,6 +921,23 @@ static void emit_word(u8 fidx) {
                 be->fn_end(sig, w->locals, w->local_count);
                 break;
             case IR_PUSH_W:
+                if (i + 1 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP) {
+                    IrOp aop = ir_buf[w->ir_start + i + 1].u.op;
+                    i32 imm = ins->u.w;
+                    if (aop == OP_ADD || aop == OP_SUB || aop == OP_AADD || aop == OP_ASUB) {
+                        i32 delta = (aop == OP_SUB || aop == OP_ASUB)
+                                    ? (i32)(0UL - (u32)imm) : imm;
+                        if (be->add_imm && be->add_imm(delta)) {
+                            i++;
+                            break;
+                        }
+                    } else if (aop >= OP_EQ && aop <= OP_UGE) {
+                        if (be->cmp_imm && be->cmp_imm(aop, imm)) {
+                            i++;
+                            break;
+                        }
+                    }
+                }
                 be->push_w(ins->u.w);
                 break;
             case IR_PUSH_A:
