@@ -20,7 +20,8 @@ create mixed_tbl
 16 buffer: tail_buf
 
 : word_bytes { -- W: }
-  1 16 lshift 0 = if 2 else 8 then
+  1 16 lshift 0 = if 2 exit then
+  1 31 lshift 1 lshift 0 = if 4 else 8 then
 ;
 
 : main { -- W: }

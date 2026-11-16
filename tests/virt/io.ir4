@@ -1,0 +1,4 @@
+: putchar { W: c -- W: }
+  c 0x10000000 w>a i8!
+  c
+;

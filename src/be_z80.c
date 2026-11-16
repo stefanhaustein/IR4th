@@ -3,7 +3,7 @@
  *   - Data stack: Hardware SP (16-bit slots for W: and A:, 48-bit for F:)
  *   - Locals & params: SP-relative offsets (no IX frame pointer)
  */
-#include "ir4c.h"
+#include "codebuf.h"
 #include "be_z80.h"
 #include "be_z80_math48.h"
 #include <math.h>

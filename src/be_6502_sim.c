@@ -1,31 +1,32 @@
 /* be_6502_sim.c - sim65 (cc65 6502 simulator) header & exit/print stub (Strict C89) */
-#include "ir4c.h"
+#include "codebuf.h"
+#include "frontend.h"
 
 #define SIM65_WRITE 0xFFF7
 #define SIM65_EXIT  0xFFF9
 #define SIM65_SP_ZP 0x10
 
-void be_6502_sim_begin(void) {
-    /* Reserve JMP 0x0000 at base; patched by be_6502_sim_end() */
+static void sim_begin(u16 base) {
+    (void)base;
+    /* Reserve JMP 0x0000 at base; patched by sim_end() */
     emit8(0x4C);
     emit16(0x0000);
 }
 
-int be_6502_sim_write_hdr(FILE *fp, u16 load_addr, u16 reset_addr) {
+static int sim_write(FILE *fp, u16 base) {
     u8 hdr[12];
     hdr[0] = 's'; hdr[1] = 'i'; hdr[2] = 'm'; hdr[3] = '6'; hdr[4] = '5';
     hdr[5] = 0x02; /* version 2 */
     hdr[6] = 0x00; /* 6502 */
     hdr[7] = SIM65_SP_ZP;
-    hdr[8] = (u8)(load_addr & 0xFF);
-    hdr[9] = (u8)(load_addr >> 8);
-    hdr[10] = (u8)(reset_addr & 0xFF);
-    hdr[11] = (u8)(reset_addr >> 8);
-    return fwrite(hdr, 1, sizeof(hdr), fp) == sizeof(hdr);
+    put_le16(hdr + 8, base);
+    put_le16(hdr + 10, base);
+    if (fwrite(hdr, 1, sizeof(hdr), fp) != sizeof(hdr)) return 0;
+    return cb_write_raw(fp, 1);
 }
 
-void be_6502_sim_end(u8 main_idx) {
-    const FuncSig *sig = ir4_func_sig(main_idx);
+static void sim_end(int main_idx) {
+    const FuncSig *sig = ir4_func_sig((u8)main_idx);
     u16 entry_addr = cb_cur_addr();
     u16 putchar_call1 = 0;
     u16 putchar_call2 = 0;
@@ -140,3 +141,8 @@ void be_6502_sim_end(u8 main_idx) {
         emit8(0x60);              /* RTS */
     }
 }
+
+const Platform plat_6502_sim = {
+    "--sim65", &be_6502, 0x0200, "sim65", 1,
+    sim_begin, sim_end, sim_write, NULL
+};

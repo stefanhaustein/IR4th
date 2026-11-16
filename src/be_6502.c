@@ -4,7 +4,9 @@
  *   - Locals: 64-byte BSS buffer in normal RAM (2 bytes per slot, preserved on HW stack)
  *   - Scratch pointers: 4 Zero Page bytes at zp_scratch (default $FB..$FE; override via --zp)
  */
-#include "ir4c.h"
+#include "codebuf.h"
+#include "be_6502_wozfp.h"
+#include <math.h>
 
 static u8  zp_scratch      = 0xFB;
 static u16 stack_data_off  = 0;
@@ -13,6 +15,7 @@ static int data_inited     = 0;
 static u16 mul16_addr      = 0;
 static u16 udivmod16_addr  = 0;
 static u16 sdivmod16_addr  = 0;
+static u16 wozfp_addr      = 0;
 
 void be_6502_set_zp(u8 zp) {
     zp_scratch = zp;
@@ -97,31 +100,38 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
 
     /* Preserve caller's local slots on hardware stack for reentrancy */
     for (i = 0; i < total_locals; i++) {
-        u8 off = (u8)(i * 2);
-        m6502_lda_local(off);
-        m6502_pha();
-        m6502_lda_local((u8)(off + 1));
-        m6502_pha();
+        u8 off = (u8)(i * 4);
+        u8 sz = (locals[i].type == TY_F) ? 4 : 2;
+        u8 b;
+        for (b = 0; b < sz; b++) {
+            m6502_lda_local((u8)(off + b));
+            m6502_pha();
+        }
     }
 
     /* Pop incoming parameters from data stack into locals */
     for (i = param_cnt; i > 0; i--) {
-        u8 off = (u8)((i - 1) * 2);
-        m6502_lda_stk(0);
-        m6502_sta_local(off);
-        m6502_lda_stk(1);
-        m6502_sta_local((u8)(off + 1));
-        m6502_inx();
-        m6502_inx();
+        u8 idx = (u8)(i - 1);
+        u8 off = (u8)(idx * 4);
+        u8 sz = (locals[idx].type == TY_F) ? 4 : 2;
+        u8 b;
+        for (b = 0; b < sz; b++) {
+            m6502_lda_stk(b);
+            m6502_sta_local((u8)(off + b));
+        }
+        for (b = 0; b < sz; b++) m6502_inx();
     }
 
     /* Zero-initialize scratch locals after '|' */
     if (total_locals > param_cnt) {
         m6502_lda_imm(0x00);
         for (i = param_cnt; i < total_locals; i++) {
-            u8 off = (u8)(i * 2);
-            m6502_sta_local(off);
-            m6502_sta_local((u8)(off + 1));
+            u8 off = (u8)(i * 4);
+            u8 sz = (locals[i].type == TY_F) ? 4 : 2;
+            u8 b;
+            for (b = 0; b < sz; b++) {
+                m6502_sta_local((u8)(off + b));
+            }
         }
     }
 }
@@ -129,15 +139,17 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
 static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_locals) {
     u8 i;
     (void)sig;
-    (void)locals;
 
     /* Restore caller's local slots in reverse order */
     for (i = total_locals; i > 0; i--) {
-        u8 off = (u8)((i - 1) * 2);
-        m6502_pla();
-        m6502_sta_local((u8)(off + 1));
-        m6502_pla();
-        m6502_sta_local(off);
+        u8 idx = (u8)(i - 1);
+        u8 off = (u8)(idx * 4);
+        u8 sz = (locals[idx].type == TY_F) ? 4 : 2;
+        u8 b;
+        for (b = sz; b > 0; b--) {
+            m6502_pla();
+            m6502_sta_local((u8)(off + b - 1));
+        }
     }
 
     m6502_rts();
@@ -211,9 +223,42 @@ static void m6502_push_a(u32 val) {
     m6502_push_w((i32)val);
 }
 
+static void encode_wozfp(double val, u8 out[4]) {
+    int exp2;
+    double m;
+    i32 mant;
+    if (val == 0.0) {
+        out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 0;
+        return;
+    }
+    m = frexp(val, &exp2); /* val = m * 2^exp2, 0.5 <= |m| < 1.0 */
+    mant = (i32)(m * 8388608.0 + (m >= 0.0 ? 0.5 : -0.5));
+    exp2 -= 1;
+    /* Normalize 24-bit 2's complement mantissa so bits 23 and 22 differ */
+    if (mant != 0) {
+        while (((mant >> 23) & 1) == ((mant >> 22) & 1)) {
+            mant <<= 1;
+            exp2 -= 1;
+        }
+    }
+    if (exp2 < -128 || exp2 > 127) {
+        ir4_die("6502 wozfp float literal out of range");
+    }
+    out[0] = (u8)(exp2 + 0x80);
+    out[1] = (u8)((mant >> 16) & 0xFF);
+    out[2] = (u8)((mant >> 8) & 0xFF);
+    out[3] = (u8)(mant & 0xFF);
+}
+
 static void m6502_push_f(double val) {
-    (void)val;
-    ir4_die("unimplemented 6502 float literal");
+    u8 bytes[4];
+    u8 b;
+    encode_wozfp(val, bytes);
+    for (b = 0; b < 4; b++) m6502_dex();
+    for (b = 0; b < 4; b++) {
+        m6502_lda_imm(bytes[b]);
+        m6502_sta_stk(b);
+    }
 }
 
 static void m6502_push_data(u16 offset) {
@@ -228,27 +273,27 @@ static void m6502_push_data(u16 offset) {
 }
 
 static void m6502_local_get(u8 slot, u8 type, u16 stack_bytes) {
-    u8 off = (u8)(slot * 2);
-    (void)type;
+    u8 off = (u8)(slot * 4);
+    u8 sz = (type == TY_F) ? 4 : 2;
+    u8 b;
     (void)stack_bytes;
-    m6502_dex();
-    m6502_dex();
-    m6502_lda_local(off);
-    m6502_sta_stk(0);
-    m6502_lda_local((u8)(off + 1));
-    m6502_sta_stk(1);
+    for (b = 0; b < sz; b++) m6502_dex();
+    for (b = 0; b < sz; b++) {
+        m6502_lda_local((u8)(off + b));
+        m6502_sta_stk(b);
+    }
 }
 
 static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
-    u8 off = (u8)(slot * 2);
-    (void)type;
+    u8 off = (u8)(slot * 4);
+    u8 sz = (type == TY_F) ? 4 : 2;
+    u8 b;
     (void)stack_bytes;
-    m6502_lda_stk(0);
-    m6502_sta_local(off);
-    m6502_lda_stk(1);
-    m6502_sta_local((u8)(off + 1));
-    m6502_inx();
-    m6502_inx();
+    for (b = 0; b < sz; b++) {
+        m6502_lda_stk(b);
+        m6502_sta_local((u8)(off + b));
+    }
+    for (b = 0; b < sz; b++) m6502_inx();
 }
 
 static void m6502_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
@@ -257,42 +302,51 @@ static void m6502_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes)
 }
 
 static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {
-    if (t1 == TY_F || t2 == TY_F) {
-        ir4_die("unimplemented 6502 float stack op");
-    }
+    u8 sz1 = (t1 == TY_F) ? 4 : 2;
+    u8 sz2 = (t2 == TY_F) ? 4 : 2;
+    u8 b;
     switch (op) {
     case OP_DUP:
-        m6502_dex();
-        m6502_dex();
-        m6502_lda_stk(2);
-        m6502_sta_stk(0);
-        m6502_lda_stk(3);
-        m6502_sta_stk(1);
+        for (b = 0; b < sz1; b++) m6502_dex();
+        for (b = 0; b < sz1; b++) {
+            m6502_lda_stk((u8)(sz1 + b));
+            m6502_sta_stk(b);
+        }
         break;
     case OP_DROP:
-        m6502_inx();
-        m6502_inx();
+        for (b = 0; b < sz1; b++) m6502_inx();
         break;
     case OP_SWAP:
-        m6502_ldy_stk(0);
-        m6502_lda_stk(2);
-        m6502_sta_stk(0);
-        m6502_tya();
-        m6502_sta_stk(2);
-
-        m6502_ldy_stk(1);
-        m6502_lda_stk(3);
-        m6502_sta_stk(1);
-        m6502_tya();
-        m6502_sta_stk(3);
+        if (sz1 == sz2) {
+            for (b = 0; b < sz1; b++) {
+                m6502_ldy_stk(b);
+                m6502_lda_stk((u8)(sz1 + b));
+                m6502_sta_stk(b);
+                m6502_tya();
+                m6502_sta_stk((u8)(sz1 + b));
+            }
+        } else {
+            /* Save TOS (sz1 <= 4 bytes) in zp_scratch, shift NOS down, store TOS */
+            for (b = 0; b < sz1; b++) {
+                m6502_lda_stk(b);
+                m6502_sta_zp((u8)(zp_scratch + b));
+            }
+            for (b = 0; b < sz2; b++) {
+                m6502_lda_stk((u8)(sz1 + b));
+                m6502_sta_stk(b);
+            }
+            for (b = 0; b < sz1; b++) {
+                m6502_lda_zp((u8)(zp_scratch + b));
+                m6502_sta_stk((u8)(sz2 + b));
+            }
+        }
         break;
     case OP_OVER:
-        m6502_dex();
-        m6502_dex();
-        m6502_lda_stk(4);
-        m6502_sta_stk(0);
-        m6502_lda_stk(5);
-        m6502_sta_stk(1);
+        for (b = 0; b < sz2; b++) m6502_dex();
+        for (b = 0; b < sz2; b++) {
+            m6502_lda_stk((u8)(sz2 + sz1 + b));
+            m6502_sta_stk(b);
+        }
         break;
     default:
         ir4_die("unimplemented 6502 stack op");
@@ -549,6 +603,50 @@ static void ensure_sdivmod16(void) {
     patch16(skip_patch, cb_cur_addr());
 }
 
+static void ensure_wozfp(void) {
+    u16 jmp_skip;
+    u16 base_pc;
+    u16 i;
+    if (wozfp_addr != 0) return;
+
+    emit8(0x4C); jmp_skip = cb_pc(); emit16(0x0000); /* JMP skip */
+    base_pc = cb_pc();
+    wozfp_addr = cb_cur_addr();
+    for (i = 0; i < (u16)sizeof(be_6502_wozfp); i++) {
+        emit8(be_6502_wozfp[i]);
+    }
+    for (i = 0; i < (u16)BE_6502_WOZFP_RELOC_CNT; i++) {
+        u16 r = be_6502_wozfp_relocs[i];
+        u16 orig = (u16)be_6502_wozfp[r] | ((u16)be_6502_wozfp[r + 1] << 8);
+        patch16((u16)(base_pc + r), (u16)(orig + wozfp_addr));
+    }
+    patch16(jmp_skip, cb_cur_addr());
+}
+
+static void wozfp_pop_to(u8 zp_base) {
+    u8 b;
+    for (b = 0; b < 4; b++) {
+        m6502_lda_stk(b);
+        m6502_sta_zp((u8)(zp_base + b));
+    }
+    for (b = 0; b < 4; b++) m6502_inx();
+}
+
+static void wozfp_push_from(u8 zp_base) {
+    u8 b;
+    for (b = 0; b < 4; b++) m6502_dex();
+    for (b = 0; b < 4; b++) {
+        m6502_lda_zp((u8)(zp_base + b));
+        m6502_sta_stk(b);
+    }
+}
+
+static void wozfp_call_keep_x(u16 entry_off) {
+    emit8(0x86); emit8(zp_scratch); /* STX zp_scratch */
+    m6502_jsr((u16)(wozfp_addr + entry_off));
+    emit8(0xA6); emit8(zp_scratch); /* LDX zp_scratch (preserves A) */
+}
+
 static void m6502_op(IrOp op) {
     switch (op) {
     case OP_INVERT:
@@ -748,18 +846,120 @@ static void m6502_op(IrOp op) {
     case OP_FADD:
     case OP_FSUB:
     case OP_FMUL:
-    case OP_FDIV:
+    case OP_FDIV: {
+        u16 entry = (op == OP_FADD) ? RT_FP_ADD :
+                    (op == OP_FSUB) ? RT_FP_SUB :
+                    (op == OP_FMUL) ? RT_FP_MUL : RT_FP_DIV;
+        ensure_wozfp();
+        wozfp_pop_to(WOZFP_ZP_X1); /* rhs -> X1/M1 */
+        wozfp_pop_to(WOZFP_ZP_X2); /* lhs -> X2/M2 */
+        wozfp_call_keep_x(entry);
+        wozfp_push_from(WOZFP_ZP_X1);
+        break;
+    }
     case OP_FNEG:
+        ensure_wozfp();
+        wozfp_pop_to(WOZFP_ZP_X1);
+        wozfp_call_keep_x(RT_FP_NEG);
+        wozfp_push_from(WOZFP_ZP_X1);
+        break;
     case OP_FEQ:
     case OP_FNE:
     case OP_FLT:
     case OP_FGT:
-    case OP_FFETCH:
-    case OP_FSTORE:
-    case OP_W2F:
-    case OP_F2W:
-        ir4_die("unimplemented 6502 float op");
+        ensure_wozfp();
+        wozfp_pop_to(WOZFP_ZP_X1); /* rhs -> X1/M1 */
+        wozfp_pop_to(WOZFP_ZP_X2); /* lhs -> X2/M2 */
+        wozfp_call_keep_x(RT_FP_CMP);
+        /* A = $FF if lhs<rhs, 0 if lhs==rhs, 1 if lhs>rhs */
+        m6502_dex();
+        m6502_dex();
+        if (op == OP_FEQ) {
+            emit8(0xC9); emit8(0x00); /* CMP #0 */
+            emit8(0xF0); emit8(0x04); /* BEQ true */
+            m6502_lda_imm(0x00);
+            emit8(0xF0); emit8(0x02); /* BEQ store */
+            m6502_lda_imm(0xFF);
+        } else if (op == OP_FNE) {
+            emit8(0xC9); emit8(0x00); /* CMP #0 */
+            emit8(0xD0); emit8(0x04); /* BNE true */
+            m6502_lda_imm(0x00);
+            emit8(0xF0); emit8(0x02); /* BEQ store */
+            m6502_lda_imm(0xFF);
+        } else if (op == OP_FLT) {
+            emit8(0x30); emit8(0x04); /* BMI true */
+            m6502_lda_imm(0x00);
+            emit8(0xF0); emit8(0x02); /* BEQ store */
+            m6502_lda_imm(0xFF);
+        } else { /* OP_FGT */
+            emit8(0xC9); emit8(0x01); /* CMP #1 */
+            emit8(0xF0); emit8(0x04); /* BEQ true */
+            m6502_lda_imm(0x00);
+            emit8(0xF0); emit8(0x02); /* BEQ store */
+            m6502_lda_imm(0xFF);
+        }
+        m6502_sta_stk(0);
+        m6502_sta_stk(1);
         break;
+    case OP_FFETCH: {
+        u8 b;
+        m6502_mem_addr_setup();
+        m6502_dex();
+        m6502_dex();
+        for (b = 0; b < 4; b++) {
+            m6502_lda_indy(zp_scratch);
+            m6502_sta_stk(b);
+            if (b < 3) emit8(0xC8); /* INY */
+        }
+        break;
+    }
+    case OP_FSTORE: {
+        u8 b;
+        m6502_mem_addr_setup();
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk((u8)(2 + b));
+            m6502_sta_indy(zp_scratch);
+            if (b < 3) emit8(0xC8); /* INY */
+        }
+        for (b = 0; b < 6; b++) m6502_inx();
+        break;
+    }
+    case OP_W2F:
+        ensure_wozfp();
+        /* Pop 16-bit signed (lo, hi) -> M1+1 (lo), M1 (hi) */
+        m6502_lda_stk(0);
+        m6502_sta_zp((u8)(WOZFP_ZP_M1 + 1));
+        m6502_lda_stk(1);
+        m6502_sta_zp(WOZFP_ZP_M1);
+        m6502_inx();
+        m6502_inx();
+        wozfp_call_keep_x(RT_FP_ITOF);
+        wozfp_push_from(WOZFP_ZP_X1);
+        break;
+    case OP_F2W: {
+        u16 skip_neg1;
+        u16 skip_neg2;
+        ensure_wozfp();
+        wozfp_pop_to(WOZFP_ZP_X1);
+        /* Truncate toward zero: if M1 < 0, negate before FIX and negate result */
+        m6502_lda_zp(WOZFP_ZP_M1);
+        m6502_pha();
+        emit8(0x10); skip_neg1 = cb_pc(); emit8(0x00); /* BPL skip_neg1 */
+        wozfp_call_keep_x(RT_FP_NEG);
+        patch8(skip_neg1, (u8)(cb_pc() - (skip_neg1 + 1)));
+        wozfp_call_keep_x(RT_FP_FTOI);
+        m6502_dex();
+        m6502_dex();
+        m6502_lda_zp((u8)(WOZFP_ZP_M1 + 1));
+        m6502_sta_stk(0);
+        m6502_lda_zp(WOZFP_ZP_M1);
+        m6502_sta_stk(1);
+        m6502_pla();
+        emit8(0x10); skip_neg2 = cb_pc(); emit8(0x00); /* BPL skip_neg2 */
+        emit_neg_stk(0);
+        patch8(skip_neg2, (u8)(cb_pc() - (skip_neg2 + 1)));
+        break;
+    }
     }
 }
 
@@ -799,7 +999,7 @@ static void m6502_patch_fwd(u16 patch_offset) {
 
 const Backend be_6502 = {
     "6502",
-    2, 2, 5,
+    2, 2, 4,
     m6502_cur_addr,
     m6502_fn_begin,
     m6502_fn_end,

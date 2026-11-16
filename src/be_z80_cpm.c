@@ -1,16 +1,18 @@
 /* be_z80_cpm.c - CP/M .COM startup & BDOS exit/print stub for Z80 (Strict C89) */
-#include "ir4c.h"
+#include "codebuf.h"
+#include "frontend.h"
 #include "be_z80.h"
 
 #define CPM_BDOS 0x0005
 
-void be_z80_cpm_begin(void) {
-    /* Reserve initial JP 0x0000 at 0x0100; patched by be_z80_cpm_end() */
+static void cpm_begin(u16 base) {
+    (void)base;
+    /* Reserve initial JP 0x0000 at 0x0100; patched by cpm_end() */
     emit8_16(Z80_JP, 0x0000);
 }
 
-void be_z80_cpm_end(u8 main_idx) {
-    const FuncSig *sig = ir4_func_sig(main_idx);
+static void cpm_end(int main_idx) {
+    const FuncSig *sig = ir4_func_sig((u8)main_idx);
     u16 entry_addr = cb_cur_addr();
     u16 pos_patch;
     u16 print_u16_addr;
@@ -100,3 +102,8 @@ void be_z80_cpm_end(u8 main_idx) {
         emit8(Z80_RET);
     }
 }
+
+const Platform plat_z80_cpm = {
+    "--cpm", &be_z80, 0x0100, "cpm", 1,
+    cpm_begin, cpm_end, NULL, NULL
+};

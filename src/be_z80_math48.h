@@ -8,11 +8,42 @@
  *   Version 1.1 Revision 1
  *   by Anders Hejlsberg
  *   2532 Bytes
+ *
+ *   HOPTABEL
+ *
+ *   JP   FPADD
+ *   JP   FPSUB
+ *   JP   FPMUL
+ *   JP   FPDIV
+ *   JP   MOD
+ *   JP   PWR
+ *   JP   CMP
+ *
+ *   JP   SQR
+ *   JP   LN
+ *   JP   EXP
+ *   JP   LOG
+ *   JP   SIN
+ *   JP   COS
+ *   JP   TAN
+ *   JP   ATN
+ *   JP   ACPI
+ *   JP   INT
+ *   JP   FRAC
+ *
+ *   JP   EQUAL
+ *   JP   MUL10
+ *   JP   FIX
+ *   JP   FLOAT
+ *
+ *   JP   FSTRS
+ *   JP   FSTRR
+ *   JP   CNVN
  */
 #ifndef BE_Z80_MATH48_H
 #define BE_Z80_MATH48_H
 
-/* Jump-table offsets (3 bytes per JP entry) */
+/* Jump-table offsets (3 bytes per jump entry) */
 enum {
     RT_FP_ADD  = 0x00,
     RT_FP_SUB  = 0x03,

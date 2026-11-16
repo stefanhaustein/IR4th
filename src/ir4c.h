@@ -165,53 +165,35 @@ typedef struct {
     void (*patch_fwd)(u16 patch_offset);
 } Backend;
 
-/* Shared code buffer API (implemented in codebuf.c) */
-void      cb_reset(u16 base);
-u16       cb_pc(void);
-u16       cb_cur_addr(void);
-const u8 *cb_data(void);
-void      emit8(u8 b);
-void      emit16(u16 w);
-void      emit8_8(u8 a, u8 b);
-void      emit8_16(u8 a, u16 w);
-void      emit8_8_8(u8 a, u8 b, u8 c);
-void      cb_rewind(u16 n);
-void      patch8(u16 patch_offset, u8 val);
-void      patch16(u16 patch_offset, u16 target_addr);
-u16       cb_alloc_data(u16 size, u8 align);
-u16       cb_data_size(void);
-void      cb_emit_data_u8(u8 b);
-void      cb_emit_data_u16(u16 w);
-void      cb_emit_data_word(i32 val, u8 word_bytes);
-const u8 *cb_init_data(void);
-u16       cb_init_data_size(void);
-void      cb_add_data_reloc(u16 patch_offset, u16 data_offset);
-void      cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset);
-void      cb_patch_data_relocs(u16 data_base);
-void        cb_add_extern_reloc(u16 patch_offset, const char *name);
-u16         cb_extern_reloc_count(void);
-const char *cb_extern_reloc_name(u16 idx, u16 *patch_offset);
+/* Error reporting (implemented in frontend.c) */
+void ir4_die(const char *msg);
 
-/* Frontend entry points (implemented in frontend.c) */
-void            ir4_die(const char *msg);
-void            ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
-                                   const char *platform);
-int             ir4_find_func(const char *name);
-u16             ir4_func_addr(u8 idx);
-const FuncSig  *ir4_func_sig(u8 idx);
+/* Available backends & platforms */
+typedef struct {
+    const char    *flag;
+    const Backend *be;
+    u16            default_base;
+    const char    *req_platform;
+    int            needs_main;
+    void (*begin)(u16 base);
+    void (*end)(int main_idx);
+    int  (*write)(FILE *fp, u16 base);
+    void (*run)(u8 main_idx);
+} Platform;
 
-/* Available backends & platform stubs */
 extern const Backend be_z80;
 extern const Backend be_6502;
 extern const Backend be_arm64;
+extern const Backend be_rv32;
 
-void be_z80_cpm_begin(void);
-void be_z80_cpm_end(u8 main_idx);
+extern const Platform plat_z80_cpm;
+extern const Platform plat_6502_sim;
+extern const Platform plat_arm64_jit;
+extern const Platform plat_rv32_virt;
+extern const Platform plat_rv32_obj;
+
 void be_6502_set_zp(u8 zp);
 u16  be_6502_stack_data_off(void);
-void be_6502_sim_begin(void);
-int  be_6502_sim_write_hdr(FILE *fp, u16 load_addr, u16 reset_addr);
-void be_6502_sim_end(u8 main_idx);
-void be_arm64_run_jit(u8 main_idx);
+void be_rv32_set_obj(int obj);
 
 #endif /* IR4C_H */

@@ -1,5 +1,5 @@
 /* codebuf.c - Shared binary code & data emission buffer for IR4th (Strict C89) */
-#include "ir4c.h"
+#include "codebuf.h"
 
 typedef struct {
     u8  split;
@@ -58,6 +58,11 @@ void emit16(u16 w) {
     emit8((u8)((w >> 8) & 0xFF));  /* Little-endian high byte */
 }
 
+void emit32(u32 w) {
+    emit16((u16)(w & 0xFFFFU));
+    emit16((u16)((w >> 16) & 0xFFFFU));
+}
+
 void emit8_8(u8 a, u8 b) {
     emit8(a);
     emit8(b);
@@ -94,6 +99,34 @@ void patch16(u16 patch_offset, u16 target_addr) {
     }
     code_buf[patch_offset]     = (u8)(target_addr & 0xFF);
     code_buf[patch_offset + 1] = (u8)((target_addr >> 8) & 0xFF);
+}
+
+void patch32(u16 patch_offset, u32 val) {
+    patch16(patch_offset, (u16)(val & 0xFFFFU));
+    patch16((u16)(patch_offset + 2), (u16)((val >> 16) & 0xFFFFU));
+}
+
+void put_le16(u8 *p, u16 v) {
+    p[0] = (u8)(v & 0xFFU);
+    p[1] = (u8)((v >> 8) & 0xFFU);
+}
+
+void put_le32(u8 *p, u32 v) {
+    p[0] = (u8)(v & 0xFFUL);
+    p[1] = (u8)((v >> 8) & 0xFFUL);
+    p[2] = (u8)((v >> 16) & 0xFFUL);
+    p[3] = (u8)((v >> 24) & 0xFFUL);
+}
+
+int cb_write_raw(FILE *fp, int include_data) {
+    if (code_pc > 0 && fwrite(code_buf, 1, code_pc, fp) != (size_t)code_pc) {
+        return 0;
+    }
+    if (include_data && data_init_size > 0 &&
+        fwrite(data_buf, 1, data_init_size, fp) != (size_t)data_init_size) {
+        return 0;
+    }
+    return 1;
 }
 
 u16 cb_alloc_data(u16 size, u8 align) {

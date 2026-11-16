@@ -1,22 +1,31 @@
 /* ir4c.c - CLI driver for IR4th (Strict C89) */
-#include "ir4c.h"
+#include "codebuf.h"
+#include "frontend.h"
+
+static const Platform *const platforms[] = {
+    &plat_z80_cpm,
+    &plat_6502_sim,
+    &plat_arm64_jit,
+    &plat_rv32_virt,
+    &plat_rv32_obj,
+    NULL
+};
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--run] [--cpm] [--sim65] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--run] [--cpm] [--sim65] [--virt] [--obj] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {
     const Backend *be = &be_z80;
+    const Platform *plat = NULL;
     const char *in_path = NULL;
     const char *out_path = "out.bin";
     const char *platform = NULL;
     u16 base = 0x0100;
     int target_set = 0;
     int base_set = 0;
-    int run_jit = 0;
-    int cpm_stub = 0;
-    int sim65_stub = 0;
     int i;
+    int j;
     FILE *in_fp;
     FILE *out_fp;
 
@@ -32,6 +41,9 @@ int main(int argc, char **argv) {
                 if (!base_set) base = 0x0801;
             } else if (strcmp(argv[i], "arm64") == 0) {
                 be = &be_arm64;
+                if (!base_set) base = 0x0000;
+            } else if (strcmp(argv[i], "rv32") == 0) {
+                be = &be_rv32;
                 if (!base_set) base = 0x0000;
             } else {
                 fprintf(stderr, "Unknown target: %s\n", argv[i]);
@@ -50,17 +62,26 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--zp") == 0 && i + 1 < argc) {
             i++;
             be_6502_set_zp((u8)strtoul(argv[i], NULL, 0));
-        } else if (strcmp(argv[i], "--run") == 0) {
-            run_jit = 1;
-        } else if (strcmp(argv[i], "--cpm") == 0) {
-            cpm_stub = 1;
-            if (!platform) platform = "cpm";
-        } else if (strcmp(argv[i], "--sim65") == 0) {
-            sim65_stub = 1;
-            if (!platform) platform = "sim65";
         } else if (argv[i][0] == '-') {
-            print_usage();
-            return 1;
+            const Platform *matched = NULL;
+            for (j = 0; platforms[j]; j++) {
+                if (strcmp(argv[i], platforms[j]->flag) == 0) {
+                    matched = platforms[j];
+                    break;
+                }
+            }
+            if (!matched) {
+                print_usage();
+                return 1;
+            }
+            if (plat != NULL) {
+                fprintf(stderr, "%s and %s cannot be combined\n", plat->flag, matched->flag);
+                return 1;
+            }
+            plat = matched;
+            if (!platform && plat->req_platform) {
+                platform = plat->req_platform;
+            }
         } else {
             in_path = argv[i];
         }
@@ -77,60 +98,38 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (cpm_stub && sim65_stub) {
-        fprintf(stderr, "--cpm and --sim65 cannot be combined\n");
-        fclose(in_fp);
-        return 1;
-    }
-    if (cpm_stub && !target_set) {
-        be = &be_z80;
-        if (!base_set) base = 0x0100;
-    }
-    if (sim65_stub && !target_set) {
-        be = &be_6502;
-        if (!base_set) base = 0x0200;
-    }
-    if (cpm_stub && be != &be_z80) {
-        fprintf(stderr, "--cpm requires -t z80\n");
-        fclose(in_fp);
-        return 1;
-    }
-    if (sim65_stub && be != &be_6502) {
-        fprintf(stderr, "--sim65 requires -t 6502\n");
-        fclose(in_fp);
-        return 1;
-    }
-    if (sim65_stub && !base_set) {
-        base = 0x0200;
+    if (plat) {
+        if (!target_set) {
+            be = plat->be;
+        } else if (be != plat->be) {
+            fprintf(stderr, "%s requires -t %s\n", plat->flag, plat->be->name);
+            fclose(in_fp);
+            return 1;
+        }
+        if (!base_set) {
+            base = plat->default_base;
+        }
     }
 
     cb_reset(base);
-    if (cpm_stub) {
-        be_z80_cpm_begin();
-    } else if (sim65_stub) {
-        be_6502_sim_begin();
+    be_rv32_set_obj(plat == &plat_rv32_obj);
+    if (plat && plat->begin) {
+        plat->begin(base);
     }
     ir4_compile_stream(in_fp, in_path, be, platform);
     fclose(in_fp);
 
-    if (cpm_stub) {
+    if (plat && plat->end) {
         int main_idx = ir4_find_func("main");
-        if (main_idx < 0) {
-            fprintf(stderr, "--cpm requires a 'main' function\n");
+        if (plat->needs_main && main_idx < 0) {
+            fprintf(stderr, "%s requires a 'main' function\n", plat->flag);
             return 1;
         }
-        be_z80_cpm_end((u8)main_idx);
-    } else if (sim65_stub) {
-        int main_idx = ir4_find_func("main");
-        if (main_idx < 0) {
-            fprintf(stderr, "--sim65 requires a 'main' function\n");
-            return 1;
-        }
-        be_6502_sim_end((u8)main_idx);
+        plat->end(main_idx);
     }
 
     /* Place data segment right after code on 16-bit targets */
-    if (be != &be_arm64 && cb_data_size() > 0) {
+    if (be != &be_arm64 && be != &be_rv32 && cb_data_size() > 0) {
         cb_patch_data_relocs(cb_cur_addr());
     }
 
@@ -140,44 +139,29 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (sim65_stub) {
-        if (!be_6502_sim_write_hdr(out_fp, base, base)) {
+    if (plat && plat->write) {
+        if (!plat->write(out_fp, base)) {
             perror("fwrite");
             fclose(out_fp);
             return 1;
         }
-    }
-
-    if (cb_pc() > 0) {
-        if (fwrite(cb_data(), 1, cb_pc(), out_fp) != (size_t)cb_pc()) {
-            perror("fwrite");
-            fclose(out_fp);
-            return 1;
-        }
-    }
-    if (be != &be_arm64 && cb_init_data_size() > 0) {
-        if (fwrite(cb_init_data(), 1, cb_init_data_size(), out_fp) != (size_t)cb_init_data_size()) {
-            perror("fwrite");
-            fclose(out_fp);
-            return 1;
-        }
+    } else if (!cb_write_raw(out_fp, be != &be_arm64)) {
+        perror("fwrite");
+        fclose(out_fp);
+        return 1;
     }
     fclose(out_fp);
 
     printf("Compiled %s -> %s (target: %s, base: 0x%04X, size: %u bytes)\n",
            in_path, out_path, be->name, base, cb_pc());
 
-    if (run_jit) {
+    if (plat && plat->run) {
         int main_idx = ir4_find_func("main");
-        if (be != &be_arm64) {
-            fprintf(stderr, "--run requires -t arm64\n");
-            return 1;
-        }
         if (main_idx < 0) {
-            fprintf(stderr, "--run requires a 'main' function\n");
+            fprintf(stderr, "%s requires a 'main' function\n", plat->flag);
             return 1;
         }
-        be_arm64_run_jit((u8)main_idx);
+        plat->run((u8)main_idx);
     }
 
     return 0;

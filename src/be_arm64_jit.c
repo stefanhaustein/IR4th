@@ -1,16 +1,12 @@
 /* be_arm64_jit.c - Apple Silicon macOS MAP_JIT Runner for IR4th (Strict C89) */
-#include "ir4c.h"
+#include "codebuf.h"
+#include "frontend.h"
 
 #if defined(__APPLE__) && defined(__aarch64__)
 #include <sys/mman.h>
 #include <pthread.h>
 #include <libkern/OSCacheControl.h>
 #include <dlfcn.h>
-
-static void jit_patch32(u16 offset, u32 insn) {
-    patch16(offset, (u16)(insn & 0xFFFFU));
-    patch16((u16)(offset + 2), (u16)((insn >> 16) & 0xFFFFU));
-}
 
 /* Tiny ARM64 C-to-IR4th wrapper emitted at the end of code_buf:
  *   STP X29, X30, [SP, #-16]!
@@ -22,7 +18,7 @@ static void jit_patch32(u16 offset, u32 insn) {
  *   LDP X29, X30, [SP], #16
  *   RET
  */
-void be_arm64_run_jit(u8 main_idx) {
+static void arm64_run_jit(u8 main_idx) {
     const FuncSig *sig = ir4_func_sig(main_idx);
     u16 main_addr = sig->addr;
     u16 entry_pc = cb_pc();
@@ -86,10 +82,10 @@ void be_arm64_run_jit(u8 main_idx) {
                 exit(1);
             }
             addr = (unsigned long)sym;
-            jit_patch32(off,      (u32)(0xD2800009UL | (((addr >>  0) & 0xFFFFUL) << 5)));
-            jit_patch32(off + 4,  (u32)(0xF2A00009UL | (((addr >> 16) & 0xFFFFUL) << 5)));
-            jit_patch32(off + 8,  (u32)(0xF2C00009UL | (((addr >> 32) & 0xFFFFUL) << 5)));
-            jit_patch32(off + 12, (u32)(0xF2E00009UL | (((addr >> 48) & 0xFFFFUL) << 5)));
+            patch32(off,      (u32)(0xD2800009UL | (((addr >>  0) & 0xFFFFUL) << 5)));
+            patch32(off + 4,  (u32)(0xF2A00009UL | (((addr >> 16) & 0xFFFFUL) << 5)));
+            patch32(off + 8,  (u32)(0xF2C00009UL | (((addr >> 32) & 0xFFFFUL) << 5)));
+            patch32(off + 12, (u32)(0xF2E00009UL | (((addr >> 48) & 0xFFFFUL) << 5)));
         }
     }
 
@@ -106,9 +102,14 @@ void be_arm64_run_jit(u8 main_idx) {
     munmap(mem, MAX_CODE);
 }
 #else
-void be_arm64_run_jit(u8 main_idx) {
+static void arm64_run_jit(u8 main_idx) {
     (void)main_idx;
     fprintf(stderr, "--run is only supported on Apple Silicon macOS\n");
     exit(1);
 }
 #endif
+
+const Platform plat_arm64_jit = {
+    "--run", &be_arm64, 0x0000, NULL, 1,
+    NULL, NULL, NULL, arm64_run_jit
+};

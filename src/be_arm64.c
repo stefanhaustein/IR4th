@@ -4,17 +4,7 @@
  *   - Evaluation stack: Hardware SP using 16-byte aligned slots (1 cell per slot)
  *   - Frame pointer: X29 (locals at [X29, #-8], [X29, #-16], ...)
  */
-#include "ir4c.h"
-
-static void emit32(u32 insn) {
-    emit16((u16)(insn & 0xFFFFU));
-    emit16((u16)((insn >> 16) & 0xFFFFU));
-}
-
-static void patch32(u16 offset, u32 insn) {
-    patch16(offset, (u16)(insn & 0xFFFFU));
-    patch16((u16)(offset + 2), (u16)((insn >> 16) & 0xFFFFU));
-}
+#include "codebuf.h"
 
 /* --- Native Hardware-SP Push/Pop (16-byte aligned slots) --- */
 static void push_x0(void) { emit32(0xF81F0FE0UL); } /* STR X0, [SP, #-16]! */

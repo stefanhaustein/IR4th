@@ -3,10 +3,10 @@ CFLAGS  = -std=c89 -Wall -Wextra -O2 -Isrc
 
 BUILD   = build
 TARGET  = $(BUILD)/ir4c
-SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_6502_sim.c src/be_arm64.c src/be_arm64_jit.c
+SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_6502_sim.c src/be_arm64.c src/be_arm64_jit.c src/be_rv32.c src/be_rv32_elf.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
-.PHONY: all test test-z80 test-6502 test-gforth rt-z80 clean
+.PHONY: all test test-z80 test-6502 test-rv32 test-gforth rt rt-z80 rt-6502 rt-rv32 clean
 
 all: $(TARGET)
 
@@ -16,8 +16,17 @@ $(BUILD):
 $(BUILD)/%.o: src/%.c src/ir4c.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/be_z80.o: src/be_z80.h src/be_z80_math48.h
-$(BUILD)/be_z80_cpm.o: src/be_z80.h
+$(BUILD)/ir4c.o: src/codebuf.h src/frontend.h
+$(BUILD)/frontend.o: src/codebuf.h src/frontend.h
+$(BUILD)/codebuf.o: src/codebuf.h
+$(BUILD)/be_z80.o: src/codebuf.h src/be_z80.h src/be_z80_math48.h
+$(BUILD)/be_z80_cpm.o: src/codebuf.h src/frontend.h src/be_z80.h
+$(BUILD)/be_6502.o: src/codebuf.h src/be_6502_wozfp.h
+$(BUILD)/be_6502_sim.o: src/codebuf.h src/frontend.h
+$(BUILD)/be_arm64.o: src/codebuf.h
+$(BUILD)/be_arm64_jit.o: src/codebuf.h src/frontend.h
+$(BUILD)/be_rv32.o: src/codebuf.h src/be_rv32.h src/be_rv32_fp.h
+$(BUILD)/be_rv32_elf.o: src/codebuf.h src/frontend.h src/be_rv32.h
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET) -lm
@@ -36,6 +45,7 @@ test: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 test
 	./$(TARGET) -t 6502  -o $(BUILD)/mem_6502.bin    tests/mem.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/mem_arm64.bin   --run tests/mem.ir4
 	./$(TARGET) -t z80   -o $(BUILD)/float_z80.bin     tests/float.ir4
+	./$(TARGET) -t 6502  -o $(BUILD)/float_6502.bin    tests/float.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/float_arm64.bin --run tests/float.ir4
 	./$(TARGET) -t z80   -o $(BUILD)/req_z80.bin       tests/req.ir4
 	./$(TARGET) -t 6502  -o $(BUILD)/req_6502.bin      tests/req.ir4
@@ -83,11 +93,12 @@ test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 
 		echo "tnylpo not found; skipping Z80 execution"; \
 	fi
 
-test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
+test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/fib_sim65.bin    tests/fib.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/core_sim65.bin   tests/core.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/muldiv_sim65.bin tests/muldiv.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/mem_sim65.bin    tests/mem.ir4
+	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/float_sim65.bin  tests/float.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/req_sim65.bin    tests/req.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/data_sim65.bin   tests/data.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/ext_sim65.bin    tests/ext.ir4
@@ -104,6 +115,9 @@ test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 		out=$$(sim65 $(BUILD)/mem_sim65.bin | tr -d '\r\n'); \
 		echo "sim65 mem_sim65.bin -> $$out"; \
 		test "$$out" = "0"; \
+		out=$$(sim65 $(BUILD)/float_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 float_sim65.bin -> $$out"; \
+		test "$$out" = "0"; \
 		out=$$(sim65 $(BUILD)/req_sim65.bin | tr -d '\r\n'); \
 		echo "sim65 req_sim65.bin -> $$out"; \
 		test "$$out" = "0"; \
@@ -115,6 +129,26 @@ test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 		test "$$out" = "OK0"; \
 	else \
 		echo "sim65 not found; skipping 6502 execution"; \
+	fi
+
+test-rv32: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/fib_rv32.elf    tests/fib.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/core_rv32.elf   tests/core.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/muldiv_rv32.elf tests/muldiv.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/mem_rv32.elf    tests/mem.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/float_rv32.elf  tests/float.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/req_rv32.elf    tests/req.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/data_rv32.elf   tests/data.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/ext_rv32.elf    tests/ext.ir4
+	@if command -v qemu-system-riscv32 >/dev/null 2>&1; then \
+		for pair in "fib_rv32.elf:110" "core_rv32.elf:0" "muldiv_rv32.elf:0" "mem_rv32.elf:0" "float_rv32.elf:0" "req_rv32.elf:0" "data_rv32.elf:0" "ext_rv32.elf:OK0"; do \
+			f=$${pair%%:*}; exp=$${pair#*:}; \
+			out=$$(qemu-system-riscv32 -machine virt -cpu rv32 -bios none -nographic -kernel $(BUILD)/$$f | tr -d '\r\n'); \
+			echo "qemu-system-riscv32 $$f -> $$out"; \
+			test "$$out" = "$$exp"; \
+		done; \
+	else \
+		echo "qemu-system-riscv32 not found; skipping RV32 execution"; \
 	fi
 
 test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
@@ -137,8 +171,16 @@ test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 t
 	echo "gforth ext.ir4 -> $$out"; \
 	test "$$out" = "OK0"
 
+rt: rt-z80 rt-6502 rt-rv32
+
 rt-z80:
 	python3 tools/gen_math48.py --input tools/math48.asm --output src/be_z80_math48.h
+
+rt-6502:
+	python3 tools/gen_wozfp.py --input tools/wozfp.asm --output src/be_6502_wozfp.h
+
+rt-rv32:
+	python3 tools/gen_rv32_fp.py --input tools/rv32_fp.c --output src/be_rv32_fp.h
 
 clean:
 	rm -rf $(BUILD)

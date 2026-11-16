@@ -1,4 +1,5 @@
-#include "ir4c.h"
+#include "codebuf.h"
+#include "frontend.h"
 
 #define MAX_INCLUDE_DEPTH 16
 #define MAX_INCLUDES      64
