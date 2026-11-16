@@ -36,10 +36,12 @@ static u16 a64_cur_addr(void) { return cb_cur_addr(); }
 static u32 a64_local_off[MAX_LOCALS];
 
 static void a64_fn_begin(const char *name, u8 param_cnt,
-                         const LocalVar *locals, u8 total_locals) {
+                         const LocalVar *locals, u8 total_locals,
+                         u8 is_recursive) {
     u8 i;
     u32 cur_off = 0;
     u32 frame_bytes;
+    (void)is_recursive;
     (void)name;
 
     for (i = 0; i < total_locals; i++) {

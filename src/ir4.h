@@ -143,6 +143,7 @@ typedef struct {
     u8   is_extern;
     u8   is_defined;
     u8   has_addr;
+    u8   is_recursive;
     u8   in_types[8];
     char in_regs[8][MAX_TOK];
     u8   in_count;
@@ -159,7 +160,7 @@ typedef struct {
     u8 float_bytes;
 
     u16  (*cur_addr)(void);
-    void (*fn_begin)(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals);
+    void (*fn_begin)(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals, u8 is_recursive);
     void (*fn_end)(const FuncSig *sig, const LocalVar *locals, u8 total_locals);
     void (*call)(u16 target_addr);
     void (*call_extern)(const FuncSig *sig);

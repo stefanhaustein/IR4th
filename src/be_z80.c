@@ -89,8 +89,12 @@ static u16 z80_cur_addr(void) {
     return cb_cur_addr();
 }
 
+static u8  z80_is_static_slot[MAX_LOCALS];
+static u16 z80_static_base = 0;
+
 static void z80_fn_begin(const char *name, u8 param_cnt,
-                         const LocalVar *locals, u8 total_locals) {
+                         const LocalVar *locals, u8 total_locals,
+                         u8 is_recursive) {
     u8 i;
     u16 off = 0;
     (void)name;
@@ -103,12 +107,48 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
         rt_math48_addr  = 0;
     }
 
-    z80_local_bytes = 0;
-    for (i = param_cnt; i < total_locals; i++) {
-        u16 sz = (locals[i].size > 0) ? (u16)((locals[i].size + 1) & ~1)
-                                      : (u16)((locals[i].type == TY_F) ? 6 : 2);
-        z80_local_off[i] = z80_local_bytes;
-        z80_local_bytes += sz;
+    for (i = 0; i < total_locals; i++) z80_is_static_slot[i] = 0;
+    z80_static_base = 0;
+
+    if (!is_recursive) {
+        u16 static_bytes = 0;
+        for (i = param_cnt; i < total_locals; i++) {
+            u16 sz = (locals[i].size > 0) ? (u16)((locals[i].size + 1) & ~1)
+                                          : (u16)((locals[i].type == TY_F) ? 6 : 2);
+            z80_local_off[i] = static_bytes;
+            z80_is_static_slot[i] = 1;
+            static_bytes += sz;
+        }
+        z80_local_bytes = 0;
+        if (static_bytes > 0) {
+            z80_static_base = cb_alloc_data(static_bytes, 1);
+            for (i = param_cnt; i < total_locals; i++) {
+                if (locals[i].size > 0) continue;
+                if (locals[i].type == TY_F) {
+                    u8 k;
+                    emit8(Z80_LD_HL_NN);
+                    cb_add_data_reloc(cb_pc(), (u16)(z80_static_base + z80_local_off[i]));
+                    emit16(0x0000);
+                    for (k = 0; k < 6; k++) {
+                        emit8_8(0x36, 0x00); /* LD (HL), 0 */
+                        if (k < 5) emit8(Z80_INC_HL);
+                    }
+                } else {
+                    emit8_16(Z80_LD_HL_NN, 0x0000);
+                    emit8(0x22);
+                    cb_add_data_reloc(cb_pc(), (u16)(z80_static_base + z80_local_off[i]));
+                    emit16(0x0000); /* LD (nn), HL */
+                }
+            }
+        }
+    } else {
+        z80_local_bytes = 0;
+        for (i = param_cnt; i < total_locals; i++) {
+            u16 sz = (locals[i].size > 0) ? (u16)((locals[i].size + 1) & ~1)
+                                          : (u16)((locals[i].type == TY_F) ? 6 : 2);
+            z80_local_off[i] = z80_local_bytes;
+            z80_local_bytes += sz;
+        }
     }
 
     /* Parameters stay in place above [local_bytes] + [2-byte return addr] */
@@ -335,7 +375,28 @@ static void z80_push_data(u16 offset) {
 }
 
 static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
-    u16 off = (u16)(z80_local_off[slot] + stack_bytes);
+    u16 off;
+    if (z80_is_static_slot[slot]) {
+        u16 addr_off = (u16)(z80_static_base + z80_local_off[slot]);
+        if (type == TY_F) {
+            u8 i;
+            emit8(Z80_LD_HL_NN);
+            cb_add_data_reloc(cb_pc(), (u16)(addr_off + 5));
+            emit16(0x0000);
+            for (i = 0; i < 3; i++) {
+                emit8(Z80_LD_D_MHL);
+                emit8(Z80_DEC_HL);
+                emit8(Z80_LD_E_MHL);
+                if (i < 2) emit8(Z80_DEC_HL);
+                z80_push(Z80_PUSH_DE);
+            }
+        } else {
+            emit8(0x2A); cb_add_data_reloc(cb_pc(), addr_off); emit16(0x0000); /* LD HL, (nn) */
+            z80_push(Z80_PUSH_HL);
+        }
+        return;
+    }
+    off = (u16)(z80_local_off[slot] + stack_bytes);
     if (type == TY_F) {
         u8 i;
         emit8_16(Z80_LD_HL_NN, (u16)(off + 5));
@@ -358,7 +419,28 @@ static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
 }
 
 static void z80_local_set(u8 slot, u8 type, u16 stack_bytes) {
-    u16 off = (u16)(z80_local_off[slot] + stack_bytes);
+    u16 off;
+    if (z80_is_static_slot[slot]) {
+        u16 addr_off = (u16)(z80_static_base + z80_local_off[slot]);
+        if (type == TY_F) {
+            u8 i;
+            emit8(Z80_LD_HL_NN);
+            cb_add_data_reloc(cb_pc(), addr_off);
+            emit16(0x0000);
+            for (i = 0; i < 3; i++) {
+                emit8(Z80_POP_DE);
+                emit8(Z80_LD_MHL_E);
+                emit8(Z80_INC_HL);
+                emit8(Z80_LD_MHL_D);
+                if (i < 2) emit8(Z80_INC_HL);
+            }
+        } else {
+            z80_pop(Z80_POP_HL);
+            emit8(0x22); cb_add_data_reloc(cb_pc(), addr_off); emit16(0x0000); /* LD (nn), HL */
+        }
+        return;
+    }
+    off = (u16)(z80_local_off[slot] + stack_bytes);
     if (type == TY_F) {
         u8 i;
         emit8_16(Z80_LD_HL_NN, (u16)(off + 6));
@@ -393,7 +475,12 @@ static void z80_push_f_ac(void) {
 }
 
 static void z80_local_addr(u8 slot, u16 stack_bytes) {
-    u16 off = (u16)(z80_local_off[slot] + stack_bytes);
+    u16 off;
+    if (z80_is_static_slot[slot]) {
+        z80_push_data((u16)(z80_static_base + z80_local_off[slot]));
+        return;
+    }
+    off = (u16)(z80_local_off[slot] + stack_bytes);
     emit8_16(Z80_LD_HL_NN, off);
     emit8(Z80_ADD_HL_SP);
     z80_push(Z80_PUSH_HL);

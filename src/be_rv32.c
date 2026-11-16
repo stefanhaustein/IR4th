@@ -140,10 +140,12 @@ static u16 rv_cur_addr(void) { return cb_cur_addr(); }
 static i32 rv_local_off[MAX_LOCALS];
 
 static void rv_fn_begin(const char *name, u8 param_cnt,
-                        const LocalVar *locals, u8 total_locals) {
+                        const LocalVar *locals, u8 total_locals,
+                        u8 is_recursive) {
     u8 i;
     i32 cur_off = 0;
     (void)name;
+    (void)is_recursive;
 
     for (i = 0; i < total_locals; i++) {
         i32 sz = (locals[i].size > 0) ? (((i32)locals[i].size + 3) & ~3) : 4;

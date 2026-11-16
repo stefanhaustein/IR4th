@@ -95,11 +95,24 @@ static u16 m6502_cur_addr(void) {
     return cb_cur_addr();
 }
 
-static u8 m6502_local_off[MAX_LOCALS];
-static u8 m6502_frame_bytes = 0;
+static u16 m6502_local_off[MAX_LOCALS];
+static u16 m6502_frame_bytes = 0;
+static u8  m6502_static_frame = 0;
+static u16 m6502_static_base = 0;
+
+static void m6502_emit_local_store(u16 off) {
+    if (m6502_static_frame) {
+        emit8(0x8D);
+        cb_add_data_reloc(cb_pc(), (u16)(m6502_static_base + off));
+        emit16(0x0000);
+    } else {
+        m6502_sta_local((u8)off);
+    }
+}
 
 static void m6502_fn_begin(const char *name, u8 param_cnt,
-                           const LocalVar *locals, u8 total_locals) {
+                           const LocalVar *locals, u8 total_locals,
+                           u8 is_recursive) {
     u8 i;
     (void)name;
 
@@ -107,33 +120,40 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
     for (i = 0; i < total_locals; i++) {
         u16 sz = (locals[i].size > 0) ? locals[i].size
                                       : (u16)((locals[i].type == TY_F) ? 4 : 2);
-        if ((u16)m6502_frame_bytes + sz > 255) {
+        if (is_recursive && (u32)m6502_frame_bytes + sz > 255) {
             ir4_die("6502 local frame exceeds 255 bytes");
         }
         m6502_local_off[i] = m6502_frame_bytes;
-        m6502_frame_bytes += (u8)sz;
+        m6502_frame_bytes += sz;
     }
 
+    m6502_static_frame = (u8)(!is_recursive);
+    m6502_static_base = 0;
+
     if (m6502_frame_bytes > 0) {
-        ensure_data_alloc();
-        /* Save caller's lfp and allocate m6502_frame_bytes downward */
-        emit8(0xAD); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* LDA lfp */
-        m6502_pha();
-        m6502_sec();
-        emit8(0xE9); emit8(m6502_frame_bytes); /* SBC #m6502_frame_bytes */
-        emit8(0x8D); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* STA lfp */
-        emit8(0xA8); /* TAY (Y = new lfp) */
+        if (m6502_static_frame) {
+            m6502_static_base = cb_alloc_data(m6502_frame_bytes, 1);
+        } else {
+            ensure_data_alloc();
+            /* Save caller's lfp and allocate m6502_frame_bytes downward */
+            emit8(0xAD); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* LDA lfp */
+            m6502_pha();
+            m6502_sec();
+            emit8(0xE9); emit8((u8)m6502_frame_bytes); /* SBC #m6502_frame_bytes */
+            emit8(0x8D); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* STA lfp */
+            emit8(0xA8); /* TAY (Y = new lfp) */
+        }
     }
 
     /* Pop incoming parameters from data stack into locals */
     for (i = param_cnt; i > 0; i--) {
         u8 idx = (u8)(i - 1);
-        u8 off = m6502_local_off[idx];
+        u16 off = m6502_local_off[idx];
         u8 sz = (locals[idx].type == TY_F) ? 4 : 2;
         u8 b;
         for (b = 0; b < sz; b++) {
             m6502_lda_stk(b);
-            m6502_sta_local((u8)(off + b));
+            m6502_emit_local_store((u16)(off + b));
         }
         for (b = 0; b < sz; b++) m6502_inx();
     }
@@ -142,12 +162,12 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
     if (total_locals > param_cnt) {
         m6502_lda_imm(0x00);
         for (i = param_cnt; i < total_locals; i++) {
-            u8 off = m6502_local_off[i];
+            u16 off = m6502_local_off[i];
             u8 sz = (locals[i].type == TY_F) ? 4 : 2;
             u8 b;
             if (locals[i].size > 0) continue;
             for (b = 0; b < sz; b++) {
-                m6502_sta_local((u8)(off + b));
+                m6502_emit_local_store((u16)(off + b));
             }
         }
     }
@@ -158,7 +178,7 @@ static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_lo
     (void)locals;
     (void)total_locals;
 
-    if (m6502_frame_bytes > 0) {
+    if (!m6502_static_frame && m6502_frame_bytes > 0) {
         ensure_data_alloc();
         m6502_pla();
         emit8(0x8D); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* STA lfp */
@@ -285,33 +305,46 @@ static void m6502_push_data(u16 offset) {
 }
 
 static void m6502_local_get(u8 slot, u8 type, u16 stack_bytes) {
-    u8 off = m6502_local_off[slot];
+    u16 off = m6502_local_off[slot];
     u8 sz = (type == TY_F) ? 4 : 2;
     u8 b;
     (void)stack_bytes;
     for (b = 0; b < sz; b++) m6502_dex();
-    m6502_ldy_lfp();
-    for (b = 0; b < sz; b++) {
-        m6502_lda_local((u8)(off + b));
-        m6502_sta_stk(b);
+    if (m6502_static_frame) {
+        for (b = 0; b < sz; b++) {
+            emit8(0xAD);
+            cb_add_data_reloc(cb_pc(), (u16)(m6502_static_base + off + b));
+            emit16(0x0000);
+            m6502_sta_stk(b);
+        }
+    } else {
+        m6502_ldy_lfp();
+        for (b = 0; b < sz; b++) {
+            m6502_lda_local((u8)(off + b));
+            m6502_sta_stk(b);
+        }
     }
 }
 
 static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
-    u8 off = m6502_local_off[slot];
+    u16 off = m6502_local_off[slot];
     u8 sz = (type == TY_F) ? 4 : 2;
     u8 b;
     (void)stack_bytes;
-    m6502_ldy_lfp();
+    if (!m6502_static_frame) m6502_ldy_lfp();
     for (b = 0; b < sz; b++) {
         m6502_lda_stk(b);
-        m6502_sta_local((u8)(off + b));
+        m6502_emit_local_store((u16)(off + b));
     }
     for (b = 0; b < sz; b++) m6502_inx();
 }
 
 static void m6502_local_addr(u8 slot) {
     u16 lo_pos, hi_pos;
+    if (m6502_static_frame) {
+        m6502_push_data((u16)(m6502_static_base + m6502_local_off[slot]));
+        return;
+    }
     ensure_data_alloc();
     m6502_dex(); m6502_dex();
     m6502_clc();

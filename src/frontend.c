@@ -1243,6 +1243,24 @@ static void compile_body(WordIR *w) {
     ir4_die("unexpected EOF inside word definition (missing ';')");
 }
 
+static u8 can_reach_func(u8 cur, u8 target, u8 *visited) {
+    WordIR *w = &words[cur];
+    u16 i;
+    if (funcs[cur].is_extern || w->is_code) return 0;
+    for (i = 0; i < w->ir_len; i++) {
+        const IrInstr *ins = &ir_buf[w->ir_start + i];
+        if (ins->kind == IR_CALL) {
+            u8 callee = ins->u.func_idx;
+            if (callee == target) return 1;
+            if (!visited[callee]) {
+                visited[callee] = 1;
+                if (can_reach_func(callee, target, visited)) return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 static void mark_reachable(u8 fidx) {
     WordIR *w = &words[fidx];
     u16 i;
@@ -1295,7 +1313,7 @@ static void emit_word(u8 fidx) {
     if (w->ir_len >= MAX_IR) ir4_die("word IR length overflow");
     sig->addr = be->cur_addr();
     sig->has_addr = 1;
-    be->fn_begin(sig->name, w->param_cnt, w->locals, w->local_count);
+    be->fn_begin(sig->name, w->param_cnt, w->locals, w->local_count, sig->is_recursive);
 
     for (i = 0; i <= w->ir_len; i++) {
         for (p = 0; p < pend_cnt; p++) {
@@ -1640,6 +1658,13 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
         } else {
             for (f = 0; f < func_count; f++) {
                 if (!funcs[f].is_extern && funcs[f].is_defined) words[f].reachable = 1;
+            }
+        }
+        for (f = 0; f < func_count; f++) {
+            if (words[f].reachable) {
+                u8 visited[MAX_SYMS];
+                memset(visited, 0, sizeof(visited));
+                funcs[f].is_recursive = can_reach_func(f, f, visited);
             }
         }
 
