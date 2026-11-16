@@ -88,13 +88,14 @@ fn test_ctrl ( x :i | acc :i -> :i )
   then
   -> acc
 
-  // begin ... until (sum 1..5 = 15)
+  // begin ... while ... repeat (sum 1..5 = 15)
   0 -> x
   begin
+    x 5 <
+  while
     x 1 + -> x
     acc x + -> acc
-    x 5 ==
-  until
+  repeat
   acc
 end
 

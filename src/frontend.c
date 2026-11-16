@@ -998,18 +998,6 @@ static void compile_body(WordIR *w) {
             fold_fence = w->ir_len;
             continue;
         }
-        if (strcmp(tok, "until") == 0) {
-            BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN) ir4_die("'until' without 'begin'");
-            b = &blocks[--bsp];
-            tpop_expect(TY_W);
-            if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
-                ir4_die("loop body must leave stack even at 'until'");
-            ins = emit_ir(IR_BR_BACK, w);
-            ins->u.br.cond = BR_JZ;
-            ins->u.br.target = b->loop_addr;
-            continue;
-        }
 
         /* Core built-in word */
         if (handle_builtin(tok, w)) continue;
