@@ -16,9 +16,9 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a trailing colon that is not a keyword.
 
-## 2. Type System (Monomorphic v0.3)
+## 2. Type System (v0.3)
 
-IR4th v0.3 defines **three stack types** on a **single unified stack** and **no operator polymorphism**. Nothing smaller than a native machine word `i:` exists on the stack; byte- and 16-bit memory accesses (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) implicitly widen to and truncate from `i:`.
+IR4th v0.3 defines **three stack types** on a **single unified stack** with **type-directed operator overloading** for arithmetic and comparisons. Nothing smaller than a native machine word `i:` exists on the stack; byte- and 16-bit memory accesses (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) implicitly widen to and truncate from `i:`.
 
 | Type Token | Name | Width & Semantics | Z80 / 6502 | ARM32 / RISC-V32 | ARM64 / x86-64 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -51,9 +51,10 @@ end
 * **Outputs (after `--`):**
   * A nameless sequence of `TYPE` tokens specifying the exact stack state required at `end` or `exit` (e.g., `-- i:`, `-- f:`, `-- a: i:`, or `--` for `void`).
 
-### 3.1 Accessing & Mutating Locals
+### 3.1 Accessing, Mutating & Addressing Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
 * **Write (`-> <ident>`):** Pops the top value from the stack (verifying its type matches `<ident>`'s declared type `T`) and stores it into `<ident>`.
+* **Address (`& <ident>`):** Pushes the memory address of parameter or local `<ident>` onto the stack with type `a:`.
 
 ### 3.2 Named Data Buffers (`buffer:`)
 Top-level fixed-size writable buffers can be declared outside word definitions:
@@ -108,7 +109,7 @@ extern bdos 0x0005 { i: C i: DE -- i: A }      \ Z80 CP/M (fixed addr + register
 * On RISC-V RV32 (`--obj`), symbolic `extern` calls emit ELF relocations (`R_RISCV_HI20` / `R_RISCV_LO12_I`) using the `ilp32` C ABI (`a0..a7`); fixed-address `extern` declarations are also supported for bare-metal targets (`--virt`).
 * On 16-bit targets (Z80 / 6502), a fixed 16-bit address is required and parameter/return names specify CPU registers (`A, B, C, D, E, H, L, BC, DE, HL` on Z80; `A, X, Y` on 6502).
 
-## 4. Core Instruction Set (Non-Polymorphic)
+## 4. Core Instruction Set
 
 In stack-effect notation `( before -- after )`, the rightmost item is the top of the stack. All types—including `f:`—reside on the single unified stack.
 
@@ -146,18 +147,18 @@ Because `i:` and `a:` always share the same register width, address offsets requ
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `a+` | `( a: i: -- a: )` | Add byte offset `i:` to address `a:` |
-| `a-` | `( a: i: -- a: )` | Subtract byte offset `i:` from address `a:` |
-| `adiff` | `( a: a: -- i: )` | Signed byte distance between two addresses (`a1 - a2`) |
+| `+` | `( a: i: -- a: )` | Add byte offset `i:` to address `a:` |
+| `-` | `( a: i: -- a: )` | Subtract byte offset `i:` from address `a:` |
+| `-` | `( a: a: -- i: )` | Signed byte distance between two addresses (`a1 - a2`) |
 
 ### 4.4 Floating-Point Operations (`f:`)
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `f+` | `( f: f: -- f: )` | Floating-point addition |
-| `f-` | `( f: f: -- f: )` | Floating-point subtraction (`a - b`) |
-| `f*` | `( f: f: -- f: )` | Floating-point multiplication |
-| `f/` | `( f: f: -- f: )` | Floating-point division (`a / b`) |
+| `+` | `( f: f: -- f: )` | Floating-point addition |
+| `-` | `( f: f: -- f: )` | Floating-point subtraction (`a - b`) |
+| `*` | `( f: f: -- f: )` | Floating-point multiplication |
+| `/` | `( f: f: -- f: )` | Floating-point division (`a / b`) |
 | `fnegate` | `( f: -- f: )` | Floating-point negation (`-a`) |
 
 ### 4.5 Comparisons (`i:`, `a:`, and `f:`)
@@ -168,8 +169,8 @@ All comparisons consume two values and push a boolean flag of type **`i:`** (`-1
 | `=` , `<>` | `( i: i: -- i: )` | Word equal / not equal |
 | `<` , `>` , `<=` , `>=` | `( i: i: -- i: )` | Signed word comparisons |
 | `u<` , `u>` , `u<=` , `u>=` | `( i: i: -- i: )` | Unsigned word comparisons |
-| `a=` , `a<>` , `au<` , `au>` | `( a: a: -- i: )` | Address equality and unsigned pointer comparisons |
-| `f=` , `f<>` , `f<` , `f>` | `( f: f: -- i: )` | Floating-point comparisons |
+| `=` , `<>` , `u<` , `u>` | `( a: a: -- i: )` | Address equality and unsigned pointer comparisons |
+| `=` , `<>` , `<` , `>` | `( f: f: -- i: )` | Floating-point comparisons |
 
 ### 4.6 Memory Load & Store (Standard Forth Operators)
 Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) widen to `i:` on load and truncate the low bits of `i:` on store.
@@ -215,10 +216,10 @@ fn memset { a: dst i: val i: len | i: i -- a: }
   begin
     i len u<
   while
-    val dst i a+ i8!
+    val dst i + i8!
     i 1 + -> i
   repeat
-  dst len a+
+  dst len +
 end
 
 \ Sum an array of signed 8-bit bytes into a native word
@@ -228,7 +229,7 @@ fn sum_signed_bytes { a: ptr i: count | i: i i: acc -- i: }
   begin
     i count <
   while
-    ptr i a+ i8@
+    ptr i + i8@
     acc + -> acc
     i 1 + -> i
   repeat

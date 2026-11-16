@@ -1,0 +1,5 @@
+\ Error test: assigning i: into f: local via '->'
+fn main { | f: x -- i: }
+  1 -> x
+  0
+end

@@ -1,0 +1,7 @@
+\ Error test: unbalanced stack in begin/until loop
+fn main { -- i: }
+  begin
+    1 0
+  until
+  0
+end

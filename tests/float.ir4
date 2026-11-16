@@ -9,29 +9,29 @@ fn assert_true { i: cond i: code -- i: }
 end
 
 fn add_mul_f { f: a f: b i: k | f: acc -- f: }
-  a b f+ -> acc
-  acc k w>f f*
+  a b + -> acc
+  acc k w>f *
 end
 
 fn main { | f: x -- i: }
   \ Basic arithmetic & literals
-  f: 1.5 f: 2.25 f+ f: 3.75 f= 1 assert_true
+  f: 1.5 f: 2.25 + f: 3.75 = 1 assert_true
   dup 0 <> if exit then drop
 
-  f: 10.5 f: 3.25 f- f: 7.25 f= 2 assert_true
+  f: 10.5 f: 3.25 - f: 7.25 = 2 assert_true
   dup 0 <> if exit then drop
 
-  f: -2.5 f: 4.0 f* f: -10.0 f= 3 assert_true
+  f: -2.5 f: 4.0 * f: -10.0 = 3 assert_true
   dup 0 <> if exit then drop
 
-  f: 9.0 f: 2.0 f/ f: 4.5 f= 4 assert_true
+  f: 9.0 f: 2.0 / f: 4.5 = 4 assert_true
   dup 0 <> if exit then drop
 
-  f: 3.5 fnegate f: -3.5 f= 5 assert_true
+  f: 3.5 fnegate f: -3.5 = 5 assert_true
   dup 0 <> if exit then drop
 
   \ Conversions w>f and f>w
-  -42 w>f f: -42.0 f= 6 assert_true
+  -42 w>f f: -42.0 = 6 assert_true
   dup 0 <> if exit then drop
 
   f: 123.75 f>w 123 = 7 assert_true
@@ -41,37 +41,37 @@ fn main { | f: x -- i: }
   dup 0 <> if exit then drop
 
   \ Comparisons (f=, f<>, f<, f>)
-  f: 1.5 f: 2.5 f< 9 assert_true
+  f: 1.5 f: 2.5 < 9 assert_true
   dup 0 <> if exit then drop
 
-  f: -3.0 f: -1.0 f< 10 assert_true
+  f: -3.0 f: -1.0 < 10 assert_true
   dup 0 <> if exit then drop
 
-  f: 5.0 f: 2.0 f> 11 assert_true
+  f: 5.0 f: 2.0 > 11 assert_true
   dup 0 <> if exit then drop
 
-  f: 1.0 f: 2.0 f<> 12 assert_true
+  f: 1.0 f: 2.0 <> 12 assert_true
   dup 0 <> if exit then drop
 
   \ Stack ops on F: and mixed (W: F:)
-  f: 3.0 dup f+ f: 6.0 f= 13 assert_true
+  f: 3.0 dup + f: 6.0 = 13 assert_true
   dup 0 <> if exit then drop
 
-  f: 1.0 f: 2.0 swap f- f: 1.0 f= 14 assert_true
+  f: 1.0 f: 2.0 swap - f: 1.0 = 14 assert_true
   dup 0 <> if exit then drop
 
-  f: 2.0 f: 3.0 over f+ f+ f: 7.0 f= 15 assert_true
+  f: 2.0 f: 3.0 over + + f: 7.0 = 15 assert_true
   dup 0 <> if exit then drop
 
-  10 f: 2.5 swap w>f f+ f: 12.5 f= 16 assert_true
+  10 f: 2.5 swap w>f + f: 12.5 = 16 assert_true
   dup 0 <> if exit then drop
 
   \ F: params, locals, and return value
   f: 1.5 f: 2.5 3 add_mul_f -> x
-  x f: 12.0 f= 17 assert_true
+  x f: 12.0 = 17 assert_true
   dup 0 <> if exit then drop
 
   \ f! and f@
   f: -6.25 fbuf f!
-  fbuf f@ f: -6.25 f= 18 assert_true
+  fbuf f@ f: -6.25 = 18 assert_true
 end

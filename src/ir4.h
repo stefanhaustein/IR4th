@@ -50,7 +50,8 @@ typedef enum {
 /* Local variable operations */
 typedef enum {
     LOCAL_GET = 0,
-    LOCAL_SET
+    LOCAL_SET,
+    LOCAL_ADDR
 } LocalOp;
 
 /* Branch conditions */

@@ -1,7 +1,7 @@
 /* be_6502.c - 6502 Direct Binary Machine-Code Backend for IR4th (Strict C89)
  * Calling & Register Convention:
  *   - Data stack: 256-byte BSS buffer in normal RAM indexed by X (wraps in 0..255 via DEX/DEX)
- *   - Locals: 64-byte BSS buffer in normal RAM (2 bytes per slot, preserved on HW stack)
+ *   - Locals: 256-byte BSS software frame stack indexed by 1-byte BSS lfp (grows downward)
  *   - Scratch pointers: 4 Zero Page bytes at zp_scratch (default $FB..$FE; override via --zp)
  */
 #include "codebuf.h"
@@ -11,6 +11,7 @@
 static u8  zp_scratch      = 0xFB;
 static u16 stack_data_off  = 0;
 static u16 locals_data_off = 0;
+static u16 lfp_data_off    = 0;
 static int data_inited     = 0;
 static u16 mul16_addr      = 0;
 static u16 udivmod16_addr  = 0;
@@ -24,7 +25,8 @@ void be_6502_set_zp(u8 zp) {
 static void ensure_data_alloc(void) {
     if (!data_inited) {
         stack_data_off  = cb_alloc_data(256, 1);
-        locals_data_off = cb_alloc_data(64, 1);
+        locals_data_off = cb_alloc_data(256, 1);
+        lfp_data_off    = cb_alloc_data(1, 1);
         data_inited = 1;
     }
 }
@@ -66,8 +68,9 @@ static void m6502_lda_zp(u8 zp)    { emit8(0xA5); emit8(zp); }
 static void m6502_sta_zp(u8 zp)    { emit8(0x85); emit8(zp); }
 static void m6502_eor_imm(u8 v)    { emit8(0x49); emit8(v); }
 
-static void m6502_lda_local(u8 o)  { emit_local_op(0xAD, o); }
-static void m6502_sta_local(u8 o)  { emit_local_op(0x8D, o); }
+static void m6502_lda_local(u8 o)  { emit_local_op(0xB9, o); } /* LDA abs,Y */
+static void m6502_sta_local(u8 o)  { emit_local_op(0x99, o); } /* STA abs,Y */
+static void m6502_ldy_lfp(void)    { ensure_data_alloc(); emit8(0xAC); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); } /* LDY lfp */
 
 static void m6502_lda_stk(u8 d)    { emit_stack_op(0xBD, d); }
 static void m6502_sta_stk(u8 d)    { emit_stack_op(0x9D, d); }
@@ -98,15 +101,15 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
     (void)name;
     (void)locals;
 
-    /* Preserve caller's local slots on hardware stack for reentrancy */
-    for (i = 0; i < total_locals; i++) {
-        u8 off = (u8)(i * 4);
-        u8 sz = (locals[i].type == TY_F) ? 4 : 2;
-        u8 b;
-        for (b = 0; b < sz; b++) {
-            m6502_lda_local((u8)(off + b));
-            m6502_pha();
-        }
+    if (total_locals > 0) {
+        ensure_data_alloc();
+        /* Save caller's lfp and allocate total_locals * 4 bytes downward */
+        emit8(0xAD); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* LDA lfp */
+        m6502_pha();
+        m6502_sec();
+        emit8(0xE9); emit8((u8)(total_locals * 4)); /* SBC #(total_locals*4) */
+        emit8(0x8D); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* STA lfp */
+        emit8(0xA8); /* TAY (Y = new lfp) */
     }
 
     /* Pop incoming parameters from data stack into locals */
@@ -137,19 +140,13 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
 }
 
 static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_locals) {
-    u8 i;
     (void)sig;
+    (void)locals;
 
-    /* Restore caller's local slots in reverse order */
-    for (i = total_locals; i > 0; i--) {
-        u8 idx = (u8)(i - 1);
-        u8 off = (u8)(idx * 4);
-        u8 sz = (locals[idx].type == TY_F) ? 4 : 2;
-        u8 b;
-        for (b = sz; b > 0; b--) {
-            m6502_pla();
-            m6502_sta_local((u8)(off + b - 1));
-        }
+    if (total_locals > 0) {
+        ensure_data_alloc();
+        m6502_pla();
+        emit8(0x8D); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* STA lfp */
     }
 
     m6502_rts();
@@ -278,6 +275,7 @@ static void m6502_local_get(u8 slot, u8 type, u16 stack_bytes) {
     u8 b;
     (void)stack_bytes;
     for (b = 0; b < sz; b++) m6502_dex();
+    m6502_ldy_lfp();
     for (b = 0; b < sz; b++) {
         m6502_lda_local((u8)(off + b));
         m6502_sta_stk(b);
@@ -289,6 +287,7 @@ static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
     u8 sz = (type == TY_F) ? 4 : 2;
     u8 b;
     (void)stack_bytes;
+    m6502_ldy_lfp();
     for (b = 0; b < sz; b++) {
         m6502_lda_stk(b);
         m6502_sta_local((u8)(off + b));
@@ -296,9 +295,24 @@ static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
     for (b = 0; b < sz; b++) m6502_inx();
 }
 
+static void m6502_local_addr(u8 slot) {
+    u16 lo_pos, hi_pos;
+    ensure_data_alloc();
+    m6502_dex(); m6502_dex();
+    m6502_clc();
+    emit8(0xA9); lo_pos = cb_pc(); emit8(0x00); /* LDA #<local */
+    emit8(0x6D); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* ADC lfp */
+    m6502_sta_stk(0);
+    emit8(0xA9); hi_pos = cb_pc(); emit8(0x00); /* LDA #>local */
+    emit8(0x69); emit8(0x00); /* ADC #0 */
+    m6502_sta_stk(1);
+    cb_add_data_reloc_split(lo_pos, hi_pos, (u16)(locals_data_off + slot * 4));
+}
+
 static void m6502_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
-    if (op == LOCAL_GET) m6502_local_get(slot, (u8)type, stack_bytes);
-    else                 m6502_local_set(slot, (u8)type, stack_bytes);
+    if (op == LOCAL_GET)       m6502_local_get(slot, (u8)type, stack_bytes);
+    else if (op == LOCAL_ADDR) m6502_local_addr(slot);
+    else                       m6502_local_set(slot, (u8)type, stack_bytes);
 }
 
 static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {

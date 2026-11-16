@@ -357,9 +357,18 @@ typedef struct {
 static const BuiltinDef builtins[] = {
     /* Word ALU & bitwise */
     { "+",       OP_ADD,      TY_W, TY_W,    TY_W },
+    /* Arithmetic & bitwise */
+    { "+",       OP_ADD,      TY_W, TY_W,    TY_W },
+    { "+",       OP_AADD,     TY_W, TY_A,    TY_A },
+    { "+",       OP_FADD,     TY_F, TY_F,    TY_F },
     { "-",       OP_SUB,      TY_W, TY_W,    TY_W },
+    { "-",       OP_ASUB,     TY_W, TY_A,    TY_A },
+    { "-",       OP_ADIFF,    TY_A, TY_A,    TY_W },
+    { "-",       OP_FSUB,     TY_F, TY_F,    TY_F },
     { "*",       OP_MUL,      TY_W, TY_W,    TY_W },
+    { "*",       OP_FMUL,     TY_F, TY_F,    TY_F },
     { "/",       OP_DIV,      TY_W, TY_W,    TY_W },
+    { "/",       OP_FDIV,     TY_F, TY_F,    TY_F },
     { "mod",     OP_MOD,      TY_W, TY_W,    TY_W },
     { "u/",      OP_UDIV,     TY_W, TY_W,    TY_W },
     { "umod",    OP_UMOD,     TY_W, TY_W,    TY_W },
@@ -370,38 +379,27 @@ static const BuiltinDef builtins[] = {
     { "lshift",  OP_LSHIFT,   TY_W, TY_W,    TY_W },
     { "arshift", OP_ARSHIFT,  TY_W, TY_W,    TY_W },
     { "rshift",  OP_RSHIFT,   TY_W, TY_W,    TY_W },
-
-    /* Address arithmetic */
-    { "a+",      OP_AADD,     TY_W, TY_A,    TY_A },
-    { "a-",      OP_ASUB,     TY_W, TY_A,    TY_A },
-    { "adiff",   OP_ADIFF,    TY_A, TY_A,    TY_W },
-
-    /* Floating-point operations */
-    { "f+",      OP_FADD,     TY_F, TY_F,    TY_F },
-    { "f-",      OP_FSUB,     TY_F, TY_F,    TY_F },
-    { "f*",      OP_FMUL,     TY_F, TY_F,    TY_F },
-    { "f/",      OP_FDIV,     TY_F, TY_F,    TY_F },
     { "fnegate", OP_FNEG,     TY_F, TY_NONE, TY_F },
 
     /* Comparisons */
     { "=",       OP_EQ,       TY_W, TY_W,    TY_W },
+    { "=",       OP_AEQ,      TY_A, TY_A,    TY_W },
+    { "=",       OP_FEQ,      TY_F, TY_F,    TY_W },
     { "<>",      OP_NE,       TY_W, TY_W,    TY_W },
+    { "<>",      OP_ANE,      TY_A, TY_A,    TY_W },
+    { "<>",      OP_FNE,      TY_F, TY_F,    TY_W },
     { "<",       OP_LT,       TY_W, TY_W,    TY_W },
+    { "<",       OP_FLT,      TY_F, TY_F,    TY_W },
     { ">",       OP_GT,       TY_W, TY_W,    TY_W },
+    { ">",       OP_FGT,      TY_F, TY_F,    TY_W },
     { "<=",      OP_LE,       TY_W, TY_W,    TY_W },
     { ">=",      OP_GE,       TY_W, TY_W,    TY_W },
     { "u<",      OP_ULT,      TY_W, TY_W,    TY_W },
+    { "u<",      OP_ALT,      TY_A, TY_A,    TY_W },
     { "u>",      OP_UGT,      TY_W, TY_W,    TY_W },
+    { "u>",      OP_AGT,      TY_A, TY_A,    TY_W },
     { "u<=",     OP_ULE,      TY_W, TY_W,    TY_W },
     { "u>=",     OP_UGE,      TY_W, TY_W,    TY_W },
-    { "a=",      OP_AEQ,      TY_A, TY_A,    TY_W },
-    { "a<>",     OP_ANE,      TY_A, TY_A,    TY_W },
-    { "au<",     OP_ALT,      TY_A, TY_A,    TY_W },
-    { "au>",     OP_AGT,      TY_A, TY_A,    TY_W },
-    { "f=",      OP_FEQ,      TY_F, TY_F,    TY_W },
-    { "f<>",     OP_FNE,      TY_F, TY_F,    TY_W },
-    { "f<",      OP_FLT,      TY_F, TY_F,    TY_W },
-    { "f>",      OP_FGT,      TY_F, TY_F,    TY_W },
 
     /* Memory load/store */
     { "i8@",     OP_I8FETCH,  TY_A, TY_NONE, TY_W },
@@ -517,10 +515,18 @@ static int handle_builtin(const char *tok, WordIR *w) {
         return 1;
     }
 
-    for (i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {
-        if (strcmp(tok, builtins[i].name) == 0) {
-            tpop_expect(builtins[i].in1);
-            if (builtins[i].in2 != TY_NONE) tpop_expect(builtins[i].in2);
+    {
+        int matched_name = 0;
+        for (i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {
+            int need;
+            if (strcmp(tok, builtins[i].name) != 0) continue;
+            matched_name = 1;
+            need = (builtins[i].in2 != TY_NONE) ? 2 : 1;
+            if (tsp < need) continue;
+            if (tstack[tsp - 1] != builtins[i].in1) continue;
+            if (builtins[i].in2 != TY_NONE && tstack[tsp - 2] != builtins[i].in2) continue;
+
+            tsp -= need;
             if (builtins[i].out != TY_NONE) tpush(builtins[i].out);
             if (w->ir_len >= fold_fence + 2) {
                 IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 2];
@@ -537,6 +543,11 @@ static int handle_builtin(const char *tok, WordIR *w) {
             ins = emit_ir(IR_ALU_OP, w);
             ins->u.op = builtins[i].op;
             return 1;
+        }
+        if (matched_name) {
+            char msg[128];
+            sprintf(msg, "type mismatch or stack underflow for '%s'", tok);
+            ir4_die(msg);
         }
     }
 
@@ -573,7 +584,7 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
                 memcpy(sig->out_reg, tok, len + 1);
                 continue;
             }
-            ir4_die("expected type token (W:, A:, F:) in signature");
+            ir4_die("expected type token (i:, a:, f:) in signature");
         }
 
         if (in_outs) {
@@ -693,6 +704,20 @@ static void compile_word(void) {
             tpush(TY_W);
             ins = emit_ir(IR_PUSH_W, w);
             ins->u.w = num_val;
+            continue;
+        }
+
+        /* Address of local: & <ident> */
+        if (strcmp(tok, "&") == 0) {
+            if (!next_tok(tok)) ir4_die("expected identifier after '&'");
+            idx = find_local(tok);
+            if (idx < 0) ir4_die("unknown local in '&'");
+            ins = emit_ir(IR_LOCAL_OP, w);
+            ins->u.loc.op = LOCAL_ADDR;
+            ins->u.loc.slot = locals[idx].slot;
+            ins->u.loc.type = (StackType)locals[idx].type;
+            ins->u.loc.stack_bytes = tstack_bytes();
+            tpush(TY_A);
             continue;
         }
 

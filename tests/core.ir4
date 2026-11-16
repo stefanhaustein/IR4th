@@ -65,16 +65,16 @@ end
 
 fn test_addr { | a: p a: q -- i: }
   0x1000 w>a -> p
-  p 16 a+ 4 a- -> q
-  q p adiff 12 30 assert_eq
+  p 16 + 4 - -> q
+  q p - 12 30 assert_eq
   dup 0 <> if exit then drop
-  p q au< -1 31 assert_eq
+  p q u< -1 31 assert_eq
   dup 0 <> if exit then drop
-  q p au> -1 32 assert_eq
+  q p u> -1 32 assert_eq
   dup 0 <> if exit then drop
-  p p a= -1 33 assert_eq
+  p p = -1 33 assert_eq
   dup 0 <> if exit then drop
-  p q a<> -1 34 assert_eq
+  p q <> -1 34 assert_eq
   dup 0 <> if exit then drop
   q a>w 0x100C 35 assert_eq
 end

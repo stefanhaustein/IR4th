@@ -168,6 +168,9 @@ static void a64_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
     if (op == LOCAL_GET) {
         emit32(0xF84003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* LDUR X0, [X29, #-off] */
         push_x0();
+    } else if (op == LOCAL_ADDR) {
+        emit32(0xD10003A0UL | ((off & 0xFFFUL) << 10)); /* SUB X0, X29, #off */
+        push_x0();
     } else {
         pop_x0();
         emit32(0xF80003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-off] */

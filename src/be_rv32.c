@@ -239,6 +239,9 @@ static void rv_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
     if (op == LOCAL_GET) {
         rv_lw(RV_T0, off, RV_FP);
         push_reg(RV_T0);
+    } else if (op == LOCAL_ADDR) {
+        rv_addi(RV_T0, RV_FP, off);
+        push_reg(RV_T0);
     } else {
         pop_reg(RV_T0);
         rv_sw(RV_T0, off, RV_FP);

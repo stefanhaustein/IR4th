@@ -6,7 +6,7 @@ TARGET  = $(BUILD)/ir4c
 SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_6502_sim.c src/be_arm64.c src/be_arm64_jit.c src/be_rv32.c src/be_rv32_elf.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
-.PHONY: all test test-z80 test-6502 test-rv32 rt rt-z80 rt-6502 rt-rv32 clean
+.PHONY: all test test-err test-z80 test-6502 test-rv32 rt rt-z80 rt-6502 rt-rv32 clean
 
 all: $(TARGET)
 
@@ -54,6 +54,16 @@ test: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 test
 	./$(TARGET) -t 6502  -o $(BUILD)/data_6502.bin     tests/data.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/data_arm64.bin  --run tests/data.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/ext_arm64.bin   --run tests/ext.ir4
+	$(MAKE) test-err
+
+test-err: $(TARGET)
+	@for f in tests/errors/*.ir4; do \
+		if ./$(TARGET) -t arm64 -o $(BUILD)/err.bin $$f >/dev/null 2>&1; then \
+			echo "FAIL: expected error for $$f"; exit 1; \
+		else \
+			echo "OK (rejected): $$f"; \
+		fi; \
+	done
 
 test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
 	./$(TARGET) -t z80 --cpm -o build/fib.com    tests/fib.ir4

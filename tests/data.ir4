@@ -27,12 +27,12 @@ end
 fn main { -- i: }
   \ Check i8, values (unsigned & signed reads)
   bytes_tbl u8@ 10 <> if 1 exit then
-  bytes_tbl 1 a+ u8@ 255 <> if 2 exit then
-  bytes_tbl 2 a+ i8@ -5 <> if 3 exit then
+  bytes_tbl 1 + u8@ 255 <> if 2 exit then
+  bytes_tbl 2 + i8@ -5 <> if 3 exit then
 
   \ Check i16, values (unsigned & signed reads)
   words16_tbl i16@ 1000 <> if 4 exit then
-  words16_tbl 2 a+ i16@ -1234 <> if 5 exit then
+  words16_tbl 2 + i16@ -1234 <> if 5 exit then
 
   \ Check , (native word)
   w_pos @ 42 <> if 6 exit then
@@ -40,7 +40,7 @@ fn main { -- i: }
 
   \ Check mid-table align before ,
   mixed_tbl u8@ 7 <> if 8 exit then
-  mixed_tbl word_bytes a+ @ 99 <> if 9 exit then
+  mixed_tbl word_bytes + @ 99 <> if 9 exit then
 
   \ Check writable buffers still work alongside create
   99 scratch i8!

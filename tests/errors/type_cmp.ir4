@@ -1,0 +1,4 @@
+\ Error test: mixing i: and a: in '='
+fn main { -- i: }
+  0 a: 0x100 =
+end

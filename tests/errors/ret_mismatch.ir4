@@ -1,0 +1,4 @@
+\ Error test: return type mismatch at 'end'
+fn main { -- i: }
+  f: 1.0
+end

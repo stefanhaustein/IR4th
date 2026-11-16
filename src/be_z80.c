@@ -372,9 +372,17 @@ static void z80_push_f_ac(void) {
     z80_push(Z80_PUSH_HL);
 }
 
+static void z80_local_addr(u8 slot, u16 stack_bytes) {
+    u16 off = (u16)(z80_local_off[slot] + stack_bytes);
+    emit8_16(Z80_LD_HL_NN, off);
+    emit8(Z80_ADD_HL_SP);
+    z80_push(Z80_PUSH_HL);
+}
+
 static void z80_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
-    if (op == LOCAL_GET) z80_local_get(slot, (u8)type, stack_bytes);
-    else                 z80_local_set(slot, (u8)type, stack_bytes);
+    if (op == LOCAL_GET)       z80_local_get(slot, (u8)type, stack_bytes);
+    else if (op == LOCAL_ADDR) z80_local_addr(slot, stack_bytes);
+    else                       z80_local_set(slot, (u8)type, stack_bytes);
 }
 
 static void z80_stack_op(StackOp op, StackType t1, StackType t2) {

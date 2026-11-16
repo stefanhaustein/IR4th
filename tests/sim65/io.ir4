@@ -5,7 +5,7 @@ extern sim_write 0xFFF7 { i: A i: X -- i: A }
 fn putchar { i: c -- i: }
   c ch i8!
   ch cstack a!
-  1 cstack 2 a+ !
+  1 cstack 2 + !
   cstack 0x10 w>a a!
   1 0 sim_write drop
   c
