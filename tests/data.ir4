@@ -23,6 +23,15 @@ vals mixed_tbl
 end
 
 var tail_buf :bytes 16
+var g_init :bytes 4
+
+init
+  10 g_init !i
+end
+
+init
+  g_init @i 5 + g_init !i
+end
 
 fn word_bytes ( ) -> :i
   1 16 << 0 == if 2 return then
@@ -55,5 +64,8 @@ fn main ( ) -> :i
 
   // Re-verify create data wasn't disturbed
   w_pos @i 42 != if 12 return then
+
+  // Verify multiple init blocks ran in order before main
+  g_init @i 15 != if 13 return then
   0
 end

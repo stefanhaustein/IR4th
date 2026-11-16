@@ -681,17 +681,16 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
     if (cur_out_count == 0) ir4_die("expected return type after '->'");
 }
 
+static void compile_body(WordIR *w);
+
 static void compile_word(void) {
     char tok[MAX_TOK];
     char name[MAX_TOK];
     FuncSig *sig;
     WordIR *w;
-    IrInstr *ins;
     u8 fidx;
     int existing;
     u8 param_cnt = 0;
-    u8 unreachable = 0;
-    i32 num_val;
 
     if (!next_tok(name)) ir4_die("expected word name after 'fn'");
     if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after word name");
@@ -733,14 +732,48 @@ static void compile_word(void) {
         parse_sig_body(sig, &param_cnt, 1);
     }
 
-    w->ir_start = ir_count;
-    w->ir_len = 0;
-    fold_fence = 0;
     w->param_cnt = param_cnt;
     w->local_count = local_count;
     if (local_count > 0) {
         memcpy(w->locals, locals, local_count * sizeof(LocalVar));
     }
+    compile_body(w);
+}
+
+static u8 init_funcs[MAX_SYMS];
+static u8 init_count = 0;
+
+static void compile_init(void) {
+    FuncSig *sig;
+    WordIR *w;
+    u8 fidx;
+
+    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+    fidx = func_count++;
+    sig = &funcs[fidx];
+    w = &words[fidx];
+    memset(sig, 0, sizeof(FuncSig));
+    memset(w, 0, sizeof(WordIR));
+    sprintf(sig->name, "__init_%u", (unsigned)init_count);
+    sig->is_defined = 1;
+    init_funcs[init_count++] = fidx;
+
+    tsp = 0;
+    bsp = 0;
+    cur_out_count = 0;
+    local_count = 0;
+    compile_body(w);
+}
+
+static void compile_body(WordIR *w) {
+    char tok[MAX_TOK];
+    IrInstr *ins;
+    u8 unreachable = 0;
+    i32 num_val;
+
+    w->ir_start = ir_count;
+    w->ir_len = 0;
+    fold_fence = 0;
 
     /* Parse, type-check, and record IR for word body (Pass 1) */
     while (next_tok(tok)) {
@@ -1181,11 +1214,14 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     buffer_count = 0;
     ir_count = 0;
     fwd_call_count = 0;
+    init_count = 0;
     has_peek = 0;
 
     while (next_tok(tok)) {
         if (strcmp(tok, "fn") == 0) {
             compile_word();
+        } else if (strcmp(tok, "init") == 0) {
+            compile_init();
         } else if (strcmp(tok, "fwd") == 0) {
             FuncSig *sig;
             char name[MAX_TOK];
@@ -1247,6 +1283,33 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     {
         int main_idx = ir4_find_func("main");
         u8 f;
+        if (main_idx >= 0 && init_count > 0) {
+            u8 wrap_idx;
+            FuncSig *wsig;
+            WordIR *ww;
+            IrInstr *ins;
+            u8 k;
+            if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+            strcpy(funcs[main_idx].name, "__main_body");
+            wrap_idx = func_count++;
+            wsig = &funcs[wrap_idx];
+            ww = &words[wrap_idx];
+            memset(wsig, 0, sizeof(FuncSig));
+            memset(ww, 0, sizeof(WordIR));
+            strcpy(wsig->name, "main");
+            wsig->is_defined = 1;
+            wsig->out_count = funcs[main_idx].out_count;
+            memcpy(wsig->out_types, funcs[main_idx].out_types, wsig->out_count);
+            ww->ir_start = ir_count;
+            for (k = 0; k < init_count; k++) {
+                ins = emit_ir(IR_CALL, ww);
+                ins->u.func_idx = init_funcs[k];
+            }
+            ins = emit_ir(IR_CALL, ww);
+            ins->u.func_idx = (u8)main_idx;
+            emit_ir(IR_FN_END, ww);
+            main_idx = wrap_idx;
+        }
         if (main_idx >= 0) {
             mark_reachable((u8)main_idx);
         } else {
