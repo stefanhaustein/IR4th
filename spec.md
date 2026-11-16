@@ -184,8 +184,8 @@ Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) wide
 | `i16@` | `( :a -- :i )` | Fetch signed 16-bit integer from address, sign-extended to `:i` |
 | `u16@` | `( :a -- :i )` | Fetch unsigned 16-bit integer from address, zero-extended to `:i` |
 | `i16!` | `( :i :a -- )` | Store low 16 bits of `:i` to address |
-| `@` | `( :a -- :i )` | Fetch native word (`:i`) from address |
-| `!` | `( :i :a -- )` | Store native word (`:i`) to address |
+| `i@` | `( :a -- :i )` | Fetch native word (`:i`) from address |
+| `i!` | `( :i :a -- )` | Store native word (`:i`) to address |
 | `a@` | `( :a -- :a )` | Fetch target-width pointer (`:a`) from address |
 | `a!` | `( :a :a -- )` | Store target-width pointer (`:a`) to address |
 | `f@` | `( :a -- :f )` | Fetch target-width float (`:f`) from address |
@@ -230,8 +230,7 @@ fn sum_signed_bytes { ptr :a count :i | i :i acc :i -- :i }
   begin
     i count <
   while
-    ptr i + i8@
-    acc + -> acc
+    ptr i + i8@ acc + -> acc
     i 1 + -> i
   repeat
   acc

@@ -12,7 +12,7 @@ fn assert_eq { got :i expected :i code :i -- :i }
 end
 
 fn add_to_var { vp :a delta :i -- }
-  vp @ delta + vp !
+  vp i@ delta + vp i!
 end
 
 fn main { | p :a x :i -- :i }
@@ -27,11 +27,11 @@ fn main { | p :a x :i -- :i }
   dup 0 <> if exit then drop
 
   \ Native word store / fetch
-  12345 buf_b !
-  -5432 buf_b 8 + !
-  buf_b @ 12345 4 assert_eq
+  12345 buf_b i!
+  -5432 buf_b 8 + i!
+  buf_b i@ 12345 4 assert_eq
   dup 0 <> if exit then drop
-  buf_b 8 + @ -5432 5 assert_eq
+  buf_b 8 + i@ -5432 5 assert_eq
   dup 0 <> if exit then drop
 
   \ Address store / fetch (a!, a@)
@@ -58,7 +58,7 @@ fn main { | p :a x :i -- :i }
 
   \ Address-of local (&)
   40 -> x
-  & x @ 40 12 assert_eq
+  & x i@ 40 12 assert_eq
   dup 0 <> if exit then drop
   & x 2 add_to_var
   x 42 13 assert_eq

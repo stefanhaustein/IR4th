@@ -35,12 +35,12 @@ fn main { -- :i }
   words16_tbl 2 + i16@ -1234 <> if 5 exit then
 
   \ Check , (native word)
-  w_pos @ 42 <> if 6 exit then
-  w_neg @ -7 <> if 7 exit then
+  w_pos i@ 42 <> if 6 exit then
+  w_neg i@ -7 <> if 7 exit then
 
   \ Check mid-table align before ,
   mixed_tbl u8@ 7 <> if 8 exit then
-  mixed_tbl word_bytes + @ 99 <> if 9 exit then
+  mixed_tbl word_bytes + i@ 99 <> if 9 exit then
 
   \ Check writable buffers still work alongside create
   99 scratch i8!
@@ -49,6 +49,6 @@ fn main { -- :i }
   tail_buf u8@ 77 <> if 11 exit then
 
   \ Re-verify create data wasn't disturbed
-  w_pos @ 42 <> if 12 exit then
+  w_pos i@ 42 <> if 12 exit then
   0
 end
