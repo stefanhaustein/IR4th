@@ -5,6 +5,9 @@
 #define MAX_INCLUDES      64
 #define MAX_PATH         256
 #define MAX_IR          8192
+#define MAX_SYMS          48
+#define MAX_STACK         32
+#define MAX_BLOCKS        16
 
 typedef enum {
     BLOCK_IF = 1,

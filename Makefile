@@ -13,7 +13,7 @@ all: $(TARGET)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/%.o: src/%.c src/ir4c.h | $(BUILD)
+$(BUILD)/%.o: src/%.c src/ir4.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/ir4c.o: src/codebuf.h src/frontend.h

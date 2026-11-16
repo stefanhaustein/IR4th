@@ -1,8 +1,12 @@
-/* be_rv32.h - Shared RV32IM instruction encoders (Strict C89) */
+/* be_rv32.h - Shared RV32IM instruction encoders (Strict C89)
+ *
+ * Exposes R/I/S/B/U/J-type RV32IM instruction encoders implemented in
+ * be_rv32.c for reuse by be_rv32_elf.c (--virt and --obj stubs).
+ */
 #ifndef BE_RV32_H
 #define BE_RV32_H
 
-#include "ir4c.h"
+#include "ir4.h"
 
 u32 rv_enc_r(u32 f7, u32 rs2, u32 rs1, u32 f3, u32 rd, u32 op);
 u32 rv_enc_i(i32 imm, u32 rs1, u32 f3, u32 rd, u32 op);

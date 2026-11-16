@@ -1,5 +1,11 @@
-#ifndef IR4C_H
-#define IR4C_H
+/* ir4.h - Core IR4 types, limits, and Backend/Platform interfaces (Strict C89)
+ *
+ * Shared contract between the IR4th frontend, code buffer, backends, and
+ * platform/output drivers. Each backend implements the Backend vtable; each
+ * output mode (--cpm, --sim65, --virt, --obj, --run) implements Platform.
+ */
+#ifndef IR4_H
+#define IR4_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,10 +26,7 @@ typedef signed long    i32;
 #endif
 
 #define MAX_TOK    32
-#define MAX_SYMS   48
 #define MAX_LOCALS 16
-#define MAX_STACK  32
-#define MAX_BLOCKS 16
 #define MAX_CODE   16384
 #define MAX_DATA   4096
 #define MAX_RELOCS 4096
@@ -139,6 +142,7 @@ typedef struct {
     u8   out_count;
 } FuncSig;
 
+/* Backend code-generation interface implemented by each target (be_*.c). */
 typedef struct {
     const char *name;
     u8 word_bytes;
@@ -168,16 +172,16 @@ typedef struct {
 /* Error reporting (implemented in frontend.c) */
 void ir4_die(const char *msg);
 
-/* Available backends & platforms */
+/* Platform / output-format hooks (startup stub, epilogue, file writer, runner). */
 typedef struct {
-    const char    *flag;
+    const char *flag;
     const Backend *be;
-    u16            default_base;
-    const char    *req_platform;
-    int            needs_main;
+    u16 default_base;
+    const char *req_platform;
+    int needs_main;
     void (*begin)(u16 base);
     void (*end)(int main_idx);
-    int  (*write)(FILE *fp, u16 base);
+    int (*write)(FILE *fp, u16 base);
     void (*run)(u8 main_idx);
 } Platform;
 
@@ -193,7 +197,7 @@ extern const Platform plat_rv32_virt;
 extern const Platform plat_rv32_obj;
 
 void be_6502_set_zp(u8 zp);
-u16  be_6502_stack_data_off(void);
+u16 be_6502_stack_data_off(void);
 void be_rv32_set_obj(int obj);
 
-#endif /* IR4C_H */
+#endif /* IR4_H */

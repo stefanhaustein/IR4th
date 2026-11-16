@@ -1,10 +1,8 @@
-# IR4th Language Specification (v0.3)
+# IR4th Language Specification
 
 **IR4th** (*Typed Forth as an Intermediate Representation*) is a minimal, statically typed, monomorphic concatenative intermediate language designed for retro-computing CPUs (such as the Z80 and 6502) and constrained embedded systems.
 
 IR4th is designed so that word-only programs are directly executable under **Gforth** (with a minimal compatibility prelude) while compiling via direct 2-pass machine-code generation (with dead-code elimination) to native Z80, 6502, and ARM64 binaries.
-
----
 
 ## 1. Lexical Structure
 
@@ -18,8 +16,6 @@ IR4th is designed so that word-only programs are directly executable under **Gfo
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a trailing colon that is not a keyword.
 
----
-
 ## 2. Type System (Monomorphic v0.3)
 
 IR4th v0.3 defines **three stack types** on a **single unified stack** and **no operator polymorphism**. Nothing smaller than a native machine word `W:` exists on the stack; byte- and 16-bit memory accesses (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) implicitly widen to and truncate from `W:`.
@@ -28,7 +24,7 @@ IR4th v0.3 defines **three stack types** on a **single unified stack** and **no 
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`W:`** | Native Word | Target-native signed integer (`isize`) | 2 bytes (`i16`) | 4 bytes (`i32`) | 8 bytes (`i64`) |
 | **`A:`** | Address | Target-width memory pointer (`usize`) | 2 bytes (`u16`) | 4 bytes (`u32`) | 8 bytes (`u64`) |
-| **`F:`** | Float | Target-native floating-point | **6 bytes** (Z80) / **5 bytes** (6502) | TBD | TBD |
+| **`F:`** | Float | Target-native floating-point | **6 bytes** (Z80) / **4 bytes** (6502) | **4 bytes** (IEEE-754 `binary32`) | **8 bytes** (IEEE-754 `binary64`) |
 
 ### 2.1 Literal Typing Rules
 * **Bare Integer Literals** (`0`, `1`, `-42`, `0x10`, `$FF`) implicitly default to **`W:`**.
@@ -36,8 +32,6 @@ IR4th v0.3 defines **three stack types** on a **single unified stack** and **no 
   * `A: 0x0400` — pushes target-width memory address `0x0400` (`A:`)
   * `F: 3.14` — pushes target-native floating-point value `3.14` (`F:`)
 * **Literal Width Restriction:** In the current implementation, integer and address literals are restricted to 32-bit values (`-2147483648..2147483647` for `W:`, `0..0xFFFFFFFF` for `A:`), even on 64-bit targets.
-
----
 
 ## 3. Functions, Parameters & Locals
 
@@ -111,9 +105,8 @@ extern bdos 0x0005 { W: C W: DE -- W: A }      \ Z80 CP/M (fixed addr + register
 
 * Signatures use `{ inputs -- outputs }` without `|` locals and with at most 1 return value.
 * On ARM64 JIT (`--run`), no address is given; symbols are resolved via `dlsym` and called using the ARM64 C ABI (`X0..X7`, `D0..D7`).
-* On 16-bit targets (Z80 / 6502), a fixed 16-bit address is required and parameter/return names specify CPU registers (`A, B, C, D, E, H, L, BC, DE, HL` on Z80; `A, Y` on 6502).
-
----
+* On RISC-V RV32 (`--obj`), symbolic `extern` calls emit ELF relocations (`R_RISCV_HI20` / `R_RISCV_LO12_I`) using the `ilp32` C ABI (`a0..a7`); fixed-address `extern` declarations are also supported for bare-metal targets (`--virt`).
+* On 16-bit targets (Z80 / 6502), a fixed 16-bit address is required and parameter/return names specify CPU registers (`A, B, C, D, E, H, L, BC, DE, HL` on Z80; `A, X, Y` on 6502).
 
 ## 4. Core Instruction Set (Non-Polymorphic)
 
@@ -206,16 +199,12 @@ Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) wide
 | `w>f` | `( W: -- F: )` | Convert signed native word `W:` to float `F:` |
 | `f>w` | `( F: -- W: )` | Truncate float `F:` to signed native word `W:` |
 
----
-
 ## 5. Control Flow & Static Stack Invariants
 
 * **Conditional Branches (`<cond:W:> if ... else ... then`):** Pops a `W:` flag. Both branches must leave the type stack with identical depth and types. If `else` is omitted, the true branch must leave the stack completely even (unchanged).
 * **Pre-Tested Loops (`begin <cond:W:> while ... repeat`):** `while` pops a `W:` flag. The combined condition and loop body must leave the type stack completely even at `repeat`.
 * **Post-Tested Loops (`begin ... <cond:W:> until`):** `until` pops a `W:` flag. The loop body must leave the type stack completely even before the condition is pushed.
 * **Calls & Early Return (`<word_name>`, `exit`):** Validates caller stack against callee inputs and pushes outputs. `exit` verifies the stack matches the word's declared output types after `--`.
-
----
 
 ## 6. Gforth Compatibility Prelude (`ir4th.fs`)
 
@@ -251,8 +240,6 @@ fvariable ir4-ftmp
 : w>f s>f ir4-ftmp f! ir4-ftmp @ ;
 : f>w ir4-ftmp ! ir4-ftmp f@ f>s ;
 ```
-
----
 
 ## 7. Complete Example Program
 
