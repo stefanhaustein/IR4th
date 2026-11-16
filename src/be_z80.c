@@ -745,6 +745,83 @@ static void z80_int_cmp(IrOp op) {
     z80_push(Z80_PUSH_HL);
 }
 
+static int z80_mem_imm(IrOp op, i32 off) {
+    if (op < OP_I8FETCH || op > OP_FSTORE) return 0;
+
+    z80_pop(Z80_POP_HL);
+    if (off >= 1 && off <= 3) {
+        i32 k;
+        for (k = 0; k < off; k++) emit8(Z80_INC_HL);
+    } else if (off != 0) {
+        emit8_16(Z80_LD_DE_NN, (u16)(off & 0xFFFF));
+        emit8(Z80_ADD_HL_DE);
+    }
+
+    switch (op) {
+    case OP_U8FETCH:
+        emit8(Z80_LD_L_MHL);
+        emit8_8(Z80_LD_H_N, 0x00);
+        z80_push(Z80_PUSH_HL);
+        break;
+    case OP_I8FETCH:
+        emit8(Z80_LD_L_MHL);
+        emit8(Z80_LD_A_L);
+        emit8(Z80_RLA);
+        emit8(Z80_SBC_A_A);
+        emit8(Z80_LD_H_A);
+        z80_push(Z80_PUSH_HL);
+        break;
+    case OP_I8STORE:
+        emit8(Z80_POP_DE); /* val */
+        emit8(Z80_LD_MHL_E);
+        break;
+    case OP_FETCH:
+    case OP_AFETCH:
+    case OP_I16FETCH:
+    case OP_U16FETCH:
+        emit8(Z80_LD_E_MHL);
+        emit8(Z80_INC_HL);
+        emit8(Z80_LD_D_MHL);
+        emit8(Z80_EX_DE_HL);
+        z80_push(Z80_PUSH_HL);
+        break;
+    case OP_STORE:
+    case OP_ASTORE:
+    case OP_I16STORE:
+        emit8(Z80_POP_DE); /* val */
+        emit8(Z80_LD_MHL_E);
+        emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D);
+        break;
+    case OP_FFETCH:
+        emit8(Z80_LD_E_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_D_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_C_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_B_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_A_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_H_MHL);
+        emit8(Z80_LD_L_A);
+        emit8(Z80_PUSH_HL);
+        emit8(Z80_PUSH_BC);
+        z80_push(Z80_PUSH_DE);
+        break;
+    case OP_FSTORE:
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D);
+        break;
+    default:
+        break;
+    }
+    return 1;
+}
+
 static void z80_op(IrOp op) {
     switch (op) {
     case OP_ADD: case OP_AADD:
@@ -802,69 +879,18 @@ static void z80_op(IrOp op) {
         z80_push(Z80_PUSH_HL);
         break;
     case OP_U8FETCH:
-        z80_pop(Z80_POP_HL);
-        emit8(Z80_LD_L_MHL);
-        emit8_8(Z80_LD_H_N, 0x00);
-        z80_push(Z80_PUSH_HL);
-        break;
     case OP_I8FETCH:
-        z80_pop(Z80_POP_HL);
-        emit8(Z80_LD_L_MHL);
-        emit8(Z80_LD_A_L);
-        emit8(Z80_RLA);
-        emit8(Z80_SBC_A_A);
-        emit8(Z80_LD_H_A);
-        z80_push(Z80_PUSH_HL);
-        break;
     case OP_I8STORE:
-        z80_pop(Z80_POP_HL); /* addr */
-        emit8(Z80_POP_DE); /* val */
-        emit8(Z80_LD_MHL_E);
-        break;
     case OP_FETCH:
     case OP_AFETCH:
     case OP_I16FETCH:
     case OP_U16FETCH:
-        z80_pop(Z80_POP_HL);
-        emit8(Z80_LD_E_MHL);
-        emit8(Z80_INC_HL);
-        emit8(Z80_LD_D_MHL);
-        emit8(Z80_EX_DE_HL);
-        z80_push(Z80_PUSH_HL);
-        break;
     case OP_STORE:
     case OP_ASTORE:
     case OP_I16STORE:
-        z80_pop(Z80_POP_HL); /* addr */
-        emit8(Z80_POP_DE); /* val */
-        emit8(Z80_LD_MHL_E);
-        emit8(Z80_INC_HL);
-        emit8(Z80_LD_MHL_D);
-        break;
     case OP_FFETCH:
-        z80_pop(Z80_POP_HL);
-        emit8(Z80_LD_E_MHL); emit8(Z80_INC_HL);
-        emit8(Z80_LD_D_MHL); emit8(Z80_INC_HL);
-        emit8(Z80_LD_C_MHL); emit8(Z80_INC_HL);
-        emit8(Z80_LD_B_MHL); emit8(Z80_INC_HL);
-        emit8(Z80_LD_A_MHL); emit8(Z80_INC_HL);
-        emit8(Z80_LD_H_MHL);
-        emit8(Z80_LD_L_A);
-        emit8(Z80_PUSH_HL);
-        emit8(Z80_PUSH_BC);
-        z80_push(Z80_PUSH_DE);
-        break;
     case OP_FSTORE:
-        z80_pop(Z80_POP_HL);
-        emit8(Z80_POP_DE);
-        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
-        emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
-        emit8(Z80_POP_DE);
-        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
-        emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
-        emit8(Z80_POP_DE);
-        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
-        emit8(Z80_LD_MHL_D);
+        z80_mem_imm(op, 0);
         break;
     case OP_SEXT:
         z80_pop(Z80_POP_HL);
@@ -962,6 +988,7 @@ const Backend be_z80 = {
     z80_op,
     z80_add_imm,
     NULL,
+    z80_mem_imm,
     z80_emit_br_fwd,
     z80_emit_br_back,
     z80_patch_fwd,

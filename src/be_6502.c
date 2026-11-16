@@ -476,12 +476,12 @@ static void m6502_int_cmp(IrOp op) {
     }
 }
 
-static void m6502_mem_addr_setup(void) {
+static void m6502_mem_addr_setup_off(u8 y_off) {
     m6502_lda_stk(0);
     m6502_sta_zp(zp_scratch);
     m6502_lda_stk(1);
     m6502_sta_zp((u8)(zp_scratch + 1));
-    m6502_ldy_imm(0x00);
+    m6502_ldy_imm(y_off);
 }
 
 static void emit_neg_stk(u8 disp) {
@@ -676,6 +676,88 @@ static void wozfp_call_keep_x(u16 entry_off) {
     emit8(0xA6); emit8(zp_scratch); /* LDX zp_scratch (preserves A) */
 }
 
+static int m6502_mem_imm(IrOp op, i32 off) {
+    i32 sz;
+    switch (op) {
+    case OP_U8FETCH: case OP_I8FETCH: case OP_I8STORE: sz = 1; break;
+    case OP_FETCH: case OP_AFETCH: case OP_I16FETCH: case OP_U16FETCH:
+    case OP_STORE: case OP_ASTORE: case OP_I16STORE:  sz = 2; break;
+    case OP_FFETCH: case OP_FSTORE:                    sz = 4; break;
+    default: return 0;
+    }
+    if (off < 0 || off > 256 - sz) return 0;
+
+    m6502_mem_addr_setup_off((u8)off);
+    switch (op) {
+    case OP_U8FETCH:
+        m6502_lda_indy(zp_scratch);
+        m6502_sta_stk(0);
+        m6502_lda_imm(0x00);
+        m6502_sta_stk(1);
+        break;
+    case OP_I8FETCH:
+        m6502_lda_indy(zp_scratch);
+        m6502_sta_stk(0);
+        emit8_8(0x10, 0x04); /* BPL +4 */
+        m6502_lda_imm(0xFF);
+        emit8_8(0x30, 0x02); /* BMI +2 */
+        m6502_lda_imm(0x00);
+        m6502_sta_stk(1);
+        break;
+    case OP_I8STORE:
+        m6502_lda_stk(2);
+        m6502_sta_indy(zp_scratch);
+        m6502_inx(); m6502_inx();
+        m6502_inx(); m6502_inx();
+        break;
+    case OP_FETCH:
+    case OP_AFETCH:
+    case OP_I16FETCH:
+    case OP_U16FETCH:
+        m6502_lda_indy(zp_scratch);
+        m6502_sta_stk(0);
+        emit8(0xC8); /* INY */
+        m6502_lda_indy(zp_scratch);
+        m6502_sta_stk(1);
+        break;
+    case OP_STORE:
+    case OP_ASTORE:
+    case OP_I16STORE:
+        m6502_lda_stk(2);
+        m6502_sta_indy(zp_scratch);
+        emit8(0xC8); /* INY */
+        m6502_lda_stk(3);
+        m6502_sta_indy(zp_scratch);
+        m6502_inx(); m6502_inx();
+        m6502_inx(); m6502_inx();
+        break;
+    case OP_FFETCH: {
+        u8 b;
+        m6502_dex();
+        m6502_dex();
+        for (b = 0; b < 4; b++) {
+            m6502_lda_indy(zp_scratch);
+            m6502_sta_stk(b);
+            if (b < 3) emit8(0xC8); /* INY */
+        }
+        break;
+    }
+    case OP_FSTORE: {
+        u8 b;
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk((u8)(2 + b));
+            m6502_sta_indy(zp_scratch);
+            if (b < 3) emit8(0xC8); /* INY */
+        }
+        for (b = 0; b < 6; b++) m6502_inx();
+        break;
+    }
+    default:
+        break;
+    }
+    return 1;
+}
+
 static void m6502_op(IrOp op) {
     switch (op) {
     case OP_INVERT:
@@ -780,50 +862,16 @@ static void m6502_op(IrOp op) {
         m6502_int_cmp(op);
         break;
     case OP_U8FETCH:
-        m6502_mem_addr_setup();
-        m6502_lda_indy(zp_scratch);
-        m6502_sta_stk(0);
-        m6502_lda_imm(0x00);
-        m6502_sta_stk(1);
-        break;
     case OP_I8FETCH:
-        m6502_mem_addr_setup();
-        m6502_lda_indy(zp_scratch);
-        m6502_sta_stk(0);
-        emit8_8(0x10, 0x01); /* BPL +1 */
-        emit8(0x88);         /* DEY */
-        emit8(0x98);         /* TYA */
-        m6502_sta_stk(1);
-        break;
     case OP_I8STORE:
-        m6502_mem_addr_setup();
-        m6502_lda_stk(2);
-        m6502_sta_indy(zp_scratch);
-        m6502_inx(); m6502_inx();
-        m6502_inx(); m6502_inx();
-        break;
     case OP_FETCH:
     case OP_AFETCH:
     case OP_I16FETCH:
     case OP_U16FETCH:
-        m6502_mem_addr_setup();
-        m6502_lda_indy(zp_scratch);
-        m6502_sta_stk(0);
-        emit8(0xC8); /* INY */
-        m6502_lda_indy(zp_scratch);
-        m6502_sta_stk(1);
-        break;
     case OP_STORE:
     case OP_ASTORE:
     case OP_I16STORE:
-        m6502_mem_addr_setup();
-        m6502_lda_stk(2);
-        m6502_sta_indy(zp_scratch);
-        emit8(0xC8); /* INY */
-        m6502_lda_stk(3);
-        m6502_sta_indy(zp_scratch);
-        m6502_inx(); m6502_inx();
-        m6502_inx(); m6502_inx();
+        m6502_mem_imm(op, 0);
         break;
     case OP_SEXT:
         m6502_lda_imm(0x00);
@@ -930,29 +978,10 @@ static void m6502_op(IrOp op) {
         m6502_sta_stk(0);
         m6502_sta_stk(1);
         break;
-    case OP_FFETCH: {
-        u8 b;
-        m6502_mem_addr_setup();
-        m6502_dex();
-        m6502_dex();
-        for (b = 0; b < 4; b++) {
-            m6502_lda_indy(zp_scratch);
-            m6502_sta_stk(b);
-            if (b < 3) emit8(0xC8); /* INY */
-        }
+    case OP_FFETCH:
+    case OP_FSTORE:
+        m6502_mem_imm(op, 0);
         break;
-    }
-    case OP_FSTORE: {
-        u8 b;
-        m6502_mem_addr_setup();
-        for (b = 0; b < 4; b++) {
-            m6502_lda_stk((u8)(2 + b));
-            m6502_sta_indy(zp_scratch);
-            if (b < 3) emit8(0xC8); /* INY */
-        }
-        for (b = 0; b < 6; b++) m6502_inx();
-        break;
-    }
     case OP_W2F:
         ensure_wozfp();
         /* Pop 16-bit signed (lo, hi) -> M1+1 (lo), M1 (hi) */
@@ -1061,6 +1090,7 @@ const Backend be_6502 = {
     m6502_op,
     m6502_add_imm,
     NULL,
+    m6502_mem_imm,
     m6502_emit_br_fwd,
     m6502_emit_br_back,
     m6502_patch_fwd,

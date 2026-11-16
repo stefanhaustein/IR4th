@@ -65,12 +65,15 @@ typedef struct {
     u8       local_count;
     LocalVar locals[MAX_LOCALS];
     u8       reachable;
+    u8       is_code;
 } WordIR;
 
 static IrInstr ir_buf[MAX_IR];
 static u16     ir_count = 0;
 static u16     fold_fence = 0;
 static WordIR  words[MAX_SYMS];
+static u8      raw_code_buf[MAX_CODE];
+static u16     raw_code_len = 0;
 
 typedef struct {
     FILE *fp;
@@ -743,6 +746,77 @@ static void compile_word(void) {
 static u8 init_funcs[MAX_SYMS];
 static u8 init_count = 0;
 
+static void raw_emit_u8(WordIR *w, u8 b) {
+    if (raw_code_len >= MAX_CODE) ir4_die("code buffer overflow");
+    raw_code_buf[raw_code_len++] = b;
+    w->ir_len++;
+}
+
+static void compile_code(void) {
+    char tok[MAX_TOK];
+    char name[MAX_TOK];
+    FuncSig *sig;
+    WordIR *w;
+    u8 fidx;
+    i32 num_val;
+    i32 pending = 0;
+    int has_pending = 0;
+
+    if (!next_tok(name)) ir4_die("expected word name after 'code'");
+    if (ir4_find_func(name) >= 0) ir4_die("duplicate function definition");
+    if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after 'code' name");
+    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+
+    fidx = func_count++;
+    sig = &funcs[fidx];
+    w = &words[fidx];
+    memset(sig, 0, sizeof(FuncSig));
+    memset(w, 0, sizeof(WordIR));
+    memcpy(sig->name, name, strlen(name) + 1);
+    sig->is_defined = 1;
+    parse_sig_body(sig, NULL, 0);
+
+    w->is_code = 1;
+    w->ir_start = raw_code_len;
+    w->ir_len = 0;
+
+    while (next_tok(tok)) {
+        if (strcmp(tok, "end") == 0) {
+            if (has_pending) ir4_die("missing width (:i8, :i16, :i32) in 'code'");
+            return;
+        } else if (strcmp(tok, ":i8") == 0) {
+            if (!has_pending) ir4_die("expected integer before ':i8'");
+            if (pending < -128 || pending > 255) ir4_die(":i8 value out of range");
+            raw_emit_u8(w, (u8)(pending & 0xFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":i16") == 0) {
+            u16 v;
+            if (!has_pending) ir4_die("expected integer before ':i16'");
+            if (pending < -32768 || pending > 65535) ir4_die(":i16 value out of range");
+            v = (u16)(pending & 0xFFFF);
+            raw_emit_u8(w, (u8)(v & 0xFF));
+            raw_emit_u8(w, (u8)((v >> 8) & 0xFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":i32") == 0) {
+            u32 v;
+            if (!has_pending) ir4_die("expected integer before ':i32'");
+            v = (u32)pending;
+            raw_emit_u8(w, (u8)(v & 0xFF));
+            raw_emit_u8(w, (u8)((v >> 8) & 0xFF));
+            raw_emit_u8(w, (u8)((v >> 16) & 0xFF));
+            raw_emit_u8(w, (u8)((v >> 24) & 0xFF));
+            has_pending = 0;
+        } else if (parse_int(tok, &num_val)) {
+            if (has_pending) ir4_die("missing width (:i8, :i16, :i32) before literal in 'code'");
+            pending = num_val;
+            has_pending = 1;
+        } else {
+            ir4_die("unexpected token in 'code'");
+        }
+    }
+    ir4_die("unexpected EOF in 'code' (missing 'end')");
+}
+
 static void compile_init(void) {
     FuncSig *sig;
     WordIR *w;
@@ -1017,6 +1091,7 @@ static void mark_reachable(u8 fidx) {
     if (!funcs[fidx].is_defined) ir4_die("called 'fwd' function was never defined");
     if (w->reachable) return;
     w->reachable = 1;
+    if (w->is_code) return;
     for (i = 0; i < w->ir_len; i++) {
         const IrInstr *ins = &ir_buf[w->ir_start + i];
         if (ins->kind == IR_CALL) {
@@ -1048,6 +1123,15 @@ static void emit_word(u8 fidx) {
     u16 pend_cnt = 0;
     u16 i, p;
 
+    if (w->is_code) {
+        sig->addr = be->cur_addr();
+        sig->has_addr = 1;
+        for (i = 0; i < w->ir_len; i++) {
+            emit8(raw_code_buf[w->ir_start + i]);
+        }
+        return;
+    }
+
     if (w->ir_len >= MAX_IR) ir4_die("word IR length overflow");
     sig->addr = be->cur_addr();
     sig->has_addr = 1;
@@ -1068,6 +1152,21 @@ static void emit_word(u8 fidx) {
                 be->fn_end(sig, w->locals, w->local_count);
                 break;
             case IR_PUSH_W:
+                if (i + 2 < w->ir_len &&
+                    ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
+                    ir_buf[w->ir_start + i + 2].kind == IR_ALU_OP) {
+                    IrOp aop = ir_buf[w->ir_start + i + 1].u.op;
+                    IrOp mop = ir_buf[w->ir_start + i + 2].u.op;
+                    if ((aop == OP_AADD || aop == OP_ASUB) &&
+                        mop >= OP_I8FETCH && mop <= OP_FSTORE && be->mem_imm) {
+                        i32 off = (aop == OP_ASUB)
+                                  ? (i32)(0UL - (u32)ins->u.w) : ins->u.w;
+                        if (be->mem_imm(mop, off)) {
+                            i += 2;
+                            break;
+                        }
+                    }
+                }
                 if (i + 1 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP) {
                     IrOp aop = ir_buf[w->ir_start + i + 1].u.op;
                     i32 imm = ins->u.w;
@@ -1213,6 +1312,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     func_count = 0;
     buffer_count = 0;
     ir_count = 0;
+    raw_code_len = 0;
     fwd_call_count = 0;
     init_count = 0;
     has_peek = 0;
@@ -1220,6 +1320,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     while (next_tok(tok)) {
         if (strcmp(tok, "fn") == 0) {
             compile_word();
+        } else if (strcmp(tok, "code") == 0) {
+            compile_code();
         } else if (strcmp(tok, "init") == 0) {
             compile_init();
         } else if (strcmp(tok, "fwd") == 0) {

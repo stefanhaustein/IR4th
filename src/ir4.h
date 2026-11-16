@@ -168,6 +168,7 @@ typedef struct {
     void (*op)(IrOp op);
     int  (*add_imm)(i32 imm);
     int  (*cmp_imm)(IrOp op, i32 imm);
+    int  (*mem_imm)(IrOp op, i32 off);
 
     u16  (*emit_br_fwd)(BranchCond cond);
     void (*emit_br_back)(BranchCond cond, u16 target_addr);

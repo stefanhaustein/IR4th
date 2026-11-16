@@ -375,6 +375,38 @@ static void rv_int_cmp(IrOp op) {
     push_reg(RV_T0);
 }
 
+static int rv_mem_imm(IrOp op, i32 off) {
+    u32 funct3;
+    int is_store = 0;
+
+    if (off < -2048 || off > 2047) return 0;
+    switch (op) {
+    case OP_I8FETCH:  funct3 = 0; break;
+    case OP_U8FETCH:  funct3 = 4; break;
+    case OP_I8STORE:  funct3 = 0; is_store = 1; break;
+    case OP_I16FETCH: funct3 = 1; break;
+    case OP_U16FETCH: funct3 = 5; break;
+    case OP_I16STORE: funct3 = 1; is_store = 1; break;
+    case OP_FETCH:
+    case OP_AFETCH:
+    case OP_FFETCH:   funct3 = 2; break;
+    case OP_STORE:
+    case OP_ASTORE:
+    case OP_FSTORE:   funct3 = 2; is_store = 1; break;
+    default: return 0;
+    }
+
+    if (is_store) {
+        pop_reg(RV_T0); pop_reg(RV_T1);
+        emit32(enc_s(off, RV_T1, RV_T0, funct3));
+    } else {
+        pop_reg(RV_T0);
+        emit32(enc_i(off, RV_T0, funct3, RV_T0, 0x03UL));
+        push_reg(RV_T0);
+    }
+    return 1;
+}
+
 static void rv_op(IrOp op) {
     switch (op) {
     case OP_ADD: case OP_AADD:
@@ -396,45 +428,18 @@ static void rv_op(IrOp op) {
         rv_int_cmp(op);
         break;
     case OP_I8FETCH:
-        pop_reg(RV_T0);
-        emit32(enc_i(0, RV_T0, 0, RV_T0, 0x03UL)); /* LB t0, 0(t0) */
-        push_reg(RV_T0);
-        break;
     case OP_U8FETCH:
-        pop_reg(RV_T0);
-        emit32(enc_i(0, RV_T0, 4, RV_T0, 0x03UL)); /* LBU t0, 0(t0) */
-        push_reg(RV_T0);
-        break;
     case OP_I8STORE:
-        pop_reg(RV_T0); pop_reg(RV_T1);
-        emit32(enc_s(0, RV_T1, RV_T0, 0)); /* SB t1, 0(t0) */
-        break;
     case OP_I16FETCH:
-        pop_reg(RV_T0);
-        emit32(enc_i(0, RV_T0, 1, RV_T0, 0x03UL)); /* LH t0, 0(t0) */
-        push_reg(RV_T0);
-        break;
     case OP_U16FETCH:
-        pop_reg(RV_T0);
-        emit32(enc_i(0, RV_T0, 5, RV_T0, 0x03UL)); /* LHU t0, 0(t0) */
-        push_reg(RV_T0);
-        break;
     case OP_I16STORE:
-        pop_reg(RV_T0); pop_reg(RV_T1);
-        emit32(enc_s(0, RV_T1, RV_T0, 1)); /* SH t1, 0(t0) */
-        break;
     case OP_FETCH:
     case OP_AFETCH:
     case OP_FFETCH:
-        pop_reg(RV_T0);
-        rv_lw(RV_T0, 0, RV_T0);
-        push_reg(RV_T0);
-        break;
     case OP_STORE:
     case OP_ASTORE:
     case OP_FSTORE:
-        pop_reg(RV_T0); pop_reg(RV_T1);
-        rv_sw(RV_T1, 0, RV_T0);
+        rv_mem_imm(op, 0);
         break;
     case OP_FNEG:
         pop_reg(RV_T0);
@@ -636,6 +641,7 @@ const Backend be_rv32 = {
     rv_op,
     rv_add_imm,
     rv_cmp_imm,
+    rv_mem_imm,
     rv_emit_br_fwd,
     rv_emit_br_back,
     rv_patch_fwd,

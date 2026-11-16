@@ -333,6 +333,41 @@ static void a64_int_cmp(IrOp op) {
     push_x0();
 }
 
+static int a64_mem_imm(IrOp op, i32 off) {
+    u32 sz, unscaled_op, scaled_op;
+    int is_store = 0;
+
+    switch (op) {
+    case OP_U8FETCH:  sz = 1; unscaled_op = 0x38400000UL; scaled_op = 0x39400000UL; break;
+    case OP_I8FETCH:  sz = 1; unscaled_op = 0x38800000UL; scaled_op = 0x39800000UL; break;
+    case OP_I8STORE:  sz = 1; unscaled_op = 0x38000001UL; scaled_op = 0x39000001UL; is_store = 1; break;
+    case OP_U16FETCH: sz = 2; unscaled_op = 0x78400000UL; scaled_op = 0x79400000UL; break;
+    case OP_I16FETCH: sz = 2; unscaled_op = 0x78800000UL; scaled_op = 0x79800000UL; break;
+    case OP_I16STORE: sz = 2; unscaled_op = 0x78000001UL; scaled_op = 0x79000001UL; is_store = 1; break;
+    case OP_FETCH:
+    case OP_AFETCH:
+    case OP_FFETCH:   sz = 8; unscaled_op = 0xF8400000UL; scaled_op = 0xF9400000UL; break;
+    case OP_STORE:
+    case OP_ASTORE:
+    case OP_FSTORE:   sz = 8; unscaled_op = 0xF8000001UL; scaled_op = 0xF9000001UL; is_store = 1; break;
+    default: return 0;
+    }
+
+    if (off >= 0 && ((u32)off & (sz - 1)) == 0 && ((u32)off / sz) <= 4095) {
+        if (is_store) { pop_x0(); pop_x1(); } else { pop_x0(); }
+        emit32(scaled_op | (((u32)off / sz) << 10));
+        if (!is_store) push_x0();
+        return 1;
+    }
+    if (off >= -256 && off <= 255) {
+        if (is_store) { pop_x0(); pop_x1(); } else { pop_x0(); }
+        emit32(unscaled_op | (((u32)off & 0x1FFUL) << 12));
+        if (!is_store) push_x0();
+        return 1;
+    }
+    return 0;
+}
+
 static void a64_op(IrOp op) {
     switch (op) {
     case OP_ADD: case OP_AADD:
@@ -383,45 +418,18 @@ static void a64_op(IrOp op) {
         break;
     }
     case OP_U8FETCH:
-        pop_x0();
-        emit32(0x39400000UL); /* LDRB W0, [X0] (implicitly zero-extends to 64-bit X0) */
-        push_x0();
-        break;
     case OP_I8FETCH:
-        pop_x0();
-        emit32(0x39800000UL); /* LDRSB X0, [X0] */
-        push_x0();
-        break;
     case OP_I8STORE:
-        pop_x0(); pop_x1();
-        emit32(0x39000001UL); /* STRB W1, [X0] */
-        break;
     case OP_U16FETCH:
-        pop_x0();
-        emit32(0x79400000UL); /* LDRH W0, [X0] */
-        push_x0();
-        break;
     case OP_I16FETCH:
-        pop_x0();
-        emit32(0x79800000UL); /* LDRSH X0, [X0] */
-        push_x0();
-        break;
     case OP_I16STORE:
-        pop_x0(); pop_x1();
-        emit32(0x79000001UL); /* STRH W1, [X0] */
-        break;
     case OP_FETCH:
     case OP_AFETCH:
     case OP_FFETCH:
-        pop_x0();
-        emit32(0xF9400000UL); /* LDR X0, [X0] */
-        push_x0();
-        break;
     case OP_STORE:
     case OP_ASTORE:
     case OP_FSTORE:
-        pop_x0(); pop_x1();
-        emit32(0xF9000001UL); /* STR X1, [X0] */
+        a64_mem_imm(op, 0);
         break;
     case OP_SEXT:
         pop_x0();
@@ -534,6 +542,7 @@ const Backend be_arm64 = {
     a64_op,
     a64_add_imm,
     a64_cmp_imm,
+    a64_mem_imm,
     a64_emit_br_fwd,
     a64_emit_br_back,
     a64_patch_fwd,
