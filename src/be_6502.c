@@ -1039,6 +1039,11 @@ static int m6502_add_imm(i32 imm) {
     return 1;
 }
 
+static void m6502_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
+    (void)call_addr;
+    patch16((u16)(call_pc + 1), target_addr);
+}
+
 const Backend be_6502 = {
     "6502",
     2, 2, 4,
@@ -1058,5 +1063,6 @@ const Backend be_6502 = {
     NULL,
     m6502_emit_br_fwd,
     m6502_emit_br_back,
-    m6502_patch_fwd
+    m6502_patch_fwd,
+    m6502_patch_call
 };

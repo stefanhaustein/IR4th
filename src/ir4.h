@@ -135,6 +135,7 @@ typedef struct {
     char name[MAX_TOK];
     u16  addr;
     u8   is_extern;
+    u8   is_defined;
     u8   has_addr;
     u8   in_types[8];
     char in_regs[8][MAX_TOK];
@@ -171,6 +172,7 @@ typedef struct {
     u16  (*emit_br_fwd)(BranchCond cond);
     void (*emit_br_back)(BranchCond cond, u16 target_addr);
     void (*patch_fwd)(u16 patch_offset);
+    void (*patch_call)(u16 call_pc, u16 call_addr, u16 target_addr);
 } Backend;
 
 /* Error reporting (implemented in frontend.c) */

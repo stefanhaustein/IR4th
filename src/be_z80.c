@@ -940,6 +940,11 @@ static int z80_add_imm(i32 imm) {
     return 1;
 }
 
+static void z80_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
+    (void)call_addr;
+    patch16((u16)(call_pc + 1), target_addr);
+}
+
 const Backend be_z80 = {
     "z80",
     2, 2, 6,
@@ -959,5 +964,6 @@ const Backend be_z80 = {
     NULL,
     z80_emit_br_fwd,
     z80_emit_br_back,
-    z80_patch_fwd
+    z80_patch_fwd,
+    z80_patch_call
 };

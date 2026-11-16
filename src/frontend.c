@@ -683,26 +683,55 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
 
 static void compile_word(void) {
     char tok[MAX_TOK];
+    char name[MAX_TOK];
     FuncSig *sig;
     WordIR *w;
     IrInstr *ins;
     u8 fidx;
+    int existing;
     u8 param_cnt = 0;
     u8 unreachable = 0;
     i32 num_val;
 
-    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
-    fidx = func_count++;
-    sig = &funcs[fidx];
-    w = &words[fidx];
-    memset(sig, 0, sizeof(FuncSig));
-    memset(w, 0, sizeof(WordIR));
-
-    if (!next_tok(sig->name)) ir4_die("expected word name after 'fn'");
+    if (!next_tok(name)) ir4_die("expected word name after 'fn'");
     if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after word name");
-    tsp = 0;
-    bsp = 0;
-    parse_sig_body(sig, &param_cnt, 1);
+
+    existing = ir4_find_func(name);
+    if (existing >= 0) {
+        FuncSig fn_sig;
+        if (funcs[existing].is_defined || funcs[existing].is_extern) {
+            ir4_die("duplicate function definition");
+        }
+        fidx = (u8)existing;
+        memset(&fn_sig, 0, sizeof(FuncSig));
+        memcpy(fn_sig.name, name, strlen(name) + 1);
+        tsp = 0;
+        bsp = 0;
+        parse_sig_body(&fn_sig, &param_cnt, 1);
+        if (fn_sig.in_count != funcs[fidx].in_count ||
+            fn_sig.out_count != funcs[fidx].out_count ||
+            memcmp(fn_sig.in_types, funcs[fidx].in_types, fn_sig.in_count) != 0 ||
+            memcmp(fn_sig.out_types, funcs[fidx].out_types, fn_sig.out_count) != 0) {
+            ir4_die("function signature does not match 'fwd' declaration");
+        }
+        funcs[fidx] = fn_sig;
+        funcs[fidx].is_defined = 1;
+        sig = &funcs[fidx];
+        w = &words[fidx];
+        memset(w, 0, sizeof(WordIR));
+    } else {
+        if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+        fidx = func_count++;
+        sig = &funcs[fidx];
+        w = &words[fidx];
+        memset(sig, 0, sizeof(FuncSig));
+        memset(w, 0, sizeof(WordIR));
+        memcpy(sig->name, name, strlen(name) + 1);
+        sig->is_defined = 1;
+        tsp = 0;
+        bsp = 0;
+        parse_sig_body(sig, &param_cnt, 1);
+    }
 
     w->ir_start = ir_count;
     w->ir_len = 0;
@@ -951,7 +980,9 @@ static void compile_word(void) {
 static void mark_reachable(u8 fidx) {
     WordIR *w = &words[fidx];
     u16 i;
-    if (funcs[fidx].is_extern || w->reachable) return;
+    if (funcs[fidx].is_extern) return;
+    if (!funcs[fidx].is_defined) ir4_die("called 'fwd' function was never defined");
+    if (w->reachable) return;
     w->reachable = 1;
     for (i = 0; i < w->ir_len; i++) {
         const IrInstr *ins = &ir_buf[w->ir_start + i];
@@ -966,6 +997,16 @@ typedef struct {
     u16 target_ir;
 } PendingBr;
 
+#define MAX_FWD_CALLS 1024
+typedef struct {
+    u16 call_pc;
+    u16 call_addr;
+    u8  func_idx;
+} FwdCall;
+
+static FwdCall fwd_calls[MAX_FWD_CALLS];
+static u16     fwd_call_count = 0;
+
 static void emit_word(u8 fidx) {
     static u16 ir_addr[MAX_IR];
     FuncSig *sig = &funcs[fidx];
@@ -976,6 +1017,7 @@ static void emit_word(u8 fidx) {
 
     if (w->ir_len >= MAX_IR) ir4_die("word IR length overflow");
     sig->addr = be->cur_addr();
+    sig->has_addr = 1;
     be->fn_begin(sig->name, w->param_cnt, w->locals, w->local_count);
 
     for (i = 0; i <= w->ir_len; i++) {
@@ -1031,9 +1073,20 @@ static void emit_word(u8 fidx) {
             case IR_ALU_OP:
                 be->op(ins->u.op);
                 break;
-            case IR_CALL:
-                be->call(funcs[ins->u.func_idx].addr);
+            case IR_CALL: {
+                u8 target = ins->u.func_idx;
+                u16 call_addr = be->cur_addr();
+                u16 call_pc = cb_pc();
+                be->call(funcs[target].addr);
+                if (!funcs[target].has_addr) {
+                    if (fwd_call_count >= MAX_FWD_CALLS) ir4_die("too many forward calls");
+                    fwd_calls[fwd_call_count].call_pc = call_pc;
+                    fwd_calls[fwd_call_count].call_addr = call_addr;
+                    fwd_calls[fwd_call_count].func_idx = target;
+                    fwd_call_count++;
+                }
                 break;
+            }
             case IR_CALL_EXTERN:
                 be->call_extern(&funcs[ins->u.func_idx]);
                 break;
@@ -1127,17 +1180,30 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     func_count = 0;
     buffer_count = 0;
     ir_count = 0;
+    fwd_call_count = 0;
     has_peek = 0;
 
     while (next_tok(tok)) {
         if (strcmp(tok, "fn") == 0) {
             compile_word();
+        } else if (strcmp(tok, "fwd") == 0) {
+            FuncSig *sig;
+            char name[MAX_TOK];
+            if (!next_tok(name)) ir4_die("expected word name after 'fwd'");
+            if (ir4_find_func(name) >= 0) ir4_die("duplicate 'fwd' declaration");
+            if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+            sig = &funcs[func_count++];
+            memset(sig, 0, sizeof(FuncSig));
+            memcpy(sig->name, name, strlen(name) + 1);
+            if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after 'fwd' name");
+            parse_sig_body(sig, NULL, 0);
         } else if (strcmp(tok, "extern") == 0) {
             FuncSig *sig;
             if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
             sig = &funcs[func_count++];
             memset(sig, 0, sizeof(FuncSig));
             sig->is_extern = 1;
+            sig->is_defined = 1;
             if (!next_tok(sig->name)) ir4_die("expected word name after 'extern'");
             if (!next_tok(tok)) ir4_die("expected address or '(' after extern name");
             if (strcmp(tok, "(") == 0) {
@@ -1185,14 +1251,21 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             mark_reachable((u8)main_idx);
         } else {
             for (f = 0; f < func_count; f++) {
-                if (!funcs[f].is_extern) words[f].reachable = 1;
+                if (!funcs[f].is_extern && funcs[f].is_defined) words[f].reachable = 1;
             }
         }
 
-        /* Pass 2: Emit reachable words */
+        /* Pass 2: Emit reachable words and patch forward calls */
         for (f = 0; f < func_count; f++) {
             if (!funcs[f].is_extern && words[f].reachable) {
                 emit_word(f);
+            }
+        }
+        {
+            u16 c;
+            for (c = 0; c < fwd_call_count; c++) {
+                be->patch_call(fwd_calls[c].call_pc, fwd_calls[c].call_addr,
+                               funcs[fwd_calls[c].func_idx].addr);
             }
         }
     }

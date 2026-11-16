@@ -12,7 +12,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:a`, `:f`).
-* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `end`, `require`, `extern`, `var`, `:bytes`, `vals`, `:i8`, `:i16`, `align`, `->`, `&`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `(`, `)`, `|`).
+* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `end`, `require`, `extern`, `var`, `:bytes`, `vals`, `:i8`, `:i16`, `align`, `->`, `&`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `(`, `)`, `|`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a leading colon that is not a keyword.
 
@@ -52,6 +52,8 @@ end
   * `:bytes <size>` locals allocate `<size>` bytes in the function's stack frame (freed on `end`/`return`), and referencing `<ident>` pushes its `:a` base address onto the stack.
 * **Outputs (optional, after `) ->`):**
   * A nameless sequence of `TYPE` tokens specifying the exact stack state required at `end` or `return` (e.g., `-> :i`, `-> :f`, `-> :a :i`, or omitted for `void`).
+* **Forward Declarations (`fwd`):**
+  * `fwd <name> ( <inputs> ) -> <outputs>` declares a function signature before its `fn <name> ... end` definition (allowing mutual recursion). Locals after `|` are not allowed in `fwd`, and the later `fn` definition must match the declared input and output types.
 
 ### 3.1 Accessing, Mutating & Addressing Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.

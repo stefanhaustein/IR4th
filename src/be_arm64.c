@@ -512,6 +512,11 @@ static int a64_cmp_imm(IrOp op, i32 imm) {
     return 1;
 }
 
+static void a64_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
+    i32 diff = (i32)target_addr - (i32)call_addr;
+    patch32(call_pc, 0x94000000UL | (((u32)(diff >> 2)) & 0x03FFFFFFUL));
+}
+
 const Backend be_arm64 = {
     "arm64",
     8, 8, 8,
@@ -531,5 +536,6 @@ const Backend be_arm64 = {
     a64_cmp_imm,
     a64_emit_br_fwd,
     a64_emit_br_back,
-    a64_patch_fwd
+    a64_patch_fwd,
+    a64_patch_call
 };

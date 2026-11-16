@@ -102,6 +102,18 @@ fn pair_swap ( a :i b :i ) -> :i :i
   b a
 end
 
+fwd is_odd ( n :i ) -> :i
+
+fn is_even ( n :i ) -> :i
+  n 0 == if 1 return then
+  n 1 - is_odd
+end
+
+fn is_odd ( n :i ) -> :i
+  n 0 == if 0 return then
+  n 1 - is_even
+end
+
 fn main ( ) -> :i
   test_stack
   dup 0 != if return then drop
@@ -116,4 +128,8 @@ fn main ( ) -> :i
   -1 test_ctrl 215 41 assert_eq
   dup 0 != if return then drop
   10 20 pair_swap - 10 42 assert_eq
+  dup 0 != if return then drop
+  7 is_odd 1 43 assert_eq
+  dup 0 != if return then drop
+  8 is_even 1 44 assert_eq
 end

@@ -614,6 +614,11 @@ static int rv_cmp_imm(IrOp op, i32 imm) {
     return 1;
 }
 
+static void rv_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
+    i32 diff = (i32)target_addr - (i32)call_addr;
+    patch32(call_pc, enc_j(diff, RV_RA));
+}
+
 const Backend be_rv32 = {
     "rv32",
     4, 4, 4,
@@ -633,5 +638,6 @@ const Backend be_rv32 = {
     rv_cmp_imm,
     rv_emit_br_fwd,
     rv_emit_br_back,
-    rv_patch_fwd
+    rv_patch_fwd,
+    rv_patch_call
 };
