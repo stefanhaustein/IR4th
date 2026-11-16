@@ -12,7 +12,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:a`, `:f`).
-* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `vals`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `(`, `)`, `|`).
+* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `vals`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `(`, `)`, `|`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a leading colon that is not a keyword.
 
@@ -72,7 +72,8 @@ var <name> :bytes <size>
 ```
 
 * `<size>` is a positive byte count. Each buffer is allocated in the target's writable data segment, aligned to the target's native word size.
-* Referencing `<name>` inside a word pushes its base address onto the stack with type **`:a`** (`( -- :a )`).
+* Referencing `<name>` inside a word pushes its base address onto the stack with type **`:a`** (`( -> :a )`).
+* **`__heap_start`:** Built-in constant pushing the `:a` address immediately following all static code, `vals`, `var`, and target runtime data.
 
 ### 3.2b Pre-Initialized Data (`vals ... end`)
 Top-level read-only tables and constants can be defined outside word definitions:

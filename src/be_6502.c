@@ -964,7 +964,8 @@ static void m6502_op(IrOp op) {
             emit8(0xF0); emit8(0x02); /* BEQ store */
             m6502_lda_imm(0xFF);
         } else if (op == OP_FLT) {
-            emit8(0x30); emit8(0x04); /* BMI true */
+            emit8(0xC9); emit8(0xFF); /* CMP #$FF */
+            emit8(0xF0); emit8(0x04); /* BEQ true */
             m6502_lda_imm(0x00);
             emit8(0xF0); emit8(0x02); /* BEQ store */
             m6502_lda_imm(0xFF);

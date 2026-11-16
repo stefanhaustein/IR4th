@@ -34,6 +34,7 @@ typedef enum {
     IR_PUSH_A,
     IR_PUSH_F,
     IR_PUSH_DATA,
+    IR_PUSH_HEAP_START,
     IR_LOCAL_OP,
     IR_STACK_OP,
     IR_ALU_OP,
@@ -168,7 +169,8 @@ static int next_tok(char *buf) {
     {
         SrcFile *cur = &src_stack[src_depth - 1];
         while (c != EOF && !isspace((unsigned char)c)) {
-            if (len < MAX_TOK - 1) buf[len++] = (char)c;
+            if (len >= MAX_TOK - 1) ir4_die("token too long");
+            buf[len++] = (char)c;
             c = fgetc(cur->fp);
         }
         if (c == '\n') cur->line_num++;
@@ -1012,6 +1014,13 @@ static void compile_body(WordIR *w) {
         /* Core built-in word */
         if (handle_builtin(tok, w)) continue;
 
+        /* Built-in heap start address (:a) */
+        if (strcmp(tok, "__heap_start") == 0) {
+            emit_ir(IR_PUSH_HEAP_START, w);
+            tpush(TY_A);
+            continue;
+        }
+
         /* Local variable read (or ':bytes' local base address) */
         idx = find_local(tok);
         if (idx >= 0) {
@@ -1094,6 +1103,7 @@ typedef struct {
 
 static FwdCall fwd_calls[MAX_FWD_CALLS];
 static u16     fwd_call_count = 0;
+static u16     heap_start_off = 0;
 
 static void emit_word(u8 fidx) {
     static u16 ir_addr[MAX_IR];
@@ -1174,6 +1184,9 @@ static void emit_word(u8 fidx) {
                 break;
             case IR_PUSH_DATA:
                 be->push_data(ins->u.offset);
+                break;
+            case IR_PUSH_HEAP_START:
+                be->push_data(heap_start_off);
                 break;
             case IR_LOCAL_OP:
                 be->local_op(ins->u.loc.op, ins->u.loc.slot,
@@ -1398,6 +1411,9 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 if (!funcs[f].is_extern && funcs[f].is_defined) words[f].reachable = 1;
             }
         }
+
+        if (be == &be_6502) (void)be_6502_stack_data_off();
+        heap_start_off = cb_alloc_data(0, be->word_bytes);
 
         /* Pass 2: Emit reachable words and patch forward calls */
         for (f = 0; f < func_count; f++) {

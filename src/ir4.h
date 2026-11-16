@@ -27,9 +27,9 @@ typedef signed long    i32;
 
 #define MAX_TOK    32
 #define MAX_LOCALS 16
-#define MAX_CODE   16384
+#define MAX_CODE   32768
 #define MAX_DATA   4096
-#define MAX_RELOCS 4096
+#define MAX_RELOCS 8192
 
 /* Stack types (v0.3) */
 typedef enum {

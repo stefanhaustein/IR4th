@@ -67,5 +67,8 @@ fn main ( -> :i )
 
   // Verify multiple init blocks ran in order before main
   g_init @i 15 != if 13 return then
+
+  // Verify __heap_start is after the last static buffer
+  __heap_start tail_buf 16 + u< if 14 return then
   0
 end
