@@ -1,4 +1,4 @@
-\ Error test: stack underflow on '+'
-fn main { -- :i }
+// Error test: stack underflow on '+'
+fn main ( ) -> :i
   + 0
 end

@@ -131,9 +131,23 @@ static u8 parse_type_tok(const char *tok) {
     return TY_NONE;
 }
 
+static char peek_tok[MAX_TOK];
+static int  has_peek = 0;
+
+static void unget_tok(const char *tok) {
+    memcpy(peek_tok, tok, strlen(tok) + 1);
+    has_peek = 1;
+}
+
 static int next_tok(char *buf) {
     int c;
     u8 len = 0;
+
+    if (has_peek) {
+        memcpy(buf, peek_tok, strlen(peek_tok) + 1);
+        has_peek = 0;
+        return 1;
+    }
 
     for (;;) {
         SrcFile *cur;
@@ -150,10 +164,14 @@ static int next_tok(char *buf) {
         }
         if (c == '\n') { cur->line_num++; continue; }
         if (isspace((unsigned char)c)) continue;
-        if (c == '\\') {
-            while ((c = fgetc(cur->fp)) != EOF && c != '\n') ;
-            if (c == '\n') cur->line_num++;
-            continue;
+        if (c == '/') {
+            int c2 = fgetc(cur->fp);
+            if (c2 == '/') {
+                while ((c = fgetc(cur->fp)) != EOF && c != '\n') ;
+                if (c == '\n') cur->line_num++;
+                continue;
+            }
+            if (c2 != EOF) ungetc(c2, cur->fp);
         }
         break;
     }
@@ -371,8 +389,6 @@ typedef struct {
 } BuiltinDef;
 
 static const BuiltinDef builtins[] = {
-    /* Word ALU & bitwise */
-    { "+",       OP_ADD,      TY_W, TY_W,    TY_W },
     /* Arithmetic & bitwise */
     { "+",       OP_ADD,      TY_W, TY_W,    TY_W },
     { "+",       OP_AADD,     TY_W, TY_A,    TY_A },
@@ -392,18 +408,18 @@ static const BuiltinDef builtins[] = {
     { "or",      OP_OR,       TY_W, TY_W,    TY_W },
     { "xor",     OP_XOR,      TY_W, TY_W,    TY_W },
     { "invert",  OP_INVERT,   TY_W, TY_NONE, TY_W },
-    { "lshift",  OP_LSHIFT,   TY_W, TY_W,    TY_W },
-    { "arshift", OP_ARSHIFT,  TY_W, TY_W,    TY_W },
-    { "rshift",  OP_RSHIFT,   TY_W, TY_W,    TY_W },
+    { "<<",      OP_LSHIFT,   TY_W, TY_W,    TY_W },
+    { ">>",      OP_ARSHIFT,  TY_W, TY_W,    TY_W },
+    { "u>>",     OP_RSHIFT,   TY_W, TY_W,    TY_W },
     { "fnegate", OP_FNEG,     TY_F, TY_NONE, TY_F },
 
     /* Comparisons */
-    { "=",       OP_EQ,       TY_W, TY_W,    TY_W },
-    { "=",       OP_AEQ,      TY_A, TY_A,    TY_W },
-    { "=",       OP_FEQ,      TY_F, TY_F,    TY_W },
-    { "<>",      OP_NE,       TY_W, TY_W,    TY_W },
-    { "<>",      OP_ANE,      TY_A, TY_A,    TY_W },
-    { "<>",      OP_FNE,      TY_F, TY_F,    TY_W },
+    { "==",      OP_EQ,       TY_W, TY_W,    TY_W },
+    { "==",      OP_AEQ,      TY_A, TY_A,    TY_W },
+    { "==",      OP_FEQ,      TY_F, TY_F,    TY_W },
+    { "!=",      OP_NE,       TY_W, TY_W,    TY_W },
+    { "!=",      OP_ANE,      TY_A, TY_A,    TY_W },
+    { "!=",      OP_FNE,      TY_F, TY_F,    TY_W },
     { "<",       OP_LT,       TY_W, TY_W,    TY_W },
     { "<",       OP_FLT,      TY_F, TY_F,    TY_W },
     { ">",       OP_GT,       TY_W, TY_W,    TY_W },
@@ -418,18 +434,18 @@ static const BuiltinDef builtins[] = {
     { "u>=",     OP_UGE,      TY_W, TY_W,    TY_W },
 
     /* Memory load/store */
-    { "i8@",     OP_I8FETCH,  TY_A, TY_NONE, TY_W },
-    { "u8@",     OP_U8FETCH,  TY_A, TY_NONE, TY_W },
-    { "i8!",     OP_I8STORE,  TY_A, TY_W,    TY_NONE },
-    { "i16@",    OP_I16FETCH, TY_A, TY_NONE, TY_W },
-    { "u16@",    OP_U16FETCH, TY_A, TY_NONE, TY_W },
-    { "i16!",    OP_I16STORE, TY_A, TY_W,    TY_NONE },
-    { "i@",      OP_FETCH,    TY_A, TY_NONE, TY_W },
-    { "i!",      OP_STORE,    TY_A, TY_W,    TY_NONE },
-    { "a@",      OP_AFETCH,   TY_A, TY_NONE, TY_A },
-    { "a!",      OP_ASTORE,   TY_A, TY_A,    TY_NONE },
-    { "f@",      OP_FFETCH,   TY_A, TY_NONE, TY_F },
-    { "f!",      OP_FSTORE,   TY_A, TY_F,    TY_NONE },
+    { "@i8",     OP_I8FETCH,  TY_A, TY_NONE, TY_W },
+    { "@u8",     OP_U8FETCH,  TY_A, TY_NONE, TY_W },
+    { "!i8",     OP_I8STORE,  TY_A, TY_W,    TY_NONE },
+    { "@i16",    OP_I16FETCH, TY_A, TY_NONE, TY_W },
+    { "@u16",    OP_U16FETCH, TY_A, TY_NONE, TY_W },
+    { "!i16",    OP_I16STORE, TY_A, TY_W,    TY_NONE },
+    { "@i",      OP_FETCH,    TY_A, TY_NONE, TY_W },
+    { "!i",      OP_STORE,    TY_A, TY_W,    TY_NONE },
+    { "@a",      OP_AFETCH,   TY_A, TY_NONE, TY_A },
+    { "!a",      OP_ASTORE,   TY_A, TY_A,    TY_NONE },
+    { "@f",      OP_FFETCH,   TY_A, TY_NONE, TY_F },
+    { "!f",      OP_FSTORE,   TY_A, TY_F,    TY_NONE },
 
     /* Type conversions */
     { "sext",    OP_SEXT,     TY_W, TY_NONE, TY_W },
@@ -582,64 +598,74 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
     char tok[MAX_TOK];
     u8 param_cnt = 0;
     u8 in_locals = 0;
-    u8 in_outs = 0;
 
     local_count = 0;
     cur_out_count = 0;
 
-    /* Parse inputs | locals -- outputs } (after '{' has been consumed) */
-    while (next_tok(tok)) {
+    /* Parse inputs | locals ) (after '(' has been consumed) */
+    for (;;) {
         u8 ty;
-        if (strcmp(tok, "}") == 0) {
+        char ty_tok[MAX_TOK];
+        if (!next_tok(tok)) ir4_die("unexpected EOF in signature (missing ')')");
+        if (strcmp(tok, ")") == 0) {
             if (param_cnt_out) *param_cnt_out = param_cnt;
-            return;
+            break;
         }
         if (strcmp(tok, "|") == 0) {
             if (!allow_locals) ir4_die("locals '|' not allowed in extern signature");
             in_locals = 1;
             continue;
         }
-        if (strcmp(tok, "--") == 0) { in_outs = 1; continue; }
-
-        if (in_outs) {
-            ty = parse_type_tok(tok);
-            if (ty == TY_NONE) {
-                if (!allow_locals && cur_out_count == 0 && sig->out_reg[0] == '\0') {
-                    size_t len = strlen(tok);
-                    memcpy(sig->out_reg, tok, len + 1);
-                    if (!next_tok(tok)) ir4_die("expected type token (:i, :a, :f) after extern register");
-                    ty = parse_type_tok(tok);
-                }
-                if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
-            }
-            if (cur_out_count >= 4) ir4_die("too many return types");
-            sig->out_types[sig->out_count++] = ty;
-            cur_outs[cur_out_count++] = ty;
-        } else {
-            char ty_tok[MAX_TOK];
-            if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
-            if (parse_type_tok(tok) != TY_NONE) {
-                ir4_die("expected identifier before type in signature");
-            }
-            memcpy(locals[local_count].name, tok, strlen(tok) + 1);
-            if (!next_tok(ty_tok)) ir4_die("expected type token (:i, :a, :f) after identifier in signature");
-            ty = parse_type_tok(ty_tok);
-            if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
-            locals[local_count].type = ty;
-            locals[local_count].slot = local_count;
-            if (!in_locals) {
-                if (sig->in_count >= 8) ir4_die("too many parameters");
-                sig->in_types[sig->in_count] = ty;
-                memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
-                       strlen(locals[local_count].name) + 1);
-                sig->in_count++;
-                param_cnt++;
-            }
-            local_count++;
+        if (strcmp(tok, "->") == 0) {
+            ir4_die("'->' belongs after ')' in signature");
         }
+        if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
+        if (parse_type_tok(tok) != TY_NONE) {
+            ir4_die("expected identifier before type in signature");
+        }
+        memcpy(locals[local_count].name, tok, strlen(tok) + 1);
+        if (!next_tok(ty_tok)) ir4_die("expected type token (:i, :a, :f) after identifier in signature");
+        ty = parse_type_tok(ty_tok);
+        if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
+        locals[local_count].type = ty;
+        locals[local_count].slot = local_count;
+        if (!in_locals) {
+            if (sig->in_count >= 8) ir4_die("too many parameters");
+            sig->in_types[sig->in_count] = ty;
+            memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
+                   strlen(locals[local_count].name) + 1);
+            sig->in_count++;
+            param_cnt++;
+        }
+        local_count++;
     }
 
-    ir4_die("unexpected EOF in signature (missing '}')");
+    /* Optional return types: -> :type ... (or -> REG :type for extern) */
+    if (!next_tok(tok)) return;
+    if (strcmp(tok, "->") != 0) {
+        unget_tok(tok);
+        return;
+    }
+
+    while (next_tok(tok)) {
+        u8 ty = parse_type_tok(tok);
+        if (ty == TY_NONE) {
+            if (!allow_locals && cur_out_count == 0 && sig->out_reg[0] == '\0') {
+                size_t len = strlen(tok);
+                memcpy(sig->out_reg, tok, len + 1);
+                if (!next_tok(tok)) ir4_die("expected type token (:i, :a, :f) after extern register");
+                ty = parse_type_tok(tok);
+                if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) after extern register");
+            } else {
+                unget_tok(tok);
+                break;
+            }
+        }
+        if (cur_out_count >= 4) ir4_die("too many return types");
+        sig->out_types[sig->out_count++] = ty;
+        cur_outs[cur_out_count++] = ty;
+    }
+    if (cur_out_count == 0) ir4_die("expected return type after '->'");
 }
 
 static void compile_word(void) {
@@ -659,8 +685,8 @@ static void compile_word(void) {
     memset(sig, 0, sizeof(FuncSig));
     memset(w, 0, sizeof(WordIR));
 
-    if (!next_tok(sig->name)) ir4_die("expected word name after ':'");
-    if (!next_tok(tok) || strcmp(tok, "{") != 0) ir4_die("expected '{' after word name");
+    if (!next_tok(sig->name)) ir4_die("expected word name after 'fn'");
+    if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after word name");
     tsp = 0;
     bsp = 0;
     parse_sig_body(sig, &param_cnt, 1);
@@ -687,7 +713,7 @@ static void compile_word(void) {
             return;
         }
 
-        if (strcmp(tok, "exit") == 0) {
+        if (strcmp(tok, "return") == 0) {
             if (!unreachable) {
                 check_return_stack();
                 emit_ir(IR_FN_END, w);
@@ -1010,12 +1036,65 @@ static void emit_word(u8 fidx) {
     }
 }
 
+static void flush_vals_word(i32 val) {
+    if (be->word_bytes == 2 && (val < -32768 || val > 65535)) {
+        ir4_die(":i value out of range");
+    }
+    cb_emit_data_word(val, be->word_bytes);
+}
+
+static void compile_vals(void) {
+    char tok[MAX_TOK];
+    i32 num_val;
+    i32 pending = 0;
+    int has_pending = 0;
+
+    if (buffer_count >= MAX_SYMS) ir4_die("too many buffers");
+    if (!next_tok(buffers[buffer_count].name)) {
+        ir4_die("expected name after 'vals'");
+    }
+    buffers[buffer_count].offset = cb_alloc_data(0, be->word_bytes);
+    buffer_count++;
+
+    while (next_tok(tok)) {
+        if (strcmp(tok, "end") == 0) {
+            if (has_pending) flush_vals_word(pending);
+            return;
+        } else if (strcmp(tok, "align") == 0) {
+            if (has_pending) {
+                flush_vals_word(pending);
+                has_pending = 0;
+            }
+            cb_alloc_data(0, be->word_bytes);
+        } else if (strcmp(tok, ":i8") == 0) {
+            if (!has_pending) ir4_die("expected integer before ':i8'");
+            if (pending < -128 || pending > 255) ir4_die(":i8 value out of range");
+            cb_emit_data_u8((u8)(pending & 0xFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":i16") == 0) {
+            if (!has_pending) ir4_die("expected integer before ':i16'");
+            if (pending < -32768 || pending > 65535) ir4_die(":i16 value out of range");
+            cb_emit_data_u16((u16)(pending & 0xFFFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":i") == 0) {
+            if (!has_pending) ir4_die("expected integer before ':i'");
+            flush_vals_word(pending);
+            has_pending = 0;
+        } else if (parse_int(tok, &num_val)) {
+            if (has_pending) flush_vals_word(pending);
+            pending = num_val;
+            has_pending = 1;
+        } else {
+            ir4_die("unexpected token in 'vals'");
+        }
+    }
+    ir4_die("unexpected EOF in 'vals' (missing 'end')");
+}
+
 void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                         const char *platform) {
     char tok[MAX_TOK];
     i32 num_val;
-    i32 ct_stack[MAX_STACK];
-    int ct_sp = 0;
     const char *root_path = (path != NULL) ? path : "<stdin>";
     size_t plen = strlen(root_path);
 
@@ -1033,88 +1112,55 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     func_count = 0;
     buffer_count = 0;
     ir_count = 0;
+    has_peek = 0;
 
     while (next_tok(tok)) {
         if (strcmp(tok, "fn") == 0) {
-            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
             compile_word();
         } else if (strcmp(tok, "extern") == 0) {
             FuncSig *sig;
-            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
             if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
             sig = &funcs[func_count++];
             memset(sig, 0, sizeof(FuncSig));
             sig->is_extern = 1;
             if (!next_tok(sig->name)) ir4_die("expected word name after 'extern'");
-            if (!next_tok(tok)) ir4_die("expected address or '{' after extern name");
-            if (strcmp(tok, "{") == 0) {
+            if (!next_tok(tok)) ir4_die("expected address or '(' after extern name");
+            if (strcmp(tok, "(") == 0) {
                 sig->has_addr = 0;
             } else if (parse_int(tok, &num_val)) {
                 if (num_val < 0 || num_val > 0xFFFF) ir4_die("invalid extern address");
                 sig->addr = (u16)num_val;
                 sig->has_addr = 1;
-                if (!next_tok(tok) || strcmp(tok, "{") != 0) {
-                    ir4_die("expected '{' after extern address");
+                if (!next_tok(tok) || strcmp(tok, "(") != 0) {
+                    ir4_die("expected '(' after extern address");
                 }
             } else {
-                ir4_die("expected address or '{' after extern name");
+                ir4_die("expected address or '(' after extern name");
             }
             parse_sig_body(sig, NULL, 0);
             if (sig->out_count > 1) ir4_die("extern supports at most 1 return value");
         } else if (strcmp(tok, "require") == 0) {
-            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
             if (!next_tok(tok)) ir4_die("expected filename after 'require'");
             push_require(tok);
-        } else if (strcmp(tok, "create") == 0) {
-            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
+        } else if (strcmp(tok, "vals") == 0) {
+            compile_vals();
+        } else if (strcmp(tok, "var") == 0) {
             if (buffer_count >= MAX_SYMS) ir4_die("too many buffers");
             if (!next_tok(buffers[buffer_count].name)) {
-                ir4_die("expected name after 'create'");
+                ir4_die("expected buffer name after 'var'");
             }
-            buffers[buffer_count].offset = cb_alloc_data(0, be->word_bytes);
-            buffer_count++;
-        } else if (strcmp(tok, "align") == 0) {
-            if (ct_sp != 0) ir4_die("unconsumed integer at top level");
-            cb_alloc_data(0, be->word_bytes);
-        } else if (strcmp(tok, "buffer:") == 0) {
-            if (ct_sp < 1) ir4_die("expected size before 'buffer:'");
-            num_val = ct_stack[--ct_sp];
-            if (num_val <= 0 || num_val > MAX_DATA) {
-                ir4_die("invalid buffer size");
+            if (!next_tok(tok) || strcmp(tok, ":bytes") != 0) {
+                ir4_die("expected ':bytes' after var name");
             }
-            if (buffer_count >= MAX_SYMS) {
-                ir4_die("too many buffers");
-            }
-            if (!next_tok(buffers[buffer_count].name)) {
-                ir4_die("expected buffer name after 'buffer:'");
+            if (!next_tok(tok) || !parse_int(tok, &num_val) || num_val <= 0 || num_val > MAX_DATA) {
+                ir4_die("invalid byte count after ':bytes'");
             }
             buffers[buffer_count].offset = cb_alloc_data((u16)num_val, be->word_bytes);
             buffer_count++;
-        } else if (strcmp(tok, "i8,") == 0) {
-            if (ct_sp < 1) ir4_die("expected integer before 'i8,'");
-            num_val = ct_stack[--ct_sp];
-            if (num_val < -128 || num_val > 255) ir4_die("i8, value out of range");
-            cb_emit_data_u8((u8)(num_val & 0xFF));
-        } else if (strcmp(tok, "i16,") == 0) {
-            if (ct_sp < 1) ir4_die("expected integer before 'i16,'");
-            num_val = ct_stack[--ct_sp];
-            if (num_val < -32768 || num_val > 65535) ir4_die("i16, value out of range");
-            cb_emit_data_u16((u16)(num_val & 0xFFFF));
-        } else if (strcmp(tok, ",") == 0) {
-            if (ct_sp < 1) ir4_die("expected integer before ','");
-            num_val = ct_stack[--ct_sp];
-            if (be->word_bytes == 2 && (num_val < -32768 || num_val > 65535)) {
-                ir4_die(", value out of range");
-            }
-            cb_emit_data_word(num_val, be->word_bytes);
-        } else if (parse_int(tok, &num_val)) {
-            if (ct_sp >= MAX_STACK) ir4_die("top-level stack overflow");
-            ct_stack[ct_sp++] = num_val;
         } else {
-            ir4_die("expected top-level ':', 'require', 'create', 'buffer:', 'align', or data");
+            ir4_die("expected top-level 'fn', 'var', 'vals', 'extern', or 'require'");
         }
     }
-    if (ct_sp != 0) ir4_die("unconsumed integer at top level");
 
     /* Pass 1.5: Reachability / Dead-Code Elimination from 'main' */
     {

@@ -1,4 +1,4 @@
-fn putchar { c :i -- :i }
-  c 0x10000000 :a i8!
+fn putchar ( c :i ) -> :i
+  c 0x10000000 :a !i8
   c
 end

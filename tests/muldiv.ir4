@@ -1,40 +1,40 @@
-\ muldiv.ir4 - Multiply, divide, and remainder tests (ARM64 + Z80)
-\ Expected main() return value: 0
+// muldiv.ir4 - Multiply, divide, and remainder tests (ARM64 + Z80)
+// Expected main() return value: 0
 
-fn assert_eq { got :i expected :i code :i -- :i }
-  got expected = if
-    0 exit
+fn assert_eq ( got :i expected :i code :i ) -> :i
+  got expected == if
+    0 return
   then
   code
 end
 
-fn main { -- :i }
+fn main ( ) -> :i
   6 7 * 42 1 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   -6 7 * -42 2 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   -6 -7 * 42 3 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
 
   100 7 / 14 4 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   100 7 mod 2 5 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
 
   -7 3 / -2 6 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   -7 3 mod -1 7 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   7 -3 / -2 8 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   7 -3 mod 1 9 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   -7 -3 / 2 10 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   -7 -3 mod -1 11 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
 
   1000 13 u/ 76 12 assert_eq
-  dup 0 <> if exit then drop
+  dup 0 != if return then drop
   1000 13 umod 12 13 assert_eq
 end

@@ -1,54 +1,59 @@
-\ Test create, i8,, i16,, , and align
+// Test vals, :i8, :i16, :i, align, and var :bytes
 
-8 buffer: scratch
+var scratch :bytes 8
 
-create bytes_tbl
-  10 i8, 255 i8, -5 i8,
-
-create words16_tbl
-  1000 i16, -1234 i16,
-
-create w_pos
-  42 ,
-
-create w_neg
-  -7 ,
-
-create mixed_tbl
-  7 i8, align 99 ,
-
-16 buffer: tail_buf
-
-fn word_bytes { -- :i }
-  1 16 lshift 0 = if 2 exit then
-  1 31 lshift 1 lshift 0 = if 4 else 8 then
+vals bytes_tbl
+  10 :i8 255 :i8 -5 :i8
 end
 
-fn main { -- :i }
-  \ Check i8, values (unsigned & signed reads)
-  bytes_tbl u8@ 10 <> if 1 exit then
-  bytes_tbl 1 + u8@ 255 <> if 2 exit then
-  bytes_tbl 2 + i8@ -5 <> if 3 exit then
+vals words16_tbl
+  1000 :i16 -1234 :i16
+end
 
-  \ Check i16, values (unsigned & signed reads)
-  words16_tbl i16@ 1000 <> if 4 exit then
-  words16_tbl 2 + i16@ -1234 <> if 5 exit then
+vals w_pos
+  42
+end
 
-  \ Check , (native word)
-  w_pos i@ 42 <> if 6 exit then
-  w_neg i@ -7 <> if 7 exit then
+vals w_neg
+  -7 :i
+end
 
-  \ Check mid-table align before ,
-  mixed_tbl u8@ 7 <> if 8 exit then
-  mixed_tbl word_bytes + i@ 99 <> if 9 exit then
+vals mixed_tbl
+  7 :i8 align 99
+end
 
-  \ Check writable buffers still work alongside create
-  99 scratch i8!
-  77 tail_buf i8!
-  scratch u8@ 99 <> if 10 exit then
-  tail_buf u8@ 77 <> if 11 exit then
+var tail_buf :bytes 16
 
-  \ Re-verify create data wasn't disturbed
-  w_pos i@ 42 <> if 12 exit then
+fn word_bytes ( ) -> :i
+  1 16 << 0 == if 2 return then
+  1 31 << 1 << 0 == if 4 else 8 then
+end
+
+fn main ( ) -> :i
+  // Check i8, values (unsigned & signed reads)
+  bytes_tbl @u8 10 != if 1 return then
+  bytes_tbl 1 + @u8 255 != if 2 return then
+  bytes_tbl 2 + @i8 -5 != if 3 return then
+
+  // Check i16, values (unsigned & signed reads)
+  words16_tbl @i16 1000 != if 4 return then
+  words16_tbl 2 + @i16 -1234 != if 5 return then
+
+  // Check , (native word)
+  w_pos @i 42 != if 6 return then
+  w_neg @i -7 != if 7 return then
+
+  // Check mid-table align before ,
+  mixed_tbl @u8 7 != if 8 return then
+  mixed_tbl word_bytes + @i 99 != if 9 return then
+
+  // Check writable buffers still work alongside create
+  99 scratch !i8
+  77 tail_buf !i8
+  scratch @u8 99 != if 10 return then
+  tail_buf @u8 77 != if 11 return then
+
+  // Re-verify create data wasn't disturbed
+  w_pos @i 42 != if 12 return then
   0
 end
