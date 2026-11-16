@@ -1,0 +1,25 @@
+require io.ir4
+
+fn cr ( )
+  10 emit
+end
+
+fn type ( s :a len :i )
+  begin
+    len 0 >
+  while
+    s @u8 emit
+    s 1 + -> s
+    len 1 - -> len
+  repeat
+end
+
+fn prints ( s :a | c :i )
+  begin
+    s @u8 -> c
+    c 0 !=
+  while
+    c emit
+    s 1 + -> s
+  repeat
+end

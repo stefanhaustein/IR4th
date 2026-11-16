@@ -135,13 +135,11 @@ static u8 parse_type_tok(const char *tok) {
     return TY_NONE;
 }
 
-static int next_tok(char *buf) {
-    int c;
-    u8 len = 0;
-
+static int skip_ws_and_comments(void) {
     for (;;) {
         SrcFile *cur;
-        if (src_depth == 0) return 0;
+        int c;
+        if (src_depth == 0) return EOF;
         cur = &src_stack[src_depth - 1];
         c = fgetc(cur->fp);
         if (c == EOF) {
@@ -150,7 +148,7 @@ static int next_tok(char *buf) {
                 src_depth--;
                 continue;
             }
-            return 0;
+            return EOF;
         }
         if (c == '\n') { cur->line_num++; continue; }
         if (isspace((unsigned char)c)) continue;
@@ -163,8 +161,15 @@ static int next_tok(char *buf) {
             }
             if (c2 != EOF) ungetc(c2, cur->fp);
         }
-        break;
+        return c;
     }
+}
+
+static int next_tok(char *buf) {
+    int c = skip_ws_and_comments();
+    u8 len = 0;
+
+    if (c == EOF) return 0;
 
     {
         SrcFile *cur = &src_stack[src_depth - 1];
@@ -1334,11 +1339,35 @@ static void flush_vals_word(i32 val) {
     cb_emit_data_word(val, be->word_bytes);
 }
 
+static void emit_vals_string(void) {
+    SrcFile *cur = &src_stack[src_depth - 1];
+    for (;;) {
+        int c = fgetc(cur->fp);
+        if (c == EOF || c == '\n') ir4_die("unterminated string literal in 'vals'");
+        if (c == '"') return;
+        if (c == '\\') {
+            c = fgetc(cur->fp);
+            if (c == EOF || c == '\n') ir4_die("unterminated escape in string literal");
+            switch (c) {
+            case 'n':  c = '\n'; break;
+            case 'r':  c = '\r'; break;
+            case 't':  c = '\t'; break;
+            case '0':  c = '\0'; break;
+            case '\\': c = '\\'; break;
+            case '"':  c = '"';  break;
+            default: ir4_die("unknown escape sequence in string literal");
+            }
+        }
+        cb_emit_data_u8((u8)c);
+    }
+}
+
 static void compile_vals(void) {
     char tok[MAX_TOK];
     i32 num_val;
     i32 pending = 0;
     int has_pending = 0;
+    int ch;
 
     if (buffer_count >= MAX_SYMS) ir4_die("too many buffers");
     if (!next_tok(buffers[buffer_count].name)) {
@@ -1347,7 +1376,17 @@ static void compile_vals(void) {
     buffers[buffer_count].offset = cb_alloc_data(0, be->word_bytes);
     buffer_count++;
 
-    while (next_tok(tok)) {
+    while ((ch = skip_ws_and_comments()) != EOF) {
+        if (ch == '"') {
+            if (has_pending) {
+                flush_vals_word(pending);
+                has_pending = 0;
+            }
+            emit_vals_string();
+            continue;
+        }
+        ungetc(ch, src_stack[src_depth - 1].fp);
+        if (!next_tok(tok)) break;
         if (strcmp(tok, "end") == 0) {
             if (has_pending) flush_vals_word(pending);
             return;

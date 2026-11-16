@@ -1,0 +1,10 @@
+require stdio.ir4
+
+vals msg
+  "Hello, world!\n" 0 :i8
+end
+
+fn main ( -> :i )
+  msg prints
+  0
+end

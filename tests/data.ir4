@@ -22,6 +22,10 @@ vals mixed_tbl
   7 :i8 align 99
 end
 
+vals str_tbl
+  "hi\n" 0 :i8
+end
+
 var tail_buf :bytes 16
 var g_init :bytes 4
 
@@ -70,5 +74,11 @@ fn main ( -> :i )
 
   // Verify __heap_start is after the last static buffer
   __heap_start tail_buf 16 + u< if 14 return then
+
+  // Check string literal in vals
+  str_tbl @u8 104 != if 15 return then
+  str_tbl 1 + @u8 105 != if 16 return then
+  str_tbl 2 + @u8 10 != if 17 return then
+  str_tbl 3 + @u8 0 != if 18 return then
   0
 end

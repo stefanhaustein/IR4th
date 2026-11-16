@@ -88,6 +88,7 @@ end
 
 * `vals <name> ... end` aligns the data pointer to the target's native word size and binds `<name>` (`( -- :a )`).
 * `:i8` emits 1 byte (`-128..255`). `:i16` emits 2 little-endian bytes (`-32768..65535`). `:i` (or a bare integer without a width specifier) emits 1 native word (`word_bytes`).
+* `"..."` emits raw string bytes (supporting `\n`, `\r`, `\t`, `\0`, `\\`, `\"` escapes) without an implicit NUL terminator.
 * `align` advances the data pointer to the next multiple of `word_bytes`.
 * `vals` data is semantically read-only.
 
