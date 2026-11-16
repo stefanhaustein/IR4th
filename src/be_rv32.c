@@ -378,18 +378,24 @@ static void rv_int_cmp(IrOp op) {
 static int rv_mem_imm(IrOp op, i32 off) {
     u32 funct3;
     int is_store = 0;
+    int swapped = 0;
 
     if (off < -2048 || off > 2047) return 0;
     switch (op) {
     case OP_I8FETCH:  funct3 = 0; break;
     case OP_U8FETCH:  funct3 = 4; break;
+    case OP_SI8STORE: swapped = 1; /* fall through */
     case OP_I8STORE:  funct3 = 0; is_store = 1; break;
     case OP_I16FETCH: funct3 = 1; break;
     case OP_U16FETCH: funct3 = 5; break;
+    case OP_SI16STORE: swapped = 1; /* fall through */
     case OP_I16STORE: funct3 = 1; is_store = 1; break;
     case OP_FETCH:
     case OP_AFETCH:
     case OP_FFETCH:   funct3 = 2; break;
+    case OP_SSTORE:
+    case OP_SASTORE:
+    case OP_SFSTORE:  swapped = 1; /* fall through */
     case OP_STORE:
     case OP_ASTORE:
     case OP_FSTORE:   funct3 = 2; is_store = 1; break;
@@ -397,7 +403,8 @@ static int rv_mem_imm(IrOp op, i32 off) {
     }
 
     if (is_store) {
-        pop_reg(RV_T0); pop_reg(RV_T1);
+        if (swapped) { pop_reg(RV_T1); pop_reg(RV_T0); }
+        else         { pop_reg(RV_T0); pop_reg(RV_T1); }
         emit32(enc_s(off, RV_T1, RV_T0, funct3));
     } else {
         pop_reg(RV_T0);
@@ -439,6 +446,11 @@ static void rv_op(IrOp op) {
     case OP_STORE:
     case OP_ASTORE:
     case OP_FSTORE:
+    case OP_SI8STORE:
+    case OP_SI16STORE:
+    case OP_SSTORE:
+    case OP_SASTORE:
+    case OP_SFSTORE:
         rv_mem_imm(op, 0);
         break;
     case OP_FNEG:
@@ -642,6 +654,7 @@ const Backend be_rv32 = {
     rv_add_imm,
     rv_cmp_imm,
     rv_mem_imm,
+    NULL,
     rv_emit_br_fwd,
     rv_emit_br_back,
     rv_patch_fwd,

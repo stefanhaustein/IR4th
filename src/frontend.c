@@ -531,6 +531,17 @@ static int try_fold_const_w(IrOp op, i32 a, i32 b, i32 *out) {
     }
 }
 
+static IrOp swapped_store_op(IrOp op) {
+    switch (op) {
+    case OP_I8STORE:  return OP_SI8STORE;
+    case OP_I16STORE: return OP_SI16STORE;
+    case OP_STORE:    return OP_SSTORE;
+    case OP_ASTORE:   return OP_SASTORE;
+    case OP_FSTORE:   return OP_SFSTORE;
+    default:          return op;
+    }
+}
+
 static int handle_builtin(const char *tok, WordIR *w) {
     u8 a, b;
     size_t i;
@@ -581,6 +592,17 @@ static int handle_builtin(const char *tok, WordIR *w) {
                     p1->kind = IR_PUSH_A;
                     p1->u.a = (u32)p1->u.w;
                     return 1;
+                }
+            }
+            if (w->ir_len >= fold_fence + 1) {
+                IrOp sop = swapped_store_op(builtins[i].op);
+                if (sop != builtins[i].op) {
+                    IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
+                    if (p1->kind == IR_STACK_OP && p1->u.stk.op == OP_SWAP) {
+                        p1->kind = IR_ALU_OP;
+                        p1->u.op = sop;
+                        return 1;
+                    }
                 }
             }
             if (w->ir_len >= fold_fence + 2) {
@@ -1331,6 +1353,13 @@ static void emit_word(u8 fidx) {
                 be->push_f(ins->u.f);
                 break;
             case IR_PUSH_DATA:
+                if (i + 1 < w->ir_len &&
+                    ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
+                    be->data_mem &&
+                    be->data_mem(ir_buf[w->ir_start + i + 1].u.op, ins->u.offset)) {
+                    i++;
+                    break;
+                }
                 be->push_data(ins->u.offset);
                 break;
             case IR_PUSH_HEAP_START:

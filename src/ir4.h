@@ -117,6 +117,12 @@ typedef enum {
     OP_FFETCH,
     OP_FSTORE,
 
+    OP_SI8STORE,
+    OP_SI16STORE,
+    OP_SSTORE,
+    OP_SASTORE,
+    OP_SFSTORE,
+
     OP_SEXT,
     OP_W2A,
     OP_A2W,
@@ -169,6 +175,7 @@ typedef struct {
     int  (*add_imm)(i32 imm);
     int  (*cmp_imm)(IrOp op, i32 imm);
     int  (*mem_imm)(IrOp op, i32 off);
+    int  (*data_mem)(IrOp op, u16 data_offset);
 
     u16  (*emit_br_fwd)(BranchCond cond);
     void (*emit_br_back)(BranchCond cond, u16 target_addr);

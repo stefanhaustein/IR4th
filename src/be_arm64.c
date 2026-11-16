@@ -336,17 +336,23 @@ static void a64_int_cmp(IrOp op) {
 static int a64_mem_imm(IrOp op, i32 off) {
     u32 sz, unscaled_op, scaled_op;
     int is_store = 0;
+    int swapped = 0;
 
     switch (op) {
     case OP_U8FETCH:  sz = 1; unscaled_op = 0x38400000UL; scaled_op = 0x39400000UL; break;
     case OP_I8FETCH:  sz = 1; unscaled_op = 0x38800000UL; scaled_op = 0x39800000UL; break;
+    case OP_SI8STORE: swapped = 1; /* fall through */
     case OP_I8STORE:  sz = 1; unscaled_op = 0x38000001UL; scaled_op = 0x39000001UL; is_store = 1; break;
     case OP_U16FETCH: sz = 2; unscaled_op = 0x78400000UL; scaled_op = 0x79400000UL; break;
     case OP_I16FETCH: sz = 2; unscaled_op = 0x78800000UL; scaled_op = 0x79800000UL; break;
+    case OP_SI16STORE: swapped = 1; /* fall through */
     case OP_I16STORE: sz = 2; unscaled_op = 0x78000001UL; scaled_op = 0x79000001UL; is_store = 1; break;
     case OP_FETCH:
     case OP_AFETCH:
     case OP_FFETCH:   sz = 8; unscaled_op = 0xF8400000UL; scaled_op = 0xF9400000UL; break;
+    case OP_SSTORE:
+    case OP_SASTORE:
+    case OP_SFSTORE:  swapped = 1; /* fall through */
     case OP_STORE:
     case OP_ASTORE:
     case OP_FSTORE:   sz = 8; unscaled_op = 0xF8000001UL; scaled_op = 0xF9000001UL; is_store = 1; break;
@@ -354,13 +360,21 @@ static int a64_mem_imm(IrOp op, i32 off) {
     }
 
     if (off >= 0 && ((u32)off & (sz - 1)) == 0 && ((u32)off / sz) <= 4095) {
-        if (is_store) { pop_x0(); pop_x1(); } else { pop_x0(); }
+        if (is_store) {
+            if (swapped) { pop_x1(); pop_x0(); } else { pop_x0(); pop_x1(); }
+        } else {
+            pop_x0();
+        }
         emit32(scaled_op | (((u32)off / sz) << 10));
         if (!is_store) push_x0();
         return 1;
     }
     if (off >= -256 && off <= 255) {
-        if (is_store) { pop_x0(); pop_x1(); } else { pop_x0(); }
+        if (is_store) {
+            if (swapped) { pop_x1(); pop_x0(); } else { pop_x0(); pop_x1(); }
+        } else {
+            pop_x0();
+        }
         emit32(unscaled_op | (((u32)off & 0x1FFUL) << 12));
         if (!is_store) push_x0();
         return 1;
@@ -429,6 +443,11 @@ static void a64_op(IrOp op) {
     case OP_STORE:
     case OP_ASTORE:
     case OP_FSTORE:
+    case OP_SI8STORE:
+    case OP_SI16STORE:
+    case OP_SSTORE:
+    case OP_SASTORE:
+    case OP_SFSTORE:
         a64_mem_imm(op, 0);
         break;
     case OP_SEXT:
@@ -543,6 +562,7 @@ const Backend be_arm64 = {
     a64_add_imm,
     a64_cmp_imm,
     a64_mem_imm,
+    NULL,
     a64_emit_br_fwd,
     a64_emit_br_back,
     a64_patch_fwd,

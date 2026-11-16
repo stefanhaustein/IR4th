@@ -745,8 +745,92 @@ static void z80_int_cmp(IrOp op) {
     z80_push(Z80_PUSH_HL);
 }
 
+static int z80_data_mem(IrOp op, u16 data_offset) {
+    switch (op) {
+    case OP_U8FETCH:
+        emit8(0x3A); cb_add_data_reloc(cb_pc(), data_offset); emit16(0x0000); /* LD A, (nn) */
+        emit8(0x6F); /* LD L, A */
+        emit8_8(Z80_LD_H_N, 0x00);
+        z80_push(Z80_PUSH_HL);
+        return 1;
+    case OP_I8FETCH:
+        emit8(0x3A); cb_add_data_reloc(cb_pc(), data_offset); emit16(0x0000); /* LD A, (nn) */
+        emit8(0x6F); /* LD L, A */
+        emit8(Z80_RLA);
+        emit8(Z80_SBC_A_A);
+        emit8(Z80_LD_H_A);
+        z80_push(Z80_PUSH_HL);
+        return 1;
+    case OP_FETCH:
+    case OP_AFETCH:
+    case OP_I16FETCH:
+    case OP_U16FETCH:
+        emit8(0x2A); cb_add_data_reloc(cb_pc(), data_offset); emit16(0x0000); /* LD HL, (nn) */
+        z80_push(Z80_PUSH_HL);
+        return 1;
+    case OP_I8STORE:
+        z80_pop(Z80_POP_HL);
+        emit8(Z80_LD_A_L);
+        emit8(0x32); cb_add_data_reloc(cb_pc(), data_offset); emit16(0x0000); /* LD (nn), A */
+        return 1;
+    case OP_STORE:
+    case OP_ASTORE:
+    case OP_I16STORE:
+        z80_pop(Z80_POP_HL);
+        emit8(0x22); cb_add_data_reloc(cb_pc(), data_offset); emit16(0x0000); /* LD (nn), HL */
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static int z80_mem_imm(IrOp op, i32 off) {
-    if (op < OP_I8FETCH || op > OP_FSTORE) return 0;
+    int swapped = (op >= OP_SI8STORE && op <= OP_SFSTORE);
+    if ((op < OP_I8FETCH || op > OP_FSTORE) && !swapped) return 0;
+
+    if (swapped) {
+        if (op == OP_SFSTORE) {
+            z80_pop(Z80_POP_DE);
+            emit8(Z80_POP_BC);
+            emit8(Z80_EXX);
+            emit8(Z80_POP_DE);
+            emit8(Z80_EXX);
+            emit8(Z80_POP_HL);
+        } else {
+            z80_pop(Z80_POP_DE); /* val */
+            emit8(Z80_POP_HL);   /* addr */
+        }
+        if (off >= 1 && off <= 3) {
+            i32 k;
+            for (k = 0; k < off; k++) emit8(Z80_INC_HL);
+        } else if (off != 0) {
+            if (op == OP_SFSTORE) {
+                emit8(Z80_PUSH_BC);
+                emit8_16(0x01, (u16)(off & 0xFFFF)); /* LD BC, nn */
+                emit8(0x09); /* ADD HL, BC */
+                emit8(Z80_POP_BC);
+            } else {
+                emit8_16(0x01, (u16)(off & 0xFFFF)); /* LD BC, nn */
+                emit8(0x09); /* ADD HL, BC */
+            }
+        }
+        if (op == OP_SI8STORE) {
+            emit8(Z80_LD_MHL_E);
+        } else if (op == OP_SFSTORE) {
+            emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+            emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
+            emit8(0x71); emit8(Z80_INC_HL); /* LD (HL), C */
+            emit8(0x70); emit8(Z80_INC_HL); /* LD (HL), B */
+            emit8(Z80_EXX); emit8(Z80_PUSH_DE); emit8(Z80_EXX); emit8(Z80_POP_DE);
+            emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+            emit8(Z80_LD_MHL_D);
+        } else {
+            emit8(Z80_LD_MHL_E);
+            emit8(Z80_INC_HL);
+            emit8(Z80_LD_MHL_D);
+        }
+        return 1;
+    }
 
     z80_pop(Z80_POP_HL);
     if (off >= 1 && off <= 3) {
@@ -890,6 +974,11 @@ static void z80_op(IrOp op) {
     case OP_I16STORE:
     case OP_FFETCH:
     case OP_FSTORE:
+    case OP_SI8STORE:
+    case OP_SI16STORE:
+    case OP_SSTORE:
+    case OP_SASTORE:
+    case OP_SFSTORE:
         z80_mem_imm(op, 0);
         break;
     case OP_SEXT:
@@ -989,6 +1078,7 @@ const Backend be_z80 = {
     z80_add_imm,
     NULL,
     z80_mem_imm,
+    z80_data_mem,
     z80_emit_br_fwd,
     z80_emit_br_back,
     z80_patch_fwd,

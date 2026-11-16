@@ -73,4 +73,25 @@ fn main ( | p :a x :i -> :i )
 
   // Stack-allocated :bytes local (recursive)
   5 sum_local_buf 15 14 assert_eq
+  dup 0 != if return then drop
+
+  // Fused swap + store (swap !i8, swap !i16, swap !i, swap !a, swap !f)
+  buf_a 3 + 0x7B swap !i8
+  buf_a 3 + @u8 0x7B 15 assert_eq
+  dup 0 != if return then drop
+
+  buf_b 28 + -4321 swap !i16
+  buf_b 28 + @i16 -4321 16 assert_eq
+  dup 0 != if return then drop
+
+  & x 99 swap !i
+  x 99 17 assert_eq
+  dup 0 != if return then drop
+
+  buf_b 16 + buf_a 3 + swap !a
+  buf_b 16 + @a buf_a 3 + == -1 18 assert_eq
+  dup 0 != if return then drop
+
+  buf_b 24 + 2.5 swap !f
+  buf_b 24 + @f 2.5 == -1 19 assert_eq
 end
