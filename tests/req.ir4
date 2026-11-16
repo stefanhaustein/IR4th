@@ -2,6 +2,6 @@ require req_base.ir4
 require req_mid.ir4
 require req_base.ir4
 
-fn main { -- i: }
+fn main { -- :i }
   40 inc2 42 -
 end

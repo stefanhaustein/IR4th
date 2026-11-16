@@ -1,4 +1,4 @@
 \ Error test: mixing i: and f: in '+'
-fn main { -- i: }
-  1 f: 2.0 + f>w
+fn main { -- :i }
+  1 2.0 + :i
 end

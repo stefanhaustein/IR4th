@@ -118,16 +118,16 @@ void ir4_die(const char *msg) {
 }
 
 static const char *type_name(u8 t) {
-    if (t == TY_W) return "i:";
-    if (t == TY_A) return "a:";
-    if (t == TY_F) return "f:";
+    if (t == TY_W) return ":i";
+    if (t == TY_A) return ":a";
+    if (t == TY_F) return ":f";
     return "?";
 }
 
 static u8 parse_type_tok(const char *tok) {
-    if (strcmp(tok, "i:") == 0) return TY_W;
-    if (strcmp(tok, "a:") == 0) return TY_A;
-    if (strcmp(tok, "f:") == 0) return TY_F;
+    if (strcmp(tok, ":i") == 0) return TY_W;
+    if (strcmp(tok, ":a") == 0) return TY_A;
+    if (strcmp(tok, ":f") == 0) return TY_F;
     return TY_NONE;
 }
 
@@ -270,6 +270,22 @@ static int parse_int(const char *s, i32 *val) {
     }
 
     *val = (i32)strtol(p, &endp, base);
+    return (*endp == '\0');
+}
+
+static int parse_float(const char *s, double *val) {
+    char *endp;
+    const char *p = s;
+
+    if (*p == '-' || *p == '+') p++;
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) return 0;
+    if (!isdigit((unsigned char)*p) && *p != '.') return 0;
+    if (*p == '.' && !isdigit((unsigned char)p[1])) return 0;
+    if (strchr(p, '.') == NULL && strchr(p, 'e') == NULL && strchr(p, 'E') == NULL) {
+        return 0;
+    }
+
+    *val = strtod(s, &endp);
     return (*endp == '\0');
 }
 
@@ -417,10 +433,10 @@ static const BuiltinDef builtins[] = {
 
     /* Type conversions */
     { "sext",    OP_SEXT,     TY_W, TY_NONE, TY_W },
-    { "w>a",     OP_W2A,      TY_W, TY_NONE, TY_A },
-    { "a>w",     OP_A2W,      TY_A, TY_NONE, TY_W },
-    { "w>f",     OP_W2F,      TY_W, TY_NONE, TY_F },
-    { "f>w",     OP_F2W,      TY_F, TY_NONE, TY_W }
+    { ":a",      OP_W2A,      TY_W, TY_NONE, TY_A },
+    { ":i",      OP_A2W,      TY_A, TY_NONE, TY_W },
+    { ":f",      OP_W2F,      TY_W, TY_NONE, TY_F },
+    { ":i",      OP_F2W,      TY_F, TY_NONE, TY_W }
 };
 
 static IrInstr *emit_ir(IrKind kind, WordIR *w) {
@@ -528,6 +544,14 @@ static int handle_builtin(const char *tok, WordIR *w) {
 
             tsp -= need;
             if (builtins[i].out != TY_NONE) tpush(builtins[i].out);
+            if (builtins[i].op == OP_W2A && w->ir_len >= fold_fence + 1) {
+                IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
+                if (p1->kind == IR_PUSH_W) {
+                    p1->kind = IR_PUSH_A;
+                    p1->u.a = (u32)p1->u.w;
+                    return 1;
+                }
+            }
             if (w->ir_len >= fold_fence + 2) {
                 IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 2];
                 IrInstr *p2 = &ir_buf[w->ir_start + w->ir_len - 1];
@@ -577,29 +601,30 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
         }
         if (strcmp(tok, "--") == 0) { in_outs = 1; continue; }
 
-        ty = parse_type_tok(tok);
-        if (ty == TY_NONE) {
-            if (!allow_locals && in_outs && cur_out_count == 1 && sig->out_reg[0] == '\0') {
-                size_t len = strlen(tok);
-                memcpy(sig->out_reg, tok, len + 1);
-                continue;
-            }
-            ir4_die("expected type token (i:, a:, f:) in signature");
-        }
-
         if (in_outs) {
+            ty = parse_type_tok(tok);
+            if (ty == TY_NONE) {
+                if (!allow_locals && cur_out_count == 0 && sig->out_reg[0] == '\0') {
+                    size_t len = strlen(tok);
+                    memcpy(sig->out_reg, tok, len + 1);
+                    if (!next_tok(tok)) ir4_die("expected type token (:i, :a, :f) after extern register");
+                    ty = parse_type_tok(tok);
+                }
+                if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
+            }
             if (cur_out_count >= 4) ir4_die("too many return types");
             sig->out_types[sig->out_count++] = ty;
             cur_outs[cur_out_count++] = ty;
         } else {
+            char ty_tok[MAX_TOK];
             if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
-            if (!next_tok(locals[local_count].name) ||
-                strcmp(locals[local_count].name, "|") == 0 ||
-                strcmp(locals[local_count].name, "--") == 0 ||
-                strcmp(locals[local_count].name, "}") == 0 ||
-                parse_type_tok(locals[local_count].name) != TY_NONE) {
-                ir4_die("expected identifier after type in signature");
+            if (parse_type_tok(tok) != TY_NONE) {
+                ir4_die("expected identifier before type in signature");
             }
+            memcpy(locals[local_count].name, tok, strlen(tok) + 1);
+            if (!next_tok(ty_tok)) ir4_die("expected type token (:i, :a, :f) after identifier in signature");
+            ty = parse_type_tok(ty_tok);
+            if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
             locals[local_count].type = ty;
             locals[local_count].slot = local_count;
             if (!in_locals) {
@@ -651,7 +676,6 @@ static void compile_word(void) {
 
     /* Parse, type-check, and record IR for word body (Pass 1) */
     while (next_tok(tok)) {
-        u8 ty;
         int idx;
 
         if (strcmp(tok, "end") == 0) {
@@ -672,39 +696,21 @@ static void compile_word(void) {
             continue;
         }
 
-        /* Prefixed typed literal: A: 0x0400, F: 3.14 */
-        ty = parse_type_tok(tok);
-        if (ty != TY_NONE) {
-            if (!next_tok(tok)) ir4_die("expected literal after type prefix");
-            if (ty == TY_A) {
-                if (!parse_int(tok, &num_val)) ir4_die("expected integer address after A:");
-                tpush(TY_A);
-                ins = emit_ir(IR_PUSH_A, w);
-                ins->u.a = (u32)num_val;
-            } else if (ty == TY_W) {
-                if (!parse_int(tok, &num_val)) ir4_die("expected integer after W:");
-                tpush(TY_W);
-                ins = emit_ir(IR_PUSH_W, w);
-                ins->u.w = num_val;
-            } else {
-                char *endp;
-                double fval;
-                if (tok[0] == '\0') ir4_die("expected float literal after F:");
-                fval = strtod(tok, &endp);
-                if (*endp != '\0') ir4_die("expected float literal after F:");
-                tpush(TY_F);
-                ins = emit_ir(IR_PUSH_F, w);
-                ins->u.f = fval;
-            }
-            continue;
-        }
-
-        /* Bare integer literal defaults to W: */
+        /* Bare integer literal defaults to :i, bare float literal defaults to :f */
         if (parse_int(tok, &num_val)) {
             tpush(TY_W);
             ins = emit_ir(IR_PUSH_W, w);
             ins->u.w = num_val;
             continue;
+        }
+        {
+            double fval;
+            if (parse_float(tok, &fval)) {
+                tpush(TY_F);
+                ins = emit_ir(IR_PUSH_F, w);
+                ins->u.f = fval;
+                continue;
+            }
         }
 
         /* Address of local: & <ident> */

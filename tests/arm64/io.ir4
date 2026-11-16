@@ -1,1 +1,1 @@
-extern putchar { i: c -- i: }
+extern putchar { c :i -- :i }

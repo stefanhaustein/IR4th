@@ -4,18 +4,18 @@
 16 buffer: buf_a
 32 buffer: buf_b
 
-fn assert_eq { i: got i: expected i: code -- i: }
+fn assert_eq { got :i expected :i code :i -- :i }
   got expected = if
     0 exit
   then
   code
 end
 
-fn add_to_var { a: vp i: delta -- }
+fn add_to_var { vp :a delta :i -- }
   vp @ delta + vp !
 end
 
-fn main { | a: p i: x -- i: }
+fn main { | p :a x :i -- :i }
   \ Byte store / fetch / sext
   0x41 buf_a i8!
   0xFF buf_a 1 + i8!
