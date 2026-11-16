@@ -1,6 +1,6 @@
 require stdio.ir4
 
-vals msg
+data msg
   "Hello, world!\n" 0 :i8
 end
 

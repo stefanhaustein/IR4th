@@ -1,36 +1,42 @@
-// Test vals, :i8, :i16, :i, align, and var :bytes
+// Test data, :i8, :i16, :i, align, var :bytes, and typed global vars
 
 var scratch :bytes 8
 
-vals bytes_tbl
+data bytes_tbl
   10 :i8 255 :i8 -5 :i8
 end
 
-vals words16_tbl
+data words16_tbl
   1000 :i16 -1234 :i16
 end
 
-vals w_pos
+data w_pos
   42
 end
 
-vals w_neg
+data w_neg
   -7 :i
 end
 
-vals mixed_tbl
+data mixed_tbl
   7 :i8 align 99
 end
 
-vals str_tbl
+data str_tbl
   "hi\n" 0 :i8
 end
 
 var tail_buf :bytes 16
 var g_init :bytes 4
+var g_word :i
+var g_ptr :a
+var g_flt :f
 
 init
   10 g_init !i
+  123 -> g_word
+  scratch -> g_ptr
+  1.5 -> g_flt
 end
 
 init
@@ -75,10 +81,19 @@ fn main ( -> :i )
   // Verify __heap_start is after the last static buffer
   __heap_start tail_buf 16 + u< if 14 return then
 
-  // Check string literal in vals
+  // Check string literal in data
   str_tbl @u8 104 != if 15 return then
   str_tbl 1 + @u8 105 != if 16 return then
   str_tbl 2 + @u8 10 != if 17 return then
   str_tbl 3 + @u8 0 != if 18 return then
+
+  // Check typed global vars (:i, :a, :f), ->, and &
+  g_word 123 != if 19 return then
+  456 -> g_word
+  g_word 456 != if 20 return then
+  789 & g_word !i
+  g_word 789 != if 21 return then
+  g_ptr scratch != if 22 return then
+  g_flt 1.5 != if 23 return then
   0
 end

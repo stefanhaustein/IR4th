@@ -95,6 +95,7 @@ static u8        func_count = 0;
 typedef struct {
     char name[MAX_TOK];
     u16  offset;
+    u8   type; /* TY_NONE for :bytes / data buffers; TY_W/TY_A/TY_F for typed globals */
 } BufferSym;
 
 static BufferSym buffers[MAX_SYMS];
@@ -860,6 +861,24 @@ typedef struct {
     u16 label_idx;
 } LabelRef;
 
+static IrOp global_fetch_op(u8 ty) {
+    if (ty == TY_A) return OP_AFETCH;
+    if (ty == TY_F) return OP_FFETCH;
+    return OP_FETCH;
+}
+
+static IrOp global_store_op(u8 ty) {
+    if (ty == TY_A) return OP_ASTORE;
+    if (ty == TY_F) return OP_FSTORE;
+    return OP_STORE;
+}
+
+static u16 global_type_bytes(u8 ty) {
+    if (ty == TY_A) return be->addr_bytes;
+    if (ty == TY_F) return be->float_bytes;
+    return be->word_bytes;
+}
+
 static int find_or_add_label(LabelInfo *labels, u16 *label_count, const char *name) {
     u16 i;
     for (i = 0; i < *label_count; i++) {
@@ -949,33 +968,51 @@ static void compile_body(WordIR *w) {
             }
         }
 
-        /* Address of local: & <ident> */
+        /* Address of local or typed global: & <ident> */
         if (strcmp(tok, "&") == 0) {
             if (!next_tok(tok)) ir4_die("expected identifier after '&'");
             idx = find_local(tok);
-            if (idx < 0) ir4_die("unknown local in '&'");
-            if (locals[idx].size > 0) ir4_die("':bytes' local is already an address");
-            ins = emit_ir(IR_LOCAL_OP, w);
-            ins->u.loc.op = LOCAL_ADDR;
-            ins->u.loc.slot = locals[idx].slot;
-            ins->u.loc.type = (StackType)locals[idx].type;
-            ins->u.loc.stack_bytes = tstack_bytes();
+            if (idx >= 0) {
+                if (locals[idx].size > 0) ir4_die("':bytes' local is already an address");
+                ins = emit_ir(IR_LOCAL_OP, w);
+                ins->u.loc.op = LOCAL_ADDR;
+                ins->u.loc.slot = locals[idx].slot;
+                ins->u.loc.type = (StackType)locals[idx].type;
+                ins->u.loc.stack_bytes = tstack_bytes();
+                tpush(TY_A);
+                continue;
+            }
+            idx = find_buffer(tok);
+            if (idx < 0) ir4_die("unknown variable in '&'");
+            if (buffers[idx].type == TY_NONE) ir4_die("':bytes' or 'data' symbol is already an address");
+            ins = emit_ir(IR_PUSH_DATA, w);
+            ins->u.offset = buffers[idx].offset;
             tpush(TY_A);
             continue;
         }
 
-        /* Local assignment: -> <ident> */
+        /* Local or typed global assignment: -> <ident> */
         if (strcmp(tok, "->") == 0) {
             if (!next_tok(tok)) ir4_die("expected identifier after '->'");
             idx = find_local(tok);
-            if (idx < 0) ir4_die("unknown local in '->'");
-            if (locals[idx].size > 0) ir4_die("cannot assign to ':bytes' local");
-            tpop_expect(locals[idx].type);
-            ins = emit_ir(IR_LOCAL_OP, w);
-            ins->u.loc.op = LOCAL_SET;
-            ins->u.loc.slot = locals[idx].slot;
-            ins->u.loc.type = (StackType)locals[idx].type;
-            ins->u.loc.stack_bytes = tstack_bytes();
+            if (idx >= 0) {
+                if (locals[idx].size > 0) ir4_die("cannot assign to ':bytes' local");
+                tpop_expect(locals[idx].type);
+                ins = emit_ir(IR_LOCAL_OP, w);
+                ins->u.loc.op = LOCAL_SET;
+                ins->u.loc.slot = locals[idx].slot;
+                ins->u.loc.type = (StackType)locals[idx].type;
+                ins->u.loc.stack_bytes = tstack_bytes();
+                continue;
+            }
+            idx = find_buffer(tok);
+            if (idx < 0) ir4_die("unknown variable in '->'");
+            if (buffers[idx].type == TY_NONE) ir4_die("cannot assign to ':bytes' or 'data' symbol");
+            tpop_expect(buffers[idx].type);
+            ins = emit_ir(IR_PUSH_DATA, w);
+            ins->u.offset = buffers[idx].offset;
+            ins = emit_ir(IR_ALU_OP, w);
+            ins->u.op = global_store_op(buffers[idx].type);
             continue;
         }
 
@@ -1136,12 +1173,20 @@ static void compile_body(WordIR *w) {
             continue;
         }
 
-        /* Buffer address */
+        /* Buffer address or typed global read */
         idx = find_buffer(tok);
         if (idx >= 0) {
-            tpush(TY_A);
-            ins = emit_ir(IR_PUSH_DATA, w);
-            ins->u.offset = buffers[idx].offset;
+            if (buffers[idx].type == TY_NONE) {
+                tpush(TY_A);
+                ins = emit_ir(IR_PUSH_DATA, w);
+                ins->u.offset = buffers[idx].offset;
+            } else {
+                tpush(buffers[idx].type);
+                ins = emit_ir(IR_PUSH_DATA, w);
+                ins->u.offset = buffers[idx].offset;
+                ins = emit_ir(IR_ALU_OP, w);
+                ins->u.op = global_fetch_op(buffers[idx].type);
+            }
             continue;
         }
 
@@ -1343,7 +1388,7 @@ static void emit_vals_string(void) {
     SrcFile *cur = &src_stack[src_depth - 1];
     for (;;) {
         int c = fgetc(cur->fp);
-        if (c == EOF || c == '\n') ir4_die("unterminated string literal in 'vals'");
+        if (c == EOF || c == '\n') ir4_die("unterminated string literal in 'data'");
         if (c == '"') return;
         if (c == '\\') {
             c = fgetc(cur->fp);
@@ -1362,7 +1407,7 @@ static void emit_vals_string(void) {
     }
 }
 
-static void compile_vals(void) {
+static void compile_data(void) {
     char tok[MAX_TOK];
     i32 num_val;
     i32 pending = 0;
@@ -1371,9 +1416,13 @@ static void compile_vals(void) {
 
     if (buffer_count >= MAX_SYMS) ir4_die("too many buffers");
     if (!next_tok(buffers[buffer_count].name)) {
-        ir4_die("expected name after 'vals'");
+        ir4_die("expected name after 'data'");
+    }
+    if (find_buffer(buffers[buffer_count].name) >= 0) {
+        ir4_die("duplicate global/data name");
     }
     buffers[buffer_count].offset = cb_alloc_data(0, be->word_bytes);
+    buffers[buffer_count].type = TY_NONE;
     buffer_count++;
 
     while ((ch = skip_ws_and_comments()) != EOF) {
@@ -1415,10 +1464,10 @@ static void compile_vals(void) {
             pending = num_val;
             has_pending = 1;
         } else {
-            ir4_die("unexpected token in 'vals'");
+            ir4_die("unexpected token in 'data'");
         }
     }
-    ir4_die("unexpected EOF in 'vals' (missing 'end')");
+    ir4_die("unexpected EOF in 'data' (missing 'end')");
 }
 
 void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
@@ -1490,23 +1539,39 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
         } else if (strcmp(tok, "require") == 0) {
             if (!next_tok(tok)) ir4_die("expected filename after 'require'");
             push_require(tok);
-        } else if (strcmp(tok, "vals") == 0) {
-            compile_vals();
+        } else if (strcmp(tok, "data") == 0) {
+            compile_data();
         } else if (strcmp(tok, "var") == 0) {
+            u8 ty;
             if (buffer_count >= MAX_SYMS) ir4_die("too many buffers");
             if (!next_tok(buffers[buffer_count].name)) {
-                ir4_die("expected buffer name after 'var'");
+                ir4_die("expected var name after 'var'");
             }
-            if (!next_tok(tok) || strcmp(tok, ":bytes") != 0) {
-                ir4_die("expected ':bytes' after var name");
+            if (find_buffer(buffers[buffer_count].name) >= 0) {
+                ir4_die("duplicate global/data name");
             }
-            if (!next_tok(tok) || !parse_int(tok, &num_val) || num_val <= 0 || num_val > MAX_DATA) {
-                ir4_die("invalid byte count after ':bytes'");
+            if (!next_tok(tok)) {
+                ir4_die("expected type (:i, :a, :f) or ':bytes' after var name");
             }
-            buffers[buffer_count].offset = cb_alloc_data((u16)num_val, be->word_bytes);
+            if (strcmp(tok, ":bytes") == 0) {
+                if (!next_tok(tok) || !parse_int(tok, &num_val) || num_val <= 0 || num_val > MAX_DATA) {
+                    ir4_die("invalid byte count after ':bytes'");
+                }
+                buffers[buffer_count].offset = cb_alloc_data((u16)num_val, be->word_bytes);
+                buffers[buffer_count].type = TY_NONE;
+            } else {
+                u16 sz;
+                ty = parse_type_tok(tok);
+                if (ty == TY_NONE) {
+                    ir4_die("expected ':i', ':a', ':f', or ':bytes' after var name");
+                }
+                sz = global_type_bytes(ty);
+                buffers[buffer_count].offset = cb_alloc_data(sz, sz);
+                buffers[buffer_count].type = ty;
+            }
             buffer_count++;
         } else {
-            ir4_die("expected top-level 'fn', 'var', 'vals', 'extern', or 'require'");
+            ir4_die("expected top-level 'fn', 'var', 'data', 'extern', or 'require'");
         }
     }
 

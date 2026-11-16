@@ -12,7 +12,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:a`, `:f`).
-* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `vals`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`, `|`).
+* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `data`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`, `|`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a leading colon that is not a keyword.
 
@@ -64,33 +64,35 @@ end
 * **Write (`-> <ident>`):** Pops the top value from the stack (verifying its type matches `<ident>`'s declared type `T`) and stores it into `<ident>`.
 * **Address (`& <ident>`):** Pushes the memory address of parameter or local `<ident>` onto the stack with type `:a`.
 
-### 3.2 Named Data Buffers (`var ... :bytes`)
-Top-level fixed-size writable buffers can be declared outside word definitions:
+### 3.2 Global Variables & Named Data Buffers (`var`)
+Top-level writable globals and fixed-size buffers can be declared outside word definitions:
 
 ```forth
-var <name> :bytes <size>
+var <name> :i            // Typed scalar global (:i, :a, or :f)
+var <name> :bytes <size> // Raw byte buffer
 ```
 
-* `<size>` is a positive byte count. Each buffer is allocated in the target's writable data segment, aligned to the target's native word size.
-* Referencing `<name>` inside a word pushes its base address onto the stack with type **`:a`** (`( -> :a )`).
-* **`__heap_start`:** Built-in constant pushing the `:a` address immediately following all static code, `vals`, `var`, and target runtime data.
+* Typed globals (`:i`, `:a`, `:f`) behave like locals: `<name>` reads the value, `-> <name>` assigns to it, and `& <name>` pushes its `:a` address.
+* `var <name> :bytes <size>` allocates `<size>` bytes aligned to `word_bytes`; referencing `<name>` pushes its `:a` base address (`( -> :a )`).
+* **`__heap_start`:** Built-in constant pushing the `:a` address immediately following all static code, `data`, `var`, and target runtime data.
 
-### 3.2b Pre-Initialized Data (`vals ... end`)
+### 3.2b Pre-Initialized Data (`data ... end`)
 Top-level read-only tables and constants can be defined outside word definitions:
 
 ```forth
-vals <name>
+data <name>
   10 :i8 -5 :i8 1000 :i16
+  "hi\n" 0 :i8
   align
   100 -200
 end
 ```
 
-* `vals <name> ... end` aligns the data pointer to the target's native word size and binds `<name>` (`( -- :a )`).
+* `data <name> ... end` aligns the data pointer to the target's native word size and binds `<name>` (`( -- :a )`).
 * `:i8` emits 1 byte (`-128..255`). `:i16` emits 2 little-endian bytes (`-32768..65535`). `:i` (or a bare integer without a width specifier) emits 1 native word (`word_bytes`).
 * `"..."` emits raw string bytes (supporting `\n`, `\r`, `\t`, `\0`, `\\`, `\"` escapes) without an implicit NUL terminator.
 * `align` advances the data pointer to the next multiple of `word_bytes`.
-* `vals` data is semantically read-only.
+* `data` blocks are semantically read-only.
 
 ### 3.3 Including Files (`require`)
 Top-level `require` loads another `.ir4` source file at most once (include-once semantics):
