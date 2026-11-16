@@ -1052,11 +1052,11 @@ static void compile_body(WordIR *w) {
             fold_fence = w->ir_len;
             continue;
         }
-        if (strcmp(tok, "label") == 0) {
+        if (strcmp(tok, "::") == 0) {
             int lidx;
-            if (bsp != 0) ir4_die("'label' inside control block");
-            if (!next_tok(tok)) ir4_die("expected label name after 'label'");
-            if (!unreachable && tsp != 0) ir4_die("stack must be empty at 'label'");
+            if (bsp != 0) ir4_die("'::' inside control block");
+            if (!next_tok(tok)) ir4_die("expected label name after '::'");
+            if (!unreachable && tsp != 0) ir4_die("stack must be empty at '::'");
             tsp = 0;
             unreachable = 0;
             lidx = find_or_add_label(labels, &label_count, tok);

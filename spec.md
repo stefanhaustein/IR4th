@@ -12,7 +12,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:a`, `:f`).
-* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `vals`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `label`, `jmp`, `jz`, `(`, `)`, `|`).
+* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `vals`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`, `|`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a leading colon that is not a keyword.
 
@@ -213,7 +213,7 @@ Fixed-width memory operations (`@u8`, `@i8`, `!i8`, `@u16`, `@i16`, `!i16`) wide
 
 * **Conditional Branches (`<cond :i> if ... else ... then`):** Pops a `:i` flag. Both branches must leave the type stack with identical depth and types. If `else` is omitted, the true branch must leave the stack completely even (unchanged).
 * **Pre-Tested Loops (`begin <cond :i> while ... repeat`):** `while` pops a `:i` flag. The combined condition and loop body must leave the type stack completely even at `repeat`.
-* **Labels & Branches (`label <name>`, `jmp <name>`, `<cond :i> jz <name>`):** Function-local labels and forward/backward branches. The type stack must be empty at `label`, at `jmp`, and after popping `:i` at `jz`; `label` cannot appear inside an open `if` or `begin` block.
+* **Labels & Branches (`:: <name>`, `jmp <name>`, `<cond :i> jz <name>`):** Function-local labels and forward/backward branches. The type stack must be empty at `::`, at `jmp`, and after popping `:i` at `jz`; `::` cannot appear inside an open `if` or `begin` block.
 * **Calls & Early Return (`<word_name>`, `return`):** Validates caller stack against callee inputs and pushes outputs. `return` verifies the stack matches the word's declared output types after `--`.
 
 ## 6. Complete Example Program
