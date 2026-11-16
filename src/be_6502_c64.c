@@ -1,6 +1,7 @@
 /* be_6502_c64.c - Commodore 64 (.prg) BASIC SYS stub & KERNAL CHROUT epilogue (Strict C89) */
 #include "codebuf.h"
 #include "frontend.h"
+#include "be_6502.h"
 
 #define C64_CHROUT 0xFFD2
 #define C64_TMP_LO 0xFB
@@ -36,7 +37,7 @@ static void c64_begin(u16 base) {
     (void)stub_end;
 
     /* JMP entry_addr (patched by c64_end) */
-    emit8(0x4C);
+    emit8(M6502_JMP);
     c64_jmp_pc = cb_pc();
     emit16(0x0000);
 }
@@ -67,76 +68,76 @@ static void c64_end(int main_idx) {
     patch16(c64_jmp_pc, entry_addr);
 
     /* CLD; LDX #$00 (initialize IR4th data stack without clobbering hardware SP) */
-    emit8(0xD8);
-    emit8(0xA2); emit8(0x00);
+    emit8(M6502_CLD);
+    emit8_8(M6502_LDX_IMM, 0x00);
 
     /* JSR main */
-    emit8(0x20); emit16(sig->addr);
+    emit8_16(M6502_JSR, sig->addr);
 
     if (sig->out_count == 1) {
         u16 stk_off = be_6502_stack_data_off();
         /* Pop 16-bit signed value from (stack_base,X) into $FB/$FC */
-        emit8(0xBD); cb_add_data_reloc(cb_pc(), stk_off); emit16(0x0000);
-        emit8(0x85); emit8(C64_TMP_LO);
-        emit8(0xBD); cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1)); emit16(0x0000);
-        emit8(0x85); emit8(C64_TMP_HI);
-        emit8(0xE8); emit8(0xE8); /* INX; INX */
+        emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), stk_off); emit16(0x0000);
+        emit8_8(M6502_STA_ZP, C64_TMP_LO);
+        emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1)); emit16(0x0000);
+        emit8_8(M6502_STA_ZP, C64_TMP_HI);
+        emit8(M6502_INX); emit8(M6502_INX);
 
         /* If $FC < 0, print '-' and negate $FB/$FC */
-        emit8(0xA5); emit8(C64_TMP_HI);
-        emit8(0x10); emit8(18);   /* BPL +18 */
+        emit8_8(M6502_LDA_ZP, C64_TMP_HI);
+        emit8_8(M6502_BPL, 18);
 
-        emit8(0xA9); emit8('-');
-        emit8(0x20); putchar_call1 = cb_pc(); emit16(0x0000);
-        emit8(0x38);              /* SEC */
-        emit8(0xA9); emit8(0x00);
-        emit8(0xE5); emit8(C64_TMP_LO);
-        emit8(0x85); emit8(C64_TMP_LO);
-        emit8(0xA9); emit8(0x00);
-        emit8(0xE5); emit8(C64_TMP_HI);
-        emit8(0x85); emit8(C64_TMP_HI);
+        emit8_8(M6502_LDA_IMM, '-');
+        emit8(M6502_JSR); putchar_call1 = cb_pc(); emit16(0x0000);
+        emit8(M6502_SEC);
+        emit8_8(M6502_LDA_IMM, 0x00);
+        emit8_8(M6502_SBC_ZP, C64_TMP_LO);
+        emit8_8(M6502_STA_ZP, C64_TMP_LO);
+        emit8_8(M6502_LDA_IMM, 0x00);
+        emit8_8(M6502_SBC_ZP, C64_TMP_HI);
+        emit8_8(M6502_STA_ZP, C64_TMP_HI);
 
         /* JSR print_u16 */
-        emit8(0x20); print_call1 = cb_pc(); emit16(0x0000);
+        emit8(M6502_JSR); print_call1 = cb_pc(); emit16(0x0000);
 
         /* Print PETSCII CR (13) */
-        emit8(0xA9); emit8(13);
-        emit8(0x20); putchar_call2 = cb_pc(); emit16(0x0000);
+        emit8_8(M6502_LDA_IMM, 13);
+        emit8(M6502_JSR); putchar_call2 = cb_pc(); emit16(0x0000);
     }
 
     /* Return to BASIC */
-    emit8(0x60); /* RTS */
+    emit8(M6502_RTS);
 
     if (sig->out_count == 1) {
         print_u16_addr = cb_cur_addr();
         patch16(print_call1, print_u16_addr);
 
         /* div10: $FB/$FC /= 10, A = remainder */
-        emit8(0xA9); emit8(0x00);
-        emit8(0xA0); emit8(16);
+        emit8_8(M6502_LDA_IMM, 0x00);
+        emit8_8(M6502_LDY_IMM, 16);
         div_loop_pc = cb_pc();
-        emit8(0x06); emit8(C64_TMP_LO);
-        emit8(0x26); emit8(C64_TMP_HI);
-        emit8(0x2A);
-        emit8(0xC9); emit8(10);
-        emit8(0x90); emit8(4);
-        emit8(0xE9); emit8(10);
-        emit8(0xE6); emit8(C64_TMP_LO);
-        emit8(0x88);
-        emit8(0xD0); emit8((u8)(div_loop_pc - (cb_pc() + 1)));
+        emit8_8(M6502_ASL_ZP, C64_TMP_LO);
+        emit8_8(M6502_ROL_ZP, C64_TMP_HI);
+        emit8(M6502_ROL_A);
+        emit8_8(M6502_CMP_IMM, 10);
+        emit8_8(M6502_BCC, 4);
+        emit8_8(M6502_SBC_IMM, 10);
+        emit8_8(M6502_INC_ZP, C64_TMP_LO);
+        emit8(M6502_DEY);
+        emit8_8(M6502_BNE, (u8)(div_loop_pc - (cb_pc() + 2)));
 
-        emit8(0x48); /* PHA */
-        emit8(0xA5); emit8(C64_TMP_LO);
-        emit8(0x05); emit8(C64_TMP_HI);
-        emit8(0xF0); emit8(3);
-        emit8(0x20); print_call2 = cb_pc(); emit16(0x0000);
+        emit8(M6502_PHA);
+        emit8_8(M6502_LDA_ZP, C64_TMP_LO);
+        emit8_8(M6502_ORA_ZP, C64_TMP_HI);
+        emit8_8(M6502_BEQ, 3);
+        emit8(M6502_JSR); print_call2 = cb_pc(); emit16(0x0000);
         patch16(print_call2, print_u16_addr);
 
-        emit8(0x68); /* PLA */
-        emit8(0x18); /* CLC */
-        emit8(0x69); emit8('0');
-        emit8(0x20); putchar_call3 = cb_pc(); emit16(0x0000);
-        emit8(0x60); /* RTS */
+        emit8(M6502_PLA);
+        emit8(M6502_CLC);
+        emit8_8(M6502_ADC_IMM, '0');
+        emit8(M6502_JSR); putchar_call3 = cb_pc(); emit16(0x0000);
+        emit8(M6502_RTS);
 
         patch16(putchar_call1, C64_CHROUT);
         patch16(putchar_call2, C64_CHROUT);

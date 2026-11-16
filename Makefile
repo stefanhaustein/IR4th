@@ -21,9 +21,9 @@ $(BUILD)/frontend.o: src/codebuf.h src/frontend.h
 $(BUILD)/codebuf.o: src/codebuf.h
 $(BUILD)/be_z80.o: src/codebuf.h src/be_z80.h src/be_z80_math48.h
 $(BUILD)/be_z80_cpm.o: src/codebuf.h src/frontend.h src/be_z80.h
-$(BUILD)/be_6502.o: src/codebuf.h src/be_6502_wozfp.h
-$(BUILD)/be_6502_sim.o: src/codebuf.h src/frontend.h
-$(BUILD)/be_6502_c64.o: src/codebuf.h src/frontend.h
+$(BUILD)/be_6502.o: src/codebuf.h src/be_6502.h src/be_6502_wozfp.h
+$(BUILD)/be_6502_sim.o: src/codebuf.h src/frontend.h src/be_6502.h
+$(BUILD)/be_6502_c64.o: src/codebuf.h src/frontend.h src/be_6502.h
 $(BUILD)/be_arm64.o: src/codebuf.h
 $(BUILD)/be_arm64_jit.o: src/codebuf.h src/frontend.h
 $(BUILD)/be_rv32.o: src/codebuf.h src/be_rv32.h src/be_rv32_fp.h
