@@ -151,7 +151,7 @@ test-rv32: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 		echo "qemu-system-riscv32 not found; skipping RV32 execution"; \
 	fi
 
-test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
+test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
 	@out=$$(gforth ir4th.fs tests/fib.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth fib.ir4 -> $$out"; \
 	test "$$out" = "110"
@@ -160,6 +160,9 @@ test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/req.ir4 t
 	test "$$out" = "0"
 	@out=$$(gforth ir4th.fs tests/mem.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth mem.ir4 -> $$out"; \
+	test "$$out" = "0"
+	@out=$$(gforth ir4th.fs tests/float.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
+	echo "gforth float.ir4 -> $$out"; \
 	test "$$out" = "0"
 	@out=$$(gforth ir4th.fs tests/req.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
 	echo "gforth req.ir4 -> $$out"; \

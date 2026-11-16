@@ -117,12 +117,22 @@ variable ir4-mode \ 0=inputs, 1=locals, 2=outputs
 : a>w ;
 : arshift 0 ?do 2/ loop ;
 
-\ Bridge Gforth's separate F-stack to IR4th's unified stack
+\ Bridge Gforth's separate F-stack to IR4th's unified stack (32-bit IEEE float)
 fvariable ir4-ftmp
-: F: parse-name >float drop ir4-ftmp f! ir4-ftmp @ ;
-: f+ >r ir4-ftmp ! ir4-ftmp f@ r> ir4-ftmp ! ir4-ftmp f@ f+ ir4-ftmp f! ir4-ftmp @ ;
-: f- >r ir4-ftmp ! ir4-ftmp f@ r> ir4-ftmp ! ir4-ftmp f@ fswap f- ir4-ftmp f! ir4-ftmp @ ;
-: f* >r ir4-ftmp ! ir4-ftmp f@ r> ir4-ftmp ! ir4-ftmp f@ f* ir4-ftmp f! ir4-ftmp @ ;
-: f/ >r ir4-ftmp ! ir4-ftmp f@ r> ir4-ftmp ! ir4-ftmp f@ fswap f/ ir4-ftmp f! ir4-ftmp @ ;
-: w>f s>f ir4-ftmp f! ir4-ftmp @ ;
-: f>w ir4-ftmp ! ir4-ftmp f@ f>s ;
+: ir4-fpop ( w -- F: r ) ir4-ftmp ! ir4-ftmp sf@ ;
+: ir4-fpush ( F: r -- w ) 0 ir4-ftmp ! ir4-ftmp sf! ir4-ftmp @ ;
+: ir4-f2pop ( w1 w2 -- F: r1 r2 ) >r ir4-fpop r> ir4-fpop ;
+: F: parse-name >float 0= abort" invalid float literal" ir4-fpush state @ if postpone literal then ; immediate
+' f+ constant ir4-gf-f+   : f+ ir4-f2pop ir4-gf-f+ execute ir4-fpush ;
+' f- constant ir4-gf-f-   : f- ir4-f2pop ir4-gf-f- execute ir4-fpush ;
+' f* constant ir4-gf-f*   : f* ir4-f2pop ir4-gf-f* execute ir4-fpush ;
+' f/ constant ir4-gf-f/   : f/ ir4-f2pop ir4-gf-f/ execute ir4-fpush ;
+' fnegate constant ir4-gf-fnegate : fnegate ir4-fpop ir4-gf-fnegate execute ir4-fpush ;
+' f= constant ir4-gf-f=   : f= ir4-f2pop ir4-gf-f= execute ;
+' f<> constant ir4-gf-f<> : f<> ir4-f2pop ir4-gf-f<> execute ;
+' f< constant ir4-gf-f<   : f< ir4-f2pop ir4-gf-f< execute ;
+' f> constant ir4-gf-f>   : f> ir4-f2pop ir4-gf-f> execute ;
+: w>f s>f ir4-fpush ;
+: f>w ir4-fpop f>s ;
+: f! ( w addr -- ) swap ir4-ftmp ! ir4-ftmp swap 4 move ;
+: f@ ( addr -- w ) 0 ir4-ftmp ! ir4-ftmp 4 move ir4-ftmp @ ;
