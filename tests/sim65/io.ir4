@@ -1,12 +1,12 @@
 create ch 0 i8,
 create cstack 0 i16, 0 i16,
-extern sim_write 0xFFF7 { W: A W: X -- W: A }
+extern sim_write 0xFFF7 { i: A i: X -- i: A }
 
-: putchar { W: c -- W: }
+fn putchar { i: c -- i: }
   c ch i8!
   ch cstack a!
   1 cstack 2 a+ !
   cstack 0x10 w>a a!
   1 0 sim_write drop
   c
-;
+end

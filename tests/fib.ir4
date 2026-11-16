@@ -1,32 +1,32 @@
 \ fib.ir4 - Recursive and iterative Fibonacci in IR4th
 
-: fib_rec { W: n -- W: }
+fn fib_rec { i: n -- i: }
   n 2 < if
     n exit
   then
   n 1 - fib_rec
   n 2 - fib_rec
   +
-;
+end
 
-: fib_iter { W: n | W: a W: b W: tmp W: i -- W: }
-  0 to a
-  1 to b
-  0 to i
+fn fib_iter { i: n | i: a i: b i: tmp i: i -- i: }
+  0 -> a
+  1 -> b
+  0 -> i
   begin
     i n <
   while
-    a b + to tmp
-    b to a
-    tmp to b
-    i 1 + to i
+    a b + -> tmp
+    b -> a
+    tmp -> b
+    i 1 + -> i
   repeat
   a
-;
+end
 
 \ Entry point called by --run (computes fib_rec(10) + fib_iter(10) = 55 + 55 = 110)
-: main { -- W: }
+fn main { -- i: }
   10 fib_rec
   10 fib_iter
   +
-;
+end

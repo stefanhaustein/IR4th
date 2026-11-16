@@ -1,5 +1,5 @@
 require req_base.ir4
 
-: inc2 { W: n -- W: }
+fn inc2 { i: n -- i: }
   n inc1 inc1
-;
+end

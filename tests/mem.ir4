@@ -4,14 +4,14 @@
 16 buffer: buf_a
 32 buffer: buf_b
 
-: assert_eq { W: got W: expected W: code -- W: }
+fn assert_eq { i: got i: expected i: code -- i: }
   got expected = if
     0 exit
   then
   code
-;
+end
 
-: main { | A: p -- W: }
+fn main { | a: p -- i: }
   \ Byte store / fetch / sext
   0x41 buf_a i8!
   0xFF buf_a 1 a+ i8!
@@ -32,7 +32,7 @@
 
   \ Address store / fetch (a!, a@)
   buf_a 1 a+ buf_b 16 a+ a!
-  buf_b 16 a+ a@ to p
+  buf_b 16 a+ a@ -> p
   p buf_a 1 a+ a= -1 6 assert_eq
   dup 0 <> if exit then drop
   p u8@ sext -1 7 assert_eq
@@ -50,4 +50,4 @@
   dup 0 <> if exit then drop
   0x8001 buf_b 26 a+ i16!
   buf_b 26 a+ u16@ 0x8001 11 assert_eq
-;
+end

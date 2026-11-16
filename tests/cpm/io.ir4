@@ -1,5 +1,5 @@
-extern bdos 0x0005 { W: C W: DE -- W: A }
+extern bdos 0x0005 { i: C i: DE -- i: A }
 
-: putchar { W: c -- W: }
+fn putchar { i: c -- i: }
   2 c bdos drop c
-;
+end

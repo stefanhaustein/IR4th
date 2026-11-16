@@ -118,16 +118,16 @@ void ir4_die(const char *msg) {
 }
 
 static const char *type_name(u8 t) {
-    if (t == TY_W) return "W:";
-    if (t == TY_A) return "A:";
-    if (t == TY_F) return "F:";
+    if (t == TY_W) return "i:";
+    if (t == TY_A) return "a:";
+    if (t == TY_F) return "f:";
     return "?";
 }
 
 static u8 parse_type_tok(const char *tok) {
-    if (strcmp(tok, "W:") == 0) return TY_W;
-    if (strcmp(tok, "A:") == 0) return TY_A;
-    if (strcmp(tok, "F:") == 0) return TY_F;
+    if (strcmp(tok, "i:") == 0) return TY_W;
+    if (strcmp(tok, "a:") == 0) return TY_A;
+    if (strcmp(tok, "f:") == 0) return TY_F;
     return TY_NONE;
 }
 
@@ -643,8 +643,8 @@ static void compile_word(void) {
         u8 ty;
         int idx;
 
-        if (strcmp(tok, ";") == 0) {
-            if (bsp != 0) ir4_die("unclosed control block at ';'");
+        if (strcmp(tok, "end") == 0) {
+            if (bsp != 0) ir4_die("unclosed control block at 'end'");
             if (!unreachable) {
                 check_return_stack();
                 emit_ir(IR_FN_END, w);
@@ -696,11 +696,11 @@ static void compile_word(void) {
             continue;
         }
 
-        /* Local assignment: to <ident> */
-        if (strcmp(tok, "to") == 0) {
-            if (!next_tok(tok)) ir4_die("expected identifier after 'to'");
+        /* Local assignment: -> <ident> */
+        if (strcmp(tok, "->") == 0) {
+            if (!next_tok(tok)) ir4_die("expected identifier after '->'");
             idx = find_local(tok);
-            if (idx < 0) ir4_die("unknown local in 'to'");
+            if (idx < 0) ir4_die("unknown local in '->'");
             tpop_expect(locals[idx].type);
             ins = emit_ir(IR_LOCAL_OP, w);
             ins->u.loc.op = LOCAL_SET;
@@ -1004,7 +1004,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     ir_count = 0;
 
     while (next_tok(tok)) {
-        if (strcmp(tok, ":") == 0) {
+        if (strcmp(tok, "fn") == 0) {
             if (ct_sp != 0) ir4_die("unconsumed integer at top level");
             compile_word();
         } else if (strcmp(tok, "extern") == 0) {

@@ -2,9 +2,9 @@
 
 require io.ir4
 
-: main { -- W: }
+fn main { -- i: }
   79 putchar 79 <> if 1 exit then
   75 putchar 75 <> if 2 exit then
   10 putchar drop
   0
-;
+end

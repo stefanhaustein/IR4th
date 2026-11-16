@@ -11,59 +11,59 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 * Line comments start with `\` (followed by whitespace or end-of-line) and extend to the end of the line.
 
 ### 1.2 Lexical Categories
-* **Type Tokens (`TYPE`):** Any token ending with a trailing colon (`:`) is strictly a type specifier (`W:`, `A:`, `F:`).
-* **Keywords:** Reserved syntax and control-flow tokens (`:`, `;`, `require`, `extern`, `buffer:`, `create`, `i8,`, `i16,`, `,`, `align`, `to`, `exit`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `{`, `}`, `|`, `--`).
+* **Type Tokens (`TYPE`):** Any token ending with a trailing colon (`:`) is strictly a type specifier (`i:`, `a:`, `f:`).
+* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `end`, `require`, `extern`, `buffer:`, `create`, `i8,`, `i16,`, `,`, `align`, `->`, `exit`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `until`, `{`, `}`, `|`, `--`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a trailing colon that is not a keyword.
 
 ## 2. Type System (Monomorphic v0.3)
 
-IR4th v0.3 defines **three stack types** on a **single unified stack** and **no operator polymorphism**. Nothing smaller than a native machine word `W:` exists on the stack; byte- and 16-bit memory accesses (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) implicitly widen to and truncate from `W:`.
+IR4th v0.3 defines **three stack types** on a **single unified stack** and **no operator polymorphism**. Nothing smaller than a native machine word `i:` exists on the stack; byte- and 16-bit memory accesses (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) implicitly widen to and truncate from `i:`.
 
 | Type Token | Name | Width & Semantics | Z80 / 6502 | ARM32 / RISC-V32 | ARM64 / x86-64 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`W:`** | Native Word | Target-native signed integer (`isize`) | 2 bytes (`i16`) | 4 bytes (`i32`) | 8 bytes (`i64`) |
-| **`A:`** | Address | Target-width memory pointer (`usize`) | 2 bytes (`u16`) | 4 bytes (`u32`) | 8 bytes (`u64`) |
-| **`F:`** | Float | Target-native floating-point | **6 bytes** (Z80) / **4 bytes** (6502) | **4 bytes** (IEEE-754 `binary32`) | **8 bytes** (IEEE-754 `binary64`) |
+| **`i:`** | Native Word | Target-native signed integer (`isize`) | 2 bytes (`i16`) | 4 bytes (`i32`) | 8 bytes (`i64`) |
+| **`a:`** | Address | Target-width memory pointer (`usize`) | 2 bytes (`u16`) | 4 bytes (`u32`) | 8 bytes (`u64`) |
+| **`f:`** | Float | Target-native floating-point | **6 bytes** (Z80) / **4 bytes** (6502) | **4 bytes** (IEEE-754 `binary32`) | **8 bytes** (IEEE-754 `binary64`) |
 
 ### 2.1 Literal Typing Rules
-* **Bare Integer Literals** (`0`, `1`, `-42`, `0x10`, `$FF`) implicitly default to **`W:`**.
+* **Bare Integer Literals** (`0`, `1`, `-42`, `0x10`, `$FF`) implicitly default to **`i:`**.
 * **Explicitly Typed Literals** prefix the value with a `TYPE` token separated by whitespace:
-  * `A: 0x0400` — pushes target-width memory address `0x0400` (`A:`)
-  * `F: 3.14` — pushes target-native floating-point value `3.14` (`F:`)
-* **Literal Width Restriction:** In the current implementation, integer and address literals are restricted to 32-bit values (`-2147483648..2147483647` for `W:`, `0..0xFFFFFFFF` for `A:`), even on 64-bit targets.
+  * `a: 0x0400` — pushes target-width memory address `0x0400` (`a:`)
+  * `f: 3.14` — pushes target-native floating-point value `3.14` (`f:`)
+* **Literal Width Restriction:** In the current implementation, integer and address literals are restricted to 32-bit values (`-2147483648..2147483647` for `i:`, `0..0xFFFFFFFF` for `a:`), even on 64-bit targets.
 
 ## 3. Functions, Parameters & Locals
 
-Functions are defined at the top level using standard Forth `: ... ;` syntax with a Forth-style `{ ... }` signature header.
+Functions are defined at the top level using standard Forth `fn ... end` syntax with a Forth-style `{ ... }` signature header.
 
 ```forth
-: <name> { <inputs> | <locals> -- <outputs> }
+fn <name> { <inputs> | <locals> -- <outputs> }
   <body>
-;
+end
 ```
 
 * **Inputs (before `|` or `--`):**
-  * Declared as `TYPE IDENT` pairs (e.g., `A: ptr W: count`). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names. Unnamed input parameters are not permitted.
+  * Declared as `TYPE IDENT` pairs (e.g., `a: ptr i: count`). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names. Unnamed input parameters are not permitted.
 * **Scratch Locals (optional, after `|` and before `--`):**
-  * Declared as `TYPE IDENT` pairs (e.g., `| W: i W: sum F: acc`).
-  * Scratch locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `F:`) on function entry.
+  * Declared as `TYPE IDENT` pairs (e.g., `| i: i i: sum f: acc`).
+  * Scratch locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `f:`) on function entry.
 * **Outputs (after `--`):**
-  * A nameless sequence of `TYPE` tokens specifying the exact stack state required at `;` or `exit` (e.g., `-- W:`, `-- F:`, `-- A: W:`, or `--` for `void`).
+  * A nameless sequence of `TYPE` tokens specifying the exact stack state required at `end` or `exit` (e.g., `-- i:`, `-- f:`, `-- a: i:`, or `--` for `void`).
 
 ### 3.1 Accessing & Mutating Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
-* **Write (`to <ident>`):** Pops the top value from the stack (verifying its type matches `<ident>`'s declared type `T`) and stores it into `<ident>`.
+* **Write (`-> <ident>`):** Pops the top value from the stack (verifying its type matches `<ident>`'s declared type `T`) and stores it into `<ident>`.
 
 ### 3.2 Named Data Buffers (`buffer:`)
 Top-level fixed-size writable buffers can be declared outside word definitions:
 
 ```forth
-<size> buffer: <name>
+<size> bufferfn <name>
 ```
 
 * `<size>` is a positive byte count. Each buffer is allocated in the target's writable data segment, aligned to the target's native word size.
-* Referencing `<name>` inside a word pushes its base address onto the stack with type **`A:`** (`( -- A: )`).
+* Referencing `<name>` inside a word pushes its base address onto the stack with type **`a:`** (`( -- a: )`).
 
 ### 3.2b Pre-Initialized Data (`create`, `i8,`, `i16,`, `,`, `align`)
 Top-level read-only tables and constants can be defined outside word definitions:
@@ -76,7 +76,7 @@ create words_tbl
   100 , -200 ,
 ```
 
-* `create <name>` aligns the data pointer to the target's native word size and binds `<name>` (`( -- A: )`).
+* `create <name>` aligns the data pointer to the target's native word size and binds `<name>` (`( -- a: )`).
 * `i8,` emits 1 byte (`-128..255`). `i16,` emits 2 little-endian bytes (`-32768..65535`). `,` emits 1 native word (`word_bytes`).
 * `align` advances the data pointer to the next multiple of `word_bytes`.
 * `create` data is semantically read-only.
@@ -99,8 +99,8 @@ require <filename>
 Top-level `extern` declares an external platform/OS function:
 
 ```forth
-extern putchar { W: c -- W: }                  \ ARM64 JIT (dlsym, C ABI)
-extern bdos 0x0005 { W: C W: DE -- W: A }      \ Z80 CP/M (fixed addr + registers)
+extern putchar { i: c -- i: }                  \ ARM64 JIT (dlsym, C ABI)
+extern bdos 0x0005 { i: C i: DE -- i: A }      \ Z80 CP/M (fixed addr + registers)
 ```
 
 * Signatures use `{ inputs -- outputs }` without `|` locals and with at most 1 return value.
@@ -110,7 +110,7 @@ extern bdos 0x0005 { W: C W: DE -- W: A }      \ Z80 CP/M (fixed addr + register
 
 ## 4. Core Instruction Set (Non-Polymorphic)
 
-In stack-effect notation `( before -- after )`, the rightmost item is the top of the stack. All types—including `F:`—reside on the single unified stack.
+In stack-effect notation `( before -- after )`, the rightmost item is the top of the stack. All types—including `f:`—reside on the single unified stack.
 
 ### 4.1 Stack Manipulation
 *(Stack primitives move existing typed slots without altering their types).*
@@ -122,116 +122,116 @@ In stack-effect notation `( before -- after )`, the rightmost item is the top of
 | `swap` | `( t1 t2 -- t2 t1 )` | Exchange top two stack items |
 | `over` | `( t1 t2 -- t1 t2 t1 )` | Copy second stack item to top |
 
-### 4.2 Word Arithmetic & Bitwise Operations (`W:`)
+### 4.2 Word Arithmetic & Bitwise Operations (`i:`)
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `+` | `( W: W: -- W: )` | Word addition |
-| `-` | `( W: W: -- W: )` | Word subtraction (`a - b`) |
-| `*` | `( W: W: -- W: )` | Word multiplication |
-| `/` | `( W: W: -- W: )` | Signed word division (`a / b`) |
-| `mod` | `( W: W: -- W: )` | Signed word remainder (`a mod b`) |
-| `u/` | `( W: W: -- W: )` | Unsigned word division |
-| `umod` | `( W: W: -- W: )` | Unsigned word remainder |
-| `and` | `( W: W: -- W: )` | Bitwise AND |
-| `or` | `( W: W: -- W: )` | Bitwise OR |
-| `xor` | `( W: W: -- W: )` | Bitwise XOR |
-| `invert` | `( W: -- W: )` | Bitwise one's complement |
-| `lshift` | `( W: W: -- W: )` | Logical shift left (`a << b`) |
-| `arshift` | `( W: W: -- W: )` | Arithmetic (sign-preserving) shift right (`a >> b`) |
-| `rshift` | `( W: W: -- W: )` | Logical (zero-filling) shift right (`a u>> b`) |
+| `+` | `( i: i: -- i: )` | Word addition |
+| `-` | `( i: i: -- i: )` | Word subtraction (`a - b`) |
+| `*` | `( i: i: -- i: )` | Word multiplication |
+| `/` | `( i: i: -- i: )` | Signed word division (`a / b`) |
+| `mod` | `( i: i: -- i: )` | Signed word remainder (`a mod b`) |
+| `u/` | `( i: i: -- i: )` | Unsigned word division |
+| `umod` | `( i: i: -- i: )` | Unsigned word remainder |
+| `and` | `( i: i: -- i: )` | Bitwise AND |
+| `or` | `( i: i: -- i: )` | Bitwise OR |
+| `xor` | `( i: i: -- i: )` | Bitwise XOR |
+| `invert` | `( i: -- i: )` | Bitwise one's complement |
+| `lshift` | `( i: i: -- i: )` | Logical shift left (`a << b`) |
+| `arshift` | `( i: i: -- i: )` | Arithmetic (sign-preserving) shift right (`a >> b`) |
+| `rshift` | `( i: i: -- i: )` | Logical (zero-filling) shift right (`a u>> b`) |
 
-### 4.3 Address Arithmetic (`A:`)
-Because `W:` and `A:` always share the same register width, address offsets require no sign-extension.
-
-| Instruction | Stack Effect | Description |
-| :--- | :--- | :--- |
-| `a+` | `( A: W: -- A: )` | Add byte offset `W:` to address `A:` |
-| `a-` | `( A: W: -- A: )` | Subtract byte offset `W:` from address `A:` |
-| `adiff` | `( A: A: -- W: )` | Signed byte distance between two addresses (`a1 - a2`) |
-
-### 4.4 Floating-Point Operations (`F:`)
+### 4.3 Address Arithmetic (`a:`)
+Because `i:` and `a:` always share the same register width, address offsets require no sign-extension.
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `f+` | `( F: F: -- F: )` | Floating-point addition |
-| `f-` | `( F: F: -- F: )` | Floating-point subtraction (`a - b`) |
-| `f*` | `( F: F: -- F: )` | Floating-point multiplication |
-| `f/` | `( F: F: -- F: )` | Floating-point division (`a / b`) |
-| `fnegate` | `( F: -- F: )` | Floating-point negation (`-a`) |
+| `a+` | `( a: i: -- a: )` | Add byte offset `i:` to address `a:` |
+| `a-` | `( a: i: -- a: )` | Subtract byte offset `i:` from address `a:` |
+| `adiff` | `( a: a: -- i: )` | Signed byte distance between two addresses (`a1 - a2`) |
 
-### 4.5 Comparisons (`W:`, `A:`, and `F:`)
-All comparisons consume two values and push a boolean flag of type **`W:`** (`-1` for true, `0` for false).
+### 4.4 Floating-Point Operations (`f:`)
+
+| Instruction | Stack Effect | Description |
+| :--- | :--- | :--- |
+| `f+` | `( f: f: -- f: )` | Floating-point addition |
+| `f-` | `( f: f: -- f: )` | Floating-point subtraction (`a - b`) |
+| `f*` | `( f: f: -- f: )` | Floating-point multiplication |
+| `f/` | `( f: f: -- f: )` | Floating-point division (`a / b`) |
+| `fnegate` | `( f: -- f: )` | Floating-point negation (`-a`) |
+
+### 4.5 Comparisons (`i:`, `a:`, and `f:`)
+All comparisons consume two values and push a boolean flag of type **`i:`** (`-1` for true, `0` for false).
 
 | Instruction | Stack Effect | Semantics |
 | :--- | :--- | :--- |
-| `=` , `<>` | `( W: W: -- W: )` | Word equal / not equal |
-| `<` , `>` , `<=` , `>=` | `( W: W: -- W: )` | Signed word comparisons |
-| `u<` , `u>` , `u<=` , `u>=` | `( W: W: -- W: )` | Unsigned word comparisons |
-| `a=` , `a<>` , `au<` , `au>` | `( A: A: -- W: )` | Address equality and unsigned pointer comparisons |
-| `f=` , `f<>` , `f<` , `f>` | `( F: F: -- W: )` | Floating-point comparisons |
+| `=` , `<>` | `( i: i: -- i: )` | Word equal / not equal |
+| `<` , `>` , `<=` , `>=` | `( i: i: -- i: )` | Signed word comparisons |
+| `u<` , `u>` , `u<=` , `u>=` | `( i: i: -- i: )` | Unsigned word comparisons |
+| `a=` , `a<>` , `au<` , `au>` | `( a: a: -- i: )` | Address equality and unsigned pointer comparisons |
+| `f=` , `f<>` , `f<` , `f>` | `( f: f: -- i: )` | Floating-point comparisons |
 
 ### 4.6 Memory Load & Store (Standard Forth Operators)
-Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) widen to `W:` on load and truncate the low bits of `W:` on store.
+Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) widen to `i:` on load and truncate the low bits of `i:` on store.
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `i8@` | `( A: -- W: )` | Fetch signed 8-bit byte from address, sign-extended to `W:` |
-| `u8@` | `( A: -- W: )` | Fetch unsigned 8-bit byte from address, zero-extended to `W:` |
-| `i8!` | `( W: A: -- )` | Store low 8 bits of `W:` to address |
-| `i16@` | `( A: -- W: )` | Fetch signed 16-bit integer from address, sign-extended to `W:` |
-| `u16@` | `( A: -- W: )` | Fetch unsigned 16-bit integer from address, zero-extended to `W:` |
-| `i16!` | `( W: A: -- )` | Store low 16 bits of `W:` to address |
-| `@` | `( A: -- W: )` | Fetch native word (`W:`) from address |
-| `!` | `( W: A: -- )` | Store native word (`W:`) to address |
-| `a@` | `( A: -- A: )` | Fetch target-width pointer (`A:`) from address |
-| `a!` | `( A: A: -- )` | Store target-width pointer (`A:`) to address |
-| `f@` | `( A: -- F: )` | Fetch target-width float (`F:`) from address |
-| `f!` | `( F: A: -- )` | Store target-width float (`F:`) to address |
+| `i8@` | `( a: -- i: )` | Fetch signed 8-bit byte from address, sign-extended to `i:` |
+| `u8@` | `( a: -- i: )` | Fetch unsigned 8-bit byte from address, zero-extended to `i:` |
+| `i8!` | `( i: a: -- )` | Store low 8 bits of `i:` to address |
+| `i16@` | `( a: -- i: )` | Fetch signed 16-bit integer from address, sign-extended to `i:` |
+| `u16@` | `( a: -- i: )` | Fetch unsigned 16-bit integer from address, zero-extended to `i:` |
+| `i16!` | `( i: a: -- )` | Store low 16 bits of `i:` to address |
+| `@` | `( a: -- i: )` | Fetch native word (`i:`) from address |
+| `!` | `( i: a: -- )` | Store native word (`i:`) to address |
+| `a@` | `( a: -- a: )` | Fetch target-width pointer (`a:`) from address |
+| `a!` | `( a: a: -- )` | Store target-width pointer (`a:`) to address |
+| `f@` | `( a: -- f: )` | Fetch target-width float (`f:`) from address |
+| `f!` | `( f: a: -- )` | Store target-width float (`f:`) to address |
 
 ### 4.7 Explicit Type Conversions
 
 | Instruction | Stack Effect | Description |
 | :--- | :--- | :--- |
-| `sext` | `( W: -- W: )` | Sign-extend low 8 bits of `W:` to full word width `W:` |
-| `w>a` | `( W: -- A: )` | Reinterpret native word `W:` as address `A:` |
-| `a>w` | `( A: -- W: )` | Reinterpret address `A:` as native word `W:` |
-| `w>f` | `( W: -- F: )` | Convert signed native word `W:` to float `F:` |
-| `f>w` | `( F: -- W: )` | Truncate float `F:` to signed native word `W:` |
+| `sext` | `( i: -- i: )` | Sign-extend low 8 bits of `i:` to full word width `i:` |
+| `w>a` | `( i: -- a: )` | Reinterpret native word `i:` as address `a:` |
+| `a>w` | `( a: -- i: )` | Reinterpret address `a:` as native word `i:` |
+| `w>f` | `( i: -- f: )` | Convert signed native word `i:` to float `f:` |
+| `f>w` | `( f: -- i: )` | Truncate float `f:` to signed native word `i:` |
 
 ## 5. Control Flow & Static Stack Invariants
 
-* **Conditional Branches (`<cond:W:> if ... else ... then`):** Pops a `W:` flag. Both branches must leave the type stack with identical depth and types. If `else` is omitted, the true branch must leave the stack completely even (unchanged).
-* **Pre-Tested Loops (`begin <cond:W:> while ... repeat`):** `while` pops a `W:` flag. The combined condition and loop body must leave the type stack completely even at `repeat`.
-* **Post-Tested Loops (`begin ... <cond:W:> until`):** `until` pops a `W:` flag. The loop body must leave the type stack completely even before the condition is pushed.
+* **Conditional Branches (`<cond:i:> if ... else ... then`):** Pops a `i:` flag. Both branches must leave the type stack with identical depth and types. If `else` is omitted, the true branch must leave the stack completely even (unchanged).
+* **Pre-Tested Loops (`begin <cond:i:> while ... repeat`):** `while` pops a `i:` flag. The combined condition and loop body must leave the type stack completely even at `repeat`.
+* **Post-Tested Loops (`begin ... <cond:i:> until`):** `until` pops a `i:` flag. The loop body must leave the type stack completely even before the condition is pushed.
 * **Calls & Early Return (`<word_name>`, `exit`):** Validates caller stack against callee inputs and pushes outputs. `exit` verifies the stack matches the word's declared output types after `--`.
 
 ## 6. Complete Example Program
 
 ```forth
 \ Fill a memory buffer with a byte value and return the end address
-: memset { A: dst W: val W: len | W: i -- A: }
-  0 to i
+fn memset { a: dst i: val i: len | i: i -- a: }
+  0 -> i
   begin
     i len u<
   while
     val dst i a+ i8!
-    i 1 + to i
+    i 1 + -> i
   repeat
   dst len a+
-;
+end
 
 \ Sum an array of signed 8-bit bytes into a native word
-: sum_signed_bytes { A: ptr W: count | W: i W: acc -- W: }
-  0 to i
-  0 to acc
+fn sum_signed_bytes { a: ptr i: count | i: i i: acc -- i: }
+  0 -> i
+  0 -> acc
   begin
     i count <
   while
     ptr i a+ i8@
-    acc + to acc
-    i 1 + to i
+    acc + -> acc
+    i 1 + -> i
   repeat
   acc
-;
+end
 ```
