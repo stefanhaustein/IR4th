@@ -1,5 +1,5 @@
 require req_base.ir4
 
-fn inc2 ( n :i ) -> :i
+fn inc2 ( n :i -> :i )
   n inc1 inc1
 end

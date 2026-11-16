@@ -3,17 +3,17 @@
 
 var fbuf :bytes 6
 
-fn assert_true ( cond :i code :i ) -> :i
+fn assert_true ( cond :i code :i -> :i )
   cond 0 != if 0 return then
   code
 end
 
-fn add_mul_f ( a :f b :f k :i | acc :f ) -> :f
+fn add_mul_f ( a :f b :f k :i | acc :f -> :f )
   a b + -> acc
   acc k :f *
 end
 
-fn main ( | x :f ) -> :i
+fn main ( | x :f -> :i )
   // Basic arithmetic & literals
   1.5 2.25 + 3.75 == 1 assert_true
   dup 0 != if return then drop

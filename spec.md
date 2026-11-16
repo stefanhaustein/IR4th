@@ -36,28 +36,28 @@ IR4th v0.3 defines **three stack types** on a **single unified stack** with **ty
 
 ## 3. Functions, Parameters & Locals
 
-Functions are defined at the top level using `fn ... end` syntax with a `( ... ) -> ...` signature header.
+Functions are defined at the top level using `fn ... end` syntax with a `( ... -> ... )` signature header.
 
 ```forth
-fn <name> ( <inputs> | <locals> ) -> <outputs>
+fn <name> ( <inputs> | <locals> -> <outputs> )
   <body>
 end
 ```
 
-* **Inputs (before `|` or `)`):**
+* **Inputs (before `|`, `->`, or `)`):**
   * Declared as `IDENT TYPE` pairs (e.g., `ptr :a count :i`). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names. Unnamed input parameters are not permitted.
-* **Scratch Locals (optional, after `|`):**
+* **Scratch Locals (optional, after `|` and before `->` or `)`):**
   * Declared as `IDENT TYPE` pairs (e.g., `| i :i sum :i acc :f`) or `IDENT :bytes <size>` for a stack-allocated byte buffer (e.g., `| tmp :bytes 16`).
   * Scalar locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `:f`) on function entry.
   * `:bytes <size>` locals allocate `<size>` bytes in the function's stack frame (freed on `end`/`return`), and referencing `<ident>` pushes its `:a` base address onto the stack.
-* **Outputs (optional, after `) ->`):**
+* **Outputs (optional, after `->` and before `)`):**
   * A nameless sequence of `TYPE` tokens specifying the exact stack state required at `end` or `return` (e.g., `-> :i`, `-> :f`, `-> :a :i`, or omitted for `void`).
 * **Forward Declarations (`fwd`):**
-  * `fwd <name> ( <inputs> ) -> <outputs>` declares a function signature before its `fn <name> ... end` definition (allowing mutual recursion). Locals after `|` are not allowed in `fwd`, and the later `fn` definition must match the declared input and output types.
+  * `fwd <name> ( <inputs> -> <outputs> )` declares a function signature before its `fn <name> ... end` definition (allowing mutual recursion). Locals after `|` are not allowed in `fwd`, and the later `fn` definition must match the declared input and output types.
 * **Initialization Blocks (`init ... end`):**
   * One or more top-level `init ... end` blocks may be defined across the program and `require`d modules. Each behaves as an anonymous void function (`( )`) and runs once in source order before `main`.
 * **Machine-Code Words (`code ... end`):**
-  * `code <name> ( <inputs> ) -> <outputs> <bytes> end` defines a raw machine-code word emitted into the executable code segment (subject to DCE) using `:i8`, `:i16`, and `:i32` literals, following the target's `call` / `return` convention.
+  * `code <name> ( <inputs> -> <outputs> ) <bytes> end` defines a raw machine-code word emitted into the executable code segment (subject to DCE) using `:i8`, `:i16`, and `:i32` literals, following the target's `call` / `return` convention.
 
 ### 3.1 Accessing, Mutating & Addressing Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
@@ -108,11 +108,11 @@ require <filename>
 Top-level `extern` declares an external platform/OS function:
 
 ```forth
-extern putchar ( c :i ) -> :i                  // ARM64 JIT (dlsym, C ABI)
-extern bdos 0x0005 ( C :i DE :i ) -> A :i      // Z80 CP/M (fixed addr + registers)
+extern putchar ( c :i -> :i )                  // ARM64 JIT (dlsym, C ABI)
+extern bdos 0x0005 ( C :i DE :i -> A :i )      // Z80 CP/M (fixed addr + registers)
 ```
 
-* Signatures use `( inputs ) -> outputs` (or `( inputs )` for void) without `|` locals and with at most 1 return value.
+* Signatures use `( inputs -> outputs )` (or `( inputs )` for void) without `|` locals and with at most 1 return value.
 * On ARM64 JIT (`--run`), no address is given; symbols are resolved via `dlsym` and called using the ARM64 C ABI (`X0..X7`, `D0..D7`).
 * On RISC-V RV32 (`--obj`), symbolic `extern` calls emit ELF relocations (`R_RISCV_HI20` / `R_RISCV_LO12_I`) using the `ilp32` C ABI (`a0..a7`); fixed-address `extern` declarations are also supported for bare-metal targets (`--virt`).
 * On 16-bit targets (Z80 / 6502), a fixed 16-bit address is required and parameter/return names specify CPU registers (`A, B, C, D, E, H, L, BC, DE, HL` on Z80; `A, X, Y` on 6502).
@@ -219,7 +219,7 @@ Fixed-width memory operations (`@u8`, `@i8`, `!i8`, `@u16`, `@i16`, `!i16`) wide
 
 ```forth
 // Fill a memory buffer with a byte value and return the end address
-fn memset ( dst :a val :i len :i | i :i ) -> :a
+fn memset ( dst :a val :i len :i | i :i -> :a )
   0 -> i
   begin
     i len u<
@@ -231,7 +231,7 @@ fn memset ( dst :a val :i len :i | i :i ) -> :a
 end
 
 // Sum an array of signed 8-bit bytes into a native word
-fn sum_signed_bytes ( ptr :a count :i | i :i acc :i ) -> :i
+fn sum_signed_bytes ( ptr :a count :i | i :i acc :i -> :i )
   0 -> i
   0 -> acc
   begin

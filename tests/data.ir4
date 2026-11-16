@@ -33,12 +33,12 @@ init
   g_init @i 5 + g_init !i
 end
 
-fn word_bytes ( ) -> :i
+fn word_bytes ( -> :i )
   1 16 << 0 == if 2 return then
   1 31 << 1 << 0 == if 4 else 8 then
 end
 
-fn main ( ) -> :i
+fn main ( -> :i )
   // Check i8, values (unsigned & signed reads)
   bytes_tbl @u8 10 != if 1 return then
   bytes_tbl 1 + @u8 255 != if 2 return then

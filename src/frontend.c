@@ -134,23 +134,9 @@ static u8 parse_type_tok(const char *tok) {
     return TY_NONE;
 }
 
-static char peek_tok[MAX_TOK];
-static int  has_peek = 0;
-
-static void unget_tok(const char *tok) {
-    memcpy(peek_tok, tok, strlen(tok) + 1);
-    has_peek = 1;
-}
-
 static int next_tok(char *buf) {
     int c;
     u8 len = 0;
-
-    if (has_peek) {
-        memcpy(buf, peek_tok, strlen(peek_tok) + 1);
-        has_peek = 0;
-        return 1;
-    }
 
     for (;;) {
         SrcFile *cur;
@@ -601,87 +587,81 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
     char tok[MAX_TOK];
     u8 param_cnt = 0;
     u8 in_locals = 0;
+    u8 in_outs = 0;
 
     local_count = 0;
     cur_out_count = 0;
 
-    /* Parse inputs | locals ) (after '(' has been consumed) */
-    for (;;) {
+    /* Parse inputs | locals -> outputs ) (after '(' has been consumed) */
+    while (next_tok(tok)) {
         u8 ty;
         char ty_tok[MAX_TOK];
-        if (!next_tok(tok)) ir4_die("unexpected EOF in signature (missing ')')");
         if (strcmp(tok, ")") == 0) {
             if (param_cnt_out) *param_cnt_out = param_cnt;
-            break;
+            return;
         }
         if (strcmp(tok, "|") == 0) {
             if (!allow_locals) ir4_die("locals '|' not allowed in extern signature");
+            if (in_outs) ir4_die("'|' not allowed after '->' in signature");
             in_locals = 1;
             continue;
         }
         if (strcmp(tok, "->") == 0) {
-            ir4_die("'->' belongs after ')' in signature");
-        }
-        if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
-        if (parse_type_tok(tok) != TY_NONE) {
-            ir4_die("expected identifier before type in signature");
-        }
-        memcpy(locals[local_count].name, tok, strlen(tok) + 1);
-        if (!next_tok(ty_tok)) ir4_die("expected type token (:i, :a, :f) after identifier in signature");
-        if (strcmp(ty_tok, ":bytes") == 0) {
-            i32 sz = 0;
-            if (!in_locals) ir4_die("':bytes' only allowed in '|' locals");
-            if (!next_tok(ty_tok) || !parse_int(ty_tok, &sz) || sz <= 0 || sz > MAX_DATA) {
-                ir4_die("invalid byte count after ':bytes'");
-            }
-            locals[local_count].type = TY_A;
-            locals[local_count].slot = local_count;
-            locals[local_count].size = (u16)sz;
-            local_count++;
+            in_outs = 1;
             continue;
         }
-        ty = parse_type_tok(ty_tok);
-        if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
-        locals[local_count].type = ty;
-        locals[local_count].slot = local_count;
-        locals[local_count].size = 0;
-        if (!in_locals) {
-            if (sig->in_count >= 8) ir4_die("too many parameters");
-            sig->in_types[sig->in_count] = ty;
-            memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
-                   strlen(locals[local_count].name) + 1);
-            sig->in_count++;
-            param_cnt++;
-        }
-        local_count++;
-    }
 
-    /* Optional return types: -> :type ... (or -> REG :type for extern) */
-    if (!next_tok(tok)) return;
-    if (strcmp(tok, "->") != 0) {
-        unget_tok(tok);
-        return;
-    }
-
-    while (next_tok(tok)) {
-        u8 ty = parse_type_tok(tok);
-        if (ty == TY_NONE) {
-            if (!allow_locals && cur_out_count == 0 && sig->out_reg[0] == '\0') {
-                size_t len = strlen(tok);
-                memcpy(sig->out_reg, tok, len + 1);
-                if (!next_tok(tok)) ir4_die("expected type token (:i, :a, :f) after extern register");
-                ty = parse_type_tok(tok);
-                if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) after extern register");
-            } else {
-                unget_tok(tok);
-                break;
+        if (in_outs) {
+            ty = parse_type_tok(tok);
+            if (ty == TY_NONE) {
+                if (!allow_locals && cur_out_count == 0 && sig->out_reg[0] == '\0') {
+                    size_t len = strlen(tok);
+                    memcpy(sig->out_reg, tok, len + 1);
+                    if (!next_tok(tok)) ir4_die("expected type token (:i, :a, :f) after extern register");
+                    ty = parse_type_tok(tok);
+                }
+                if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
             }
+            if (cur_out_count >= 4) ir4_die("too many return types");
+            sig->out_types[sig->out_count++] = ty;
+            cur_outs[cur_out_count++] = ty;
+        } else {
+            if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
+            if (parse_type_tok(tok) != TY_NONE) {
+                ir4_die("expected identifier before type in signature");
+            }
+            memcpy(locals[local_count].name, tok, strlen(tok) + 1);
+            if (!next_tok(ty_tok)) ir4_die("expected type token (:i, :a, :f) after identifier in signature");
+            if (strcmp(ty_tok, ":bytes") == 0) {
+                i32 sz = 0;
+                if (!in_locals) ir4_die("':bytes' only allowed in '|' locals");
+                if (!next_tok(ty_tok) || !parse_int(ty_tok, &sz) || sz <= 0 || sz > MAX_DATA) {
+                    ir4_die("invalid byte count after ':bytes'");
+                }
+                locals[local_count].type = TY_A;
+                locals[local_count].slot = local_count;
+                locals[local_count].size = (u16)sz;
+                local_count++;
+                continue;
+            }
+            ty = parse_type_tok(ty_tok);
+            if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
+            locals[local_count].type = ty;
+            locals[local_count].slot = local_count;
+            locals[local_count].size = 0;
+            if (!in_locals) {
+                if (sig->in_count >= 8) ir4_die("too many parameters");
+                sig->in_types[sig->in_count] = ty;
+                memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
+                       strlen(locals[local_count].name) + 1);
+                sig->in_count++;
+                param_cnt++;
+            }
+            local_count++;
         }
-        if (cur_out_count >= 4) ir4_die("too many return types");
-        sig->out_types[sig->out_count++] = ty;
-        cur_outs[cur_out_count++] = ty;
     }
-    if (cur_out_count == 0) ir4_die("expected return type after '->'");
+
+    ir4_die("unexpected EOF in signature (missing ')')");
 }
 
 static void compile_body(WordIR *w);
@@ -1315,7 +1295,6 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     raw_code_len = 0;
     fwd_call_count = 0;
     init_count = 0;
-    has_peek = 0;
 
     while (next_tok(tok)) {
         if (strcmp(tok, "fn") == 0) {

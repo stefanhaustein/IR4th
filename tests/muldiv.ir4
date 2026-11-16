@@ -1,14 +1,14 @@
 // muldiv.ir4 - Multiply, divide, and remainder tests (ARM64 + Z80)
 // Expected main() return value: 0
 
-fn assert_eq ( got :i expected :i code :i ) -> :i
+fn assert_eq ( got :i expected :i code :i -> :i )
   got expected == if
     0 return
   then
   code
 end
 
-fn main ( ) -> :i
+fn main ( -> :i )
   6 7 * 42 1 assert_eq
   dup 0 != if return then drop
   -6 7 * -42 2 assert_eq

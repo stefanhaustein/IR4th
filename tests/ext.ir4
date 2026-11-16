@@ -2,7 +2,7 @@
 
 require io.ir4
 
-fn main ( ) -> :i
+fn main ( -> :i )
   79 putchar 79 != if 1 return then
   75 putchar 75 != if 2 return then
   10 putchar drop

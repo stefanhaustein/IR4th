@@ -1,14 +1,14 @@
 // core.ir4 - Core language, control-flow, ALU, comparison, and address tests
 // Expected main() return value: 0 (all checks pass)
 
-fn assert_eq ( got :i expected :i code :i ) -> :i
+fn assert_eq ( got :i expected :i code :i -> :i )
   got expected == if
     0 return
   then
   code
 end
 
-fn test_stack ( ) -> :i
+fn test_stack ( -> :i )
   // dup, drop, swap, over
   10 dup + 20 1 assert_eq
   dup 0 != if return then drop
@@ -19,7 +19,7 @@ fn test_stack ( ) -> :i
   10 20 over + + 40 4 assert_eq
 end
 
-fn test_alu ( ) -> :i
+fn test_alu ( -> :i )
   0x0F 0x33 and 0x03 10 assert_eq
   dup 0 != if return then drop
   0x0F 0x30 or 0x3F 11 assert_eq
@@ -41,7 +41,7 @@ fn test_alu ( ) -> :i
   0x7F sext 127 19 assert_eq
 end
 
-fn test_cmp ( ) -> :i
+fn test_cmp ( -> :i )
   5 5 == -1 20 assert_eq
   dup 0 != if return then drop
   5 6 != -1 21 assert_eq
@@ -63,7 +63,7 @@ fn test_cmp ( ) -> :i
   -1 -1 u>= -1 29 assert_eq
 end
 
-fn test_addr ( | p :a q :a ) -> :i
+fn test_addr ( | p :a q :a -> :i )
   0x1000 :a -> p
   p 16 + 4 - -> q
   q p - 12 30 assert_eq
@@ -79,7 +79,7 @@ fn test_addr ( | p :a q :a ) -> :i
   q :i 0x100C 35 assert_eq
 end
 
-fn test_ctrl ( x :i | acc :i ) -> :i
+fn test_ctrl ( x :i | acc :i -> :i )
   // if ... else ... then
   x 0 > if
     100
@@ -98,23 +98,23 @@ fn test_ctrl ( x :i | acc :i ) -> :i
   acc
 end
 
-fn pair_swap ( a :i b :i ) -> :i :i
+fn pair_swap ( a :i b :i -> :i :i )
   b a
 end
 
-fwd is_odd ( n :i ) -> :i
+fwd is_odd ( n :i -> :i )
 
-fn is_even ( n :i ) -> :i
+fn is_even ( n :i -> :i )
   n 0 == if 1 return then
   n 1 - is_odd
 end
 
-fn is_odd ( n :i ) -> :i
+fn is_odd ( n :i -> :i )
   n 0 == if 0 return then
   n 1 - is_even
 end
 
-fn main ( ) -> :i
+fn main ( -> :i )
   test_stack
   dup 0 != if return then drop
   test_alu

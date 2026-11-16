@@ -1,5 +1,5 @@
 // Error test: unbalanced stack in begin/until loop
-fn main ( ) -> :i
+fn main ( -> :i )
   begin
     1 0
   until

@@ -1,6 +1,6 @@
 // fib.ir4 - Recursive and iterative Fibonacci in IR4th
 
-fn fib_rec ( n :i ) -> :i
+fn fib_rec ( n :i -> :i )
   n 2 < if
     n return
   then
@@ -9,7 +9,7 @@ fn fib_rec ( n :i ) -> :i
   +
 end
 
-fn fib_iter ( n :i | a :i b :i tmp :i i :i ) -> :i
+fn fib_iter ( n :i | a :i b :i tmp :i i :i -> :i )
   0 -> a
   1 -> b
   0 -> i
@@ -25,7 +25,7 @@ fn fib_iter ( n :i | a :i b :i tmp :i i :i ) -> :i
 end
 
 // Entry point called by --run (computes fib_rec(10) + fib_iter(10) = 55 + 55 = 110)
-fn main ( ) -> :i
+fn main ( -> :i )
   10 fib_rec
   10 fib_iter
   +

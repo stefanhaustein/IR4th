@@ -1,6 +1,6 @@
 // Error test: calling a 'fwd' function that is never defined
-fwd missing_fn ( x :i ) -> :i
+fwd missing_fn ( x :i -> :i )
 
-fn main ( ) -> :i
+fn main ( -> :i )
   1 missing_fn
 end
