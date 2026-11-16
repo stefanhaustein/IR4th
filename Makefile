@@ -6,7 +6,7 @@ TARGET  = $(BUILD)/ir4c
 SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_6502_sim.c src/be_arm64.c src/be_arm64_jit.c src/be_rv32.c src/be_rv32_elf.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
-.PHONY: all test test-z80 test-6502 test-rv32 test-gforth rt rt-z80 rt-6502 rt-rv32 clean
+.PHONY: all test test-z80 test-6502 test-rv32 rt rt-z80 rt-6502 rt-rv32 clean
 
 all: $(TARGET)
 
@@ -150,29 +150,6 @@ test-rv32: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 	else \
 		echo "qemu-system-riscv32 not found; skipping RV32 execution"; \
 	fi
-
-test-gforth: ir4th.fs tests/fib.ir4 tests/core.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
-	@out=$$(gforth ir4th.fs tests/fib.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
-	echo "gforth fib.ir4 -> $$out"; \
-	test "$$out" = "110"
-	@out=$$(gforth ir4th.fs tests/core.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
-	echo "gforth core.ir4 -> $$out"; \
-	test "$$out" = "0"
-	@out=$$(gforth ir4th.fs tests/mem.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
-	echo "gforth mem.ir4 -> $$out"; \
-	test "$$out" = "0"
-	@out=$$(gforth ir4th.fs tests/float.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
-	echo "gforth float.ir4 -> $$out"; \
-	test "$$out" = "0"
-	@out=$$(gforth ir4th.fs tests/req.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
-	echo "gforth req.ir4 -> $$out"; \
-	test "$$out" = "0"
-	@out=$$(gforth ir4th.fs tests/data.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
-	echo "gforth data.ir4 -> $$out"; \
-	test "$$out" = "0"
-	@out=$$(gforth ir4th.fs tests/ext.ir4 -e "main . cr bye" | tr -d ' \r\n'); \
-	echo "gforth ext.ir4 -> $$out"; \
-	test "$$out" = "OK0"
 
 rt: rt-z80 rt-6502 rt-rv32
 

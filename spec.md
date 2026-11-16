@@ -2,7 +2,7 @@
 
 **IR4th** (*Typed Forth as an Intermediate Representation*) is a minimal, statically typed, monomorphic concatenative intermediate language designed for retro-computing CPUs (such as the Z80 and 6502) and constrained embedded systems.
 
-IR4th is designed so that programs (with compatible `extern` bindings) are directly executable under **Gforth** (via `ir4th.fs`) while compiling via direct 2-pass machine-code generation (with dead-code elimination) to native Z80, 6502, RISC-V (RV32), and ARM64 binaries.
+IR4th compiles via direct 2-pass machine-code generation (with dead-code elimination) to native Z80, 6502, RISC-V (RV32), and ARM64 binaries.
 
 ## 1. Lexical Structure
 
@@ -35,7 +35,7 @@ IR4th v0.3 defines **three stack types** on a **single unified stack** and **no 
 
 ## 3. Functions, Parameters & Locals
 
-Functions are defined at the top level using standard Forth `: ... ;` syntax with a Gforth-compatible `{ ... }` signature header.
+Functions are defined at the top level using standard Forth `: ... ;` syntax with a Forth-style `{ ... }` signature header.
 
 ```forth
 : <name> { <inputs> | <locals> -- <outputs> }
@@ -91,7 +91,7 @@ require <filename>
 * `<filename>` is resolved relative to the directory of the file containing `require`.
 * For relative paths, `require` searches in order:
   1. `<dir>/<platform>/<filename>` (when `--platform <name>`, `--cpm`, or `--sim65` is active, e.g. `cpm/io.ir4` or `sim65/io.ir4`)
-  2. `<dir>/<cpu>/<filename>` (e.g. `arm64/io.ir4`, `z80/math.ir4`, or `gforth/io.ir4` under `ir4th.fs`)
+  2. `<dir>/<cpu>/<filename>` (e.g. `arm64/io.ir4` or `z80/math.ir4`)
   3. `<dir>/<filename>` (portable fallback)
 * Repeated `require` directives for an already-loaded file path are ignored.
 
@@ -206,52 +206,7 @@ Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) wide
 * **Post-Tested Loops (`begin ... <cond:W:> until`):** `until` pops a `W:` flag. The loop body must leave the type stack completely even before the condition is pushed.
 * **Calls & Early Return (`<word_name>`, `exit`):** Validates caller stack against callee inputs and pushes outputs. `exit` verifies the stack matches the word's declared output types after `--`.
 
-## 6. Gforth Compatibility Prelude (`ir4th.fs`)
-
-```forth
-\ ir4th.fs - Gforth compatibility prelude for IR4th v0.3
-get-order wordlist dup >r set-current
-: A: postpone W: ; immediate
-set-order r> >order
-
-: a+ + ;
-: a- - ;
-: adiff - ;
-: a= = ;
-: a<> <> ;
-: au< u< ;
-: au> u> ;
-: a@ @ ;
-: a! ! ;
-: sext $FF and dup $80 and if -256 or then ;
-: w>a ;
-: a>w ;
-: buffer: ( n "name" -- ) create align allot ;
-: i8, ( n -- ) c, ;
-: i16, ( n -- ) dup c, 8 rshift c, ;
-
-\ Bridge Gforth's separate F-stack to IR4th's unified stack (32-bit IEEE float)
-fvariable ir4-ftmp
-: ir4-fpop ( w -- F: r ) ir4-ftmp ! ir4-ftmp sf@ ;
-: ir4-fpush ( F: r -- w ) 0 ir4-ftmp ! ir4-ftmp sf! ir4-ftmp @ ;
-: ir4-f2pop ( w1 w2 -- F: r1 r2 ) >r ir4-fpop r> ir4-fpop ;
-: F: parse-name >float 0= abort" invalid float literal" ir4-fpush state @ if postpone literal then ; immediate
-' f+ constant ir4-gf-f+   : f+ ir4-f2pop ir4-gf-f+ execute ir4-fpush ;
-' f- constant ir4-gf-f-   : f- ir4-f2pop ir4-gf-f- execute ir4-fpush ;
-' f* constant ir4-gf-f*   : f* ir4-f2pop ir4-gf-f* execute ir4-fpush ;
-' f/ constant ir4-gf-f/   : f/ ir4-f2pop ir4-gf-f/ execute ir4-fpush ;
-' fnegate constant ir4-gf-fnegate : fnegate ir4-fpop ir4-gf-fnegate execute ir4-fpush ;
-' f= constant ir4-gf-f=   : f= ir4-f2pop ir4-gf-f= execute ;
-' f<> constant ir4-gf-f<> : f<> ir4-f2pop ir4-gf-f<> execute ;
-' f< constant ir4-gf-f<   : f< ir4-f2pop ir4-gf-f< execute ;
-' f> constant ir4-gf-f>   : f> ir4-f2pop ir4-gf-f> execute ;
-: w>f s>f ir4-fpush ;
-: f>w ir4-fpop f>s ;
-: f! ( w addr -- ) swap ir4-ftmp ! ir4-ftmp swap 4 move ;
-: f@ ( addr -- w ) 0 ir4-ftmp ! ir4-ftmp 4 move ir4-ftmp @ ;
-```
-
-## 7. Complete Example Program
+## 6. Complete Example Program
 
 ```forth
 \ Fill a memory buffer with a byte value and return the end address
