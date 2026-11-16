@@ -821,11 +821,59 @@ static void compile_init(void) {
     compile_body(w);
 }
 
+#define MAX_LABELS     64
+#define MAX_LABEL_REFS 256
+
+typedef struct {
+    char name[MAX_TOK];
+    u16  target_ir;
+    u8   defined;
+} LabelInfo;
+
+typedef struct {
+    u16 ir_idx;
+    u16 label_idx;
+} LabelRef;
+
+static int find_or_add_label(LabelInfo *labels, u16 *label_count, const char *name) {
+    u16 i;
+    for (i = 0; i < *label_count; i++) {
+        if (strcmp(labels[i].name, name) == 0) return (int)i;
+    }
+    if (*label_count >= MAX_LABELS) ir4_die("too many labels in function");
+    strcpy(labels[*label_count].name, name);
+    labels[*label_count].target_ir = 0;
+    labels[*label_count].defined = 0;
+    return (int)(*label_count)++;
+}
+
+static void emit_label_br(WordIR *w, LabelInfo *labels, LabelRef *refs,
+                          u16 *ref_count, u16 lidx, BranchCond cond) {
+    IrInstr *ins;
+    if (labels[lidx].defined) {
+        ins = emit_ir(IR_BR_BACK, w);
+        ins->u.br.cond = cond;
+        ins->u.br.target = labels[lidx].target_ir;
+    } else {
+        if (*ref_count >= MAX_LABEL_REFS) ir4_die("too many label references");
+        refs[*ref_count].ir_idx = w->ir_len;
+        refs[*ref_count].label_idx = lidx;
+        (*ref_count)++;
+        ins = emit_ir(IR_BR_FWD, w);
+        ins->u.br.cond = cond;
+    }
+    fold_fence = w->ir_len;
+}
+
 static void compile_body(WordIR *w) {
     char tok[MAX_TOK];
     IrInstr *ins;
     u8 unreachable = 0;
     i32 num_val;
+    LabelInfo labels[MAX_LABELS];
+    LabelRef  label_refs[MAX_LABEL_REFS];
+    u16 label_count = 0;
+    u16 label_ref_count = 0;
 
     w->ir_start = ir_count;
     w->ir_len = 0;
@@ -836,7 +884,13 @@ static void compile_body(WordIR *w) {
         int idx;
 
         if (strcmp(tok, "end") == 0) {
+            u16 r;
             if (bsp != 0) ir4_die("unclosed control block at 'end'");
+            for (r = 0; r < label_ref_count; r++) {
+                u16 lidx = label_refs[r].label_idx;
+                if (!labels[lidx].defined) ir4_die("undefined label");
+                ir_buf[w->ir_start + label_refs[r].ir_idx].u.br.target = labels[lidx].target_ir;
+            }
             if (!unreachable) {
                 check_return_stack();
                 emit_ir(IR_FN_END, w);
@@ -996,6 +1050,42 @@ static void compile_body(WordIR *w) {
             ins->u.br.target = b->loop_addr;
             ir_buf[w->ir_start + b->patch_end].u.br.target = w->ir_len;
             fold_fence = w->ir_len;
+            continue;
+        }
+        if (strcmp(tok, "label") == 0) {
+            int lidx;
+            if (bsp != 0) ir4_die("'label' inside control block");
+            if (!next_tok(tok)) ir4_die("expected label name after 'label'");
+            if (!unreachable && tsp != 0) ir4_die("stack must be empty at 'label'");
+            tsp = 0;
+            unreachable = 0;
+            lidx = find_or_add_label(labels, &label_count, tok);
+            if (labels[lidx].defined) ir4_die("duplicate label");
+            labels[lidx].defined = 1;
+            labels[lidx].target_ir = w->ir_len;
+            fold_fence = w->ir_len;
+            continue;
+        }
+        if (strcmp(tok, "jmp") == 0) {
+            int lidx;
+            if (!next_tok(tok)) ir4_die("expected label name after 'jmp'");
+            if (!unreachable && tsp != 0) ir4_die("stack must be empty at 'jmp'");
+            lidx = find_or_add_label(labels, &label_count, tok);
+            if (!unreachable) {
+                emit_label_br(w, labels, label_refs, &label_ref_count, (u16)lidx, BR_JMP);
+                unreachable = 1;
+            }
+            continue;
+        }
+        if (strcmp(tok, "jz") == 0) {
+            int lidx;
+            if (!next_tok(tok)) ir4_die("expected label name after 'jz'");
+            tpop_expect(TY_W);
+            if (!unreachable && tsp != 0) ir4_die("stack must be empty after condition at 'jz'");
+            lidx = find_or_add_label(labels, &label_count, tok);
+            if (!unreachable) {
+                emit_label_br(w, labels, label_refs, &label_ref_count, (u16)lidx, BR_JZ);
+            }
             continue;
         }
 

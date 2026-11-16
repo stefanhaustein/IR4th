@@ -115,6 +115,30 @@ fn is_odd ( n :i -> :i )
   n 1 - is_even
 end
 
+fn test_labels ( n :i | acc :i i :i -> :i )
+  // Forward jz + jmp skipping block
+  0 -> acc
+  0 -> i
+  n 0 == jz nonzero
+  100 -> acc
+  jmp loop
+  label nonzero
+  200 -> acc
+  label loop
+  i 5 < jz done
+  i 1 + -> i
+  acc i + -> acc
+  jmp loop
+  label done
+  // Backward jz (post-test loop: add 1..3 = 6)
+  0 -> i
+  label post
+  i 1 + -> i
+  acc i + -> acc
+  i 3 == jz post
+  acc
+end
+
 fn main ( -> :i )
   test_stack
   dup 0 != if return then drop
@@ -133,4 +157,8 @@ fn main ( -> :i )
   7 is_odd 1 43 assert_eq
   dup 0 != if return then drop
   8 is_even 1 44 assert_eq
+  dup 0 != if return then drop
+  0 test_labels 121 45 assert_eq
+  dup 0 != if return then drop
+  1 test_labels 221 46 assert_eq
 end

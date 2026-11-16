@@ -1,0 +1,5 @@
+// Error test: undefined label target
+fn main ( -> :i )
+  jmp missing
+  0
+end
