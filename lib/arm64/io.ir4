@@ -1,0 +1,5 @@
+extern putchar ( c :i -> :i )
+
+fn emit ( c :i )
+  c putchar drop
+end

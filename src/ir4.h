@@ -199,6 +199,7 @@ extern const Backend be_rv32;
 
 extern const Platform plat_z80_cpm;
 extern const Platform plat_6502_sim;
+extern const Platform plat_6502_c64;
 extern const Platform plat_arm64_jit;
 extern const Platform plat_rv32_virt;
 extern const Platform plat_rv32_obj;

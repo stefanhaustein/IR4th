@@ -1,5 +1,5 @@
 extern bdos 0x0005 ( C :i DE :i -> A :i )
 
-fn putchar ( c :i -> :i )
-  2 c bdos drop c
+fn emit ( c :i )
+  2 c bdos drop
 end

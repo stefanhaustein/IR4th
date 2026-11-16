@@ -1,0 +1,6 @@
+extern chrout 0xFFD2 ( A :i )
+
+fn emit ( c :i )
+  c 10 == if 13 chrout return then
+  c chrout
+end

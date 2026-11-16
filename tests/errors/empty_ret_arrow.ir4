@@ -1,0 +1,7 @@
+// Error test: empty return list after '->'
+fn foo ( x :i -> )
+end
+
+fn main ( -> :i )
+  0
+end

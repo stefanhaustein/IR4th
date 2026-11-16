@@ -2,11 +2,10 @@ var ch :bytes 1
 var cstack :bytes 4
 extern sim_write 0xFFF7 ( A :i X :i -> A :i )
 
-fn putchar ( c :i -> :i )
+fn emit ( c :i )
   c ch !i8
   ch cstack !a
   1 cstack 2 + !i
   cstack 0x10 :a !a
   1 0 sim_write drop
-  c
 end

@@ -5,6 +5,7 @@
 static const Platform *const platforms[] = {
     &plat_z80_cpm,
     &plat_6502_sim,
+    &plat_6502_c64,
     &plat_arm64_jit,
     &plat_rv32_virt,
     &plat_rv32_obj,
@@ -12,7 +13,7 @@ static const Platform *const platforms[] = {
 };
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--run] [--cpm] [--sim65] [--virt] [--obj] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {

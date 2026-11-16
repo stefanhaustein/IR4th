@@ -3,7 +3,7 @@ CFLAGS  = -std=c89 -Wall -Wextra -O2 -Isrc
 
 BUILD   = build
 TARGET  = $(BUILD)/ir4c
-SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_6502_sim.c src/be_arm64.c src/be_arm64_jit.c src/be_rv32.c src/be_rv32_elf.c
+SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/be_z80.c src/be_z80_cpm.c src/be_6502.c src/be_6502_sim.c src/be_6502_c64.c src/be_arm64.c src/be_arm64_jit.c src/be_rv32.c src/be_rv32_elf.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
 .PHONY: all test test-err test-z80 test-6502 test-rv32 rt rt-z80 rt-6502 rt-rv32 clean
@@ -23,6 +23,7 @@ $(BUILD)/be_z80.o: src/codebuf.h src/be_z80.h src/be_z80_math48.h
 $(BUILD)/be_z80_cpm.o: src/codebuf.h src/frontend.h src/be_z80.h
 $(BUILD)/be_6502.o: src/codebuf.h src/be_6502_wozfp.h
 $(BUILD)/be_6502_sim.o: src/codebuf.h src/frontend.h
+$(BUILD)/be_6502_c64.o: src/codebuf.h src/frontend.h
 $(BUILD)/be_arm64.o: src/codebuf.h
 $(BUILD)/be_arm64_jit.o: src/codebuf.h src/frontend.h
 $(BUILD)/be_rv32.o: src/codebuf.h src/be_rv32.h src/be_rv32_fp.h

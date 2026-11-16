@@ -98,11 +98,11 @@ Top-level `require` loads another `.ir4` source file at most once (include-once 
 require <filename>
 ```
 
-* `<filename>` is resolved relative to the directory of the file containing `require`.
-* For relative paths, `require` searches in order:
-  1. `<dir>/<platform>/<filename>` (when `--platform <name>`, `--cpm`, or `--sim65` is active, e.g. `cpm/io.ir4` or `sim65/io.ir4`)
-  2. `<dir>/<cpu>/<filename>` (e.g. `arm64/io.ir4` or `z80/math.ir4`)
-  3. `<dir>/<filename>` (portable fallback)
+* `<filename>` is resolved relative to the directory of the file containing `require`, falling back to `lib/` if not found there.
+* For relative paths, `require` searches in order (first under `<dir>`, then under `lib/`):
+  1. `<base>/<platform>/<filename>` (when `--platform <name>`, `--cpm`, `--sim65`, or `--c64` is active, e.g. `cpm/io.ir4` or `c64/io.ir4`)
+  2. `<base>/<cpu>/<filename>` (e.g. `arm64/io.ir4` or `z80/math.ir4`)
+  3. `<base>/<filename>` (portable fallback)
 * Repeated `require` directives for an already-loaded file path are ignored.
 
 ### 3.4 External Functions (`extern`)

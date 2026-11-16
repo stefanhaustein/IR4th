@@ -1,0 +1,3 @@
+fn emit ( c :i )
+  c 0x10000000 :a !i8
+end

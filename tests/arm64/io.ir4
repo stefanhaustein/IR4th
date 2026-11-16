@@ -1,1 +1,0 @@
-extern putchar ( c :i -> :i )

@@ -1,0 +1,165 @@
+// lib/math.ir4 - Portable floating-point math library for IR4th
+
+fn fabs ( x :f -> :f )
+  x 0.0 < if x fnegate return then
+  x
+end
+
+fn fint ( x :f | ax :f p :f res :f -> :f )
+  x fabs -> ax
+  ax 16384.0 < if x :i :f return then
+  ax 1.0 + ax == if x return then
+  16384.0 -> p
+  begin
+    p 2.0 * ax > 0 ==
+  while
+    p 2.0 * -> p
+  repeat
+  0.0 -> res
+  begin
+    p 16384.0 < 0 ==
+  while
+    ax p < 0 == if
+      ax p - -> ax
+      res p + -> res
+    then
+    p 0.5 * -> p
+  repeat
+  res ax :i :f +
+  x 0.0 < if fnegate then
+end
+
+fn frac ( x :f -> :f )
+  x x fint -
+end
+
+fn fround ( x :f -> :i )
+  x 0.0 < if x 0.5 - :i return then
+  x 0.5 + :i
+end
+
+fn sqrt ( x :f | scale :f g :f i :i -> :f )
+  x 0.0 > 0 == if 0.0 return then
+  1.0 -> scale
+  begin
+    x 2.0 < 0 ==
+  while
+    x 0.25 * -> x
+    scale 2.0 * -> scale
+  repeat
+  begin
+    x 0.5 <
+  while
+    x 4.0 * -> x
+    scale 0.5 * -> scale
+  repeat
+  1.0 -> g
+  0 -> i
+  begin
+    i 6 <
+  while
+    g x g / + 0.5 * -> g
+    i 1 + -> i
+  repeat
+  g scale *
+end
+
+fn sin ( x :f | x2 :f -> :f )
+  x x 6.283185307179586 / fint 6.283185307179586 * - -> x
+  x 3.141592653589793 > if
+    x 6.283185307179586 - -> x
+  then
+  x -3.141592653589793 < if
+    x 6.283185307179586 + -> x
+  then
+  x 1.5707963267948966 > if
+    3.141592653589793 x - -> x
+  then
+  x -1.5707963267948966 < if
+    -3.141592653589793 x - -> x
+  then
+  x x * -> x2
+  1.0 x2 110.0 / -
+  1.0 swap x2 72.0 / * -
+  1.0 swap x2 42.0 / * -
+  1.0 swap x2 20.0 / * -
+  1.0 swap x2 6.0 / * -
+  x *
+end
+
+fn cos ( x :f -> :f )
+  1.5707963267948966 x - sin
+end
+
+fn arctan ( x :f | sign :f inv :i corr :i x2 :f -> :f )
+  1.0 -> sign
+  x 0.0 < if
+    -1.0 -> sign
+    x fnegate -> x
+  then
+  x 1.0 > if
+    1 -> inv
+    1.0 x / -> x
+  then
+  x 0.2679491924311227 > if
+    1 -> corr
+    x 1.7320508075688772 * 1.0 -
+    1.7320508075688772 x + / -> x
+  then
+  x x * -> x2
+  0.1111111111111111 x2 * 0.14285714285714285 -
+  x2 * 0.2 +
+  x2 * 0.3333333333333333 -
+  x2 * 1.0 +
+  x *
+  corr 0 != if 0.5235987755982988 + then
+  inv 0 != if 1.5707963267948966 swap - then
+  sign *
+end
+
+fn exp ( x :f | k :i r :f res :f -> :f )
+  x 1.4426950408889634 * fround -> k
+  x k :f 0.6931471805599453 * - -> r
+  1.0 r 6.0 / +
+  r 5.0 / * 1.0 +
+  r 4.0 / * 1.0 +
+  r 3.0 / * 1.0 +
+  r 2.0 / * 1.0 +
+  r * 1.0 + -> res
+  begin
+    k 0 >
+  while
+    res 2.0 * -> res
+    k 1 - -> k
+  repeat
+  begin
+    k 0 <
+  while
+    res 0.5 * -> res
+    k 1 + -> k
+  repeat
+  res
+end
+
+fn ln ( x :f | k :i u :f u2 :f -> :f )
+  x 0.0 > 0 == if 0.0 return then
+  begin
+    x 1.4142135623730951 >
+  while
+    x 0.5 * -> x
+    k 1 + -> k
+  repeat
+  begin
+    x 0.7071067811865476 <
+  while
+    x 2.0 * -> x
+    k 1 - -> k
+  repeat
+  x 1.0 - x 1.0 + / -> u
+  u u * -> u2
+  0.14285714285714285 u2 * 0.2 +
+  u2 * 0.3333333333333333 +
+  u2 * 1.0 +
+  u * 2.0 *
+  k :f 0.6931471805599453 * +
+end

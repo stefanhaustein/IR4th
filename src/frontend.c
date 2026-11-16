@@ -205,13 +205,25 @@ static void resolve_path(const char *base_path, const char *rel, char *out, size
     memcpy(out + dir_len, rel, rel_len + 1);
 }
 
+static FILE *try_open_require(const char *path, int *already_seen) {
+    u8 i;
+    *already_seen = 0;
+    for (i = 0; i < seen_count; i++) {
+        if (strcmp(seen_files[i], path) == 0) {
+            *already_seen = 1;
+            return NULL;
+        }
+    }
+    return fopen(path, "r");
+}
+
 static void push_require(const char *name) {
     char cands[3][MAX_PATH];
     int n_cands = 0;
     int c;
     char path[MAX_PATH];
-    u8 i;
     FILE *fp = NULL;
+    int seen = 0;
 
     if (name[0] != '/') {
         if (platform_name != NULL && platform_name[0] != '\0') {
@@ -232,13 +244,19 @@ static void push_require(const char *name) {
 
     for (c = 0; c < n_cands; c++) {
         resolve_path(src_stack[src_depth - 1].path, cands[c], path, sizeof(path));
-        for (i = 0; i < seen_count; i++) {
-            if (strcmp(seen_files[i], path) == 0) {
-                return;
-            }
-        }
-        fp = fopen(path, "r");
+        fp = try_open_require(path, &seen);
+        if (seen) return;
         if (fp) break;
+    }
+
+    if (!fp && name[0] != '/') {
+        for (c = 0; c < n_cands; c++) {
+            if (4 + strlen(cands[c]) >= sizeof(path)) continue;
+            sprintf(path, "lib/%s", cands[c]);
+            fp = try_open_require(path, &seen);
+            if (seen) return;
+            if (fp) break;
+        }
     }
 
     if (!fp) {
@@ -599,6 +617,7 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
         u8 ty;
         char ty_tok[MAX_TOK];
         if (strcmp(tok, ")") == 0) {
+            if (in_outs && sig->out_count == 0) ir4_die("expected return type after '->'");
             if (param_cnt_out) *param_cnt_out = param_cnt;
             return;
         }
@@ -609,6 +628,7 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
             continue;
         }
         if (strcmp(tok, "->") == 0) {
+            if (in_outs) ir4_die("duplicate '->' in signature");
             in_outs = 1;
             continue;
         }
