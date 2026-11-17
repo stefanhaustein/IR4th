@@ -490,6 +490,18 @@ static void rv_op(IrOp op) {
     case OP_I32STORE:
         rv_mem_imm(op, 0);
         break;
+    case OP_BCOPY:
+        pop_reg(RV_T2); /* len */
+        pop_reg(RV_T1); /* src */
+        pop_reg(RV_T0); /* dst */
+        emit32(enc_b(24, RV_ZERO, RV_T2, 0));    /* BEQ t2, x0, +24 */
+        emit32(enc_i(0, RV_T1, 4, RV_A0, 0x03UL)); /* LBU a0, 0(t1) */
+        emit32(enc_s(0, RV_A0, RV_T0, 0));       /* SB a0, 0(t0) */
+        emit32(enc_i(1, RV_T1, 0, RV_T1, 0x13UL)); /* ADDI t1, t1, 1 */
+        emit32(enc_i(1, RV_T0, 0, RV_T0, 0x13UL)); /* ADDI t0, t0, 1 */
+        emit32(enc_i(-1, RV_T2, 0, RV_T2, 0x13UL)); /* ADDI t2, t2, -1 */
+        emit32(enc_b(-20, RV_ZERO, RV_T2, 1));   /* BNE t2, x0, -20 */
+        break;
     case OP_FNEG:
         pop_reg(RV_T0);
         emit32(enc_u(0x80000000UL, RV_T1, 0x37UL));       /* LUI t1, 0x80000 */

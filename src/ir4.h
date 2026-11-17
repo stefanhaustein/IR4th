@@ -149,6 +149,7 @@ typedef enum {
     OP_SSTORE,
     OP_SASTORE,
     OP_SFSTORE,
+    OP_BCOPY,
 
     OP_SEXT,
     OP_W2A,

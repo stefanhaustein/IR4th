@@ -858,13 +858,6 @@ static void flush_bytes_params(u8 *params_flushed) {
         cur_bytes_copies[k].dst_slot = local_count;
         local_count++;
     }
-    if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
-    memcpy(locals[local_count].name, "__bpcnt", 8);
-    locals[local_count].type = TY_W;
-    locals[local_count].slot = local_count;
-    locals[local_count].size = 0;
-    cur_bytes_cnt_slot = local_count;
-    local_count++;
 }
 
 static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
@@ -959,69 +952,25 @@ static void compile_body(WordIR *w);
 
 static void emit_bytes_param_copies(WordIR *w) {
     u8 k;
-    u16 wb = be->word_bytes;
     for (k = 0; k < cur_bytes_copy_count; k++) {
         IrInstr *ins;
-        u16 loop_ir, jmp_done;
         u8 src = cur_bytes_copies[k].src_slot;
         u8 dst = cur_bytes_copies[k].dst_slot;
         u16 sz = cur_bytes_copies[k].size;
 
-        ins = emit_ir(IR_PUSH_W, w); ins->u.w = (i32)sz;
         ins = emit_ir(IR_LOCAL_OP, w);
-        ins->u.loc.op = LOCAL_SET; ins->u.loc.slot = cur_bytes_cnt_slot;
-        ins->u.loc.type = TY_W; ins->u.loc.stack_bytes = 0;
-
-        ins = emit_ir(IR_LOCAL_OP, w);
-        ins->u.loc.op = LOCAL_GET; ins->u.loc.slot = src;
+        ins->u.loc.op = LOCAL_ADDR; ins->u.loc.slot = dst;
         ins->u.loc.type = TY_A; ins->u.loc.stack_bytes = 0;
 
         ins = emit_ir(IR_LOCAL_OP, w);
-        ins->u.loc.op = LOCAL_ADDR; ins->u.loc.slot = dst;
-        ins->u.loc.type = TY_A; ins->u.loc.stack_bytes = wb;
+        ins->u.loc.op = LOCAL_GET; ins->u.loc.slot = src;
+        ins->u.loc.type = TY_A; ins->u.loc.stack_bytes = be->addr_bytes;
 
-        loop_ir = w->ir_len;
-        ins = emit_ir(IR_LOCAL_OP, w);
-        ins->u.loc.op = LOCAL_GET; ins->u.loc.slot = cur_bytes_cnt_slot;
-        ins->u.loc.type = TY_W; ins->u.loc.stack_bytes = (u16)(2 * wb);
+        ins = emit_ir(IR_PUSH_W, w);
+        ins->u.w = (i32)sz;
 
-        jmp_done = w->ir_len;
-        ins = emit_ir(IR_BR_FWD, w);
-        ins->u.br.cond = BR_JZ; ins->u.br.target = 0;
-
-        ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_OVER; ins->u.stk.t1 = TY_A; ins->u.stk.t2 = TY_A;
-        ins = emit_ir(IR_ALU_OP, w); ins->u.op = OP_U8FETCH;
-        ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_OVER; ins->u.stk.t1 = TY_W; ins->u.stk.t2 = TY_A;
-        ins = emit_ir(IR_ALU_OP, w); ins->u.op = OP_I8STORE;
-
-        ins = emit_ir(IR_PUSH_W, w); ins->u.w = 1;
-        ins = emit_ir(IR_ALU_OP, w); ins->u.op = OP_AADD;
-        ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_SWAP; ins->u.stk.t1 = TY_A; ins->u.stk.t2 = TY_A;
-        ins = emit_ir(IR_PUSH_W, w); ins->u.w = 1;
-        ins = emit_ir(IR_ALU_OP, w); ins->u.op = OP_AADD;
-        ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_SWAP; ins->u.stk.t1 = TY_A; ins->u.stk.t2 = TY_A;
-
-        ins = emit_ir(IR_LOCAL_OP, w);
-        ins->u.loc.op = LOCAL_GET; ins->u.loc.slot = cur_bytes_cnt_slot;
-        ins->u.loc.type = TY_W; ins->u.loc.stack_bytes = (u16)(2 * wb);
-        ins = emit_ir(IR_PUSH_W, w); ins->u.w = 1;
-        ins = emit_ir(IR_ALU_OP, w); ins->u.op = OP_SUB;
-        ins = emit_ir(IR_LOCAL_OP, w);
-        ins->u.loc.op = LOCAL_SET; ins->u.loc.slot = cur_bytes_cnt_slot;
-        ins->u.loc.type = TY_W; ins->u.loc.stack_bytes = (u16)(2 * wb);
-
-        ins = emit_ir(IR_BR_BACK, w);
-        ins->u.br.cond = BR_JMP; ins->u.br.target = loop_ir;
-
-        ir_buf[w->ir_start + jmp_done].u.br.target = w->ir_len;
-        ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_DROP; ins->u.stk.t1 = TY_A; ins->u.stk.t2 = TY_NONE;
-        ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_DROP; ins->u.stk.t1 = TY_A; ins->u.stk.t2 = TY_NONE;
+        ins = emit_ir(IR_ALU_OP, w);
+        ins->u.op = OP_BCOPY;
         fold_fence = w->ir_len;
     }
 }

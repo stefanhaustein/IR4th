@@ -1069,6 +1069,44 @@ static void m6502_op(IrOp op) {
     case OP_I32STORE:
         m6502_mem_imm(op, 0);
         break;
+    case OP_BCOPY: {
+        u16 skip_pages, page_loop, byte_loop, skip_tail, tail_loop;
+        m6502_lda_stk(2); emit8_8(M6502_STA_ZP, zp_scratch);
+        m6502_lda_stk(3); emit8_8(M6502_STA_ZP, (u8)(zp_scratch + 1));
+        m6502_lda_stk(4); emit8_8(M6502_STA_ZP, (u8)(zp_scratch + 2));
+        m6502_lda_stk(5); emit8_8(M6502_STA_ZP, (u8)(zp_scratch + 3));
+        m6502_lda_stk(0); emit8(0x48); /* PHA len_lo */
+        m6502_lda_stk(1); emit8(0x48); /* PHA len_hi */
+        for (skip_pages = 0; skip_pages < 6; skip_pages++) emit8(M6502_INX);
+        emit8_8(M6502_LDY_IMM, 0x00);
+        emit8(0x68); /* PLA len_hi */
+        emit8(M6502_BEQ); skip_pages = cb_pc(); emit8(0x00);
+        page_loop = cb_pc();
+        emit8(0x48); /* PHA */
+        byte_loop = cb_pc();
+        emit8_8(0xB1, zp_scratch);             /* LDA (zp0),Y */
+        emit8_8(0x91, (u8)(zp_scratch + 2));   /* STA (zp2),Y */
+        emit8(M6502_INY);
+        emit8_8(M6502_BNE, (u8)(byte_loop - (cb_pc() + 2)));
+        emit8_8(0xE6, (u8)(zp_scratch + 1));   /* INC zp1 */
+        emit8_8(0xE6, (u8)(zp_scratch + 3));   /* INC zp3 */
+        emit8(0x68); /* PLA */
+        emit8(M6502_SEC);
+        emit8_8(0xE9, 0x01); /* SBC #1 */
+        emit8_8(M6502_BNE, (u8)(page_loop - (cb_pc() + 2)));
+        patch8(skip_pages, (u8)(cb_pc() - (skip_pages + 1)));
+        emit8(0x68); /* PLA len_lo */
+        emit8(M6502_BEQ); skip_tail = cb_pc(); emit8(0x00);
+        emit8(0xA8); /* TAY */
+        tail_loop = cb_pc();
+        emit8(M6502_DEY);
+        emit8_8(0xB1, zp_scratch);             /* LDA (zp0),Y */
+        emit8_8(0x91, (u8)(zp_scratch + 2));   /* STA (zp2),Y */
+        emit8(0x98); /* TYA */
+        emit8_8(M6502_BNE, (u8)(tail_loop - (cb_pc() + 2)));
+        patch8(skip_tail, (u8)(cb_pc() - (skip_tail + 1)));
+        break;
+    }
     case OP_INV32: {
         u8 b;
         for (b = 0; b < 4; b++) {

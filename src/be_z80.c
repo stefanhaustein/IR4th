@@ -1136,6 +1136,15 @@ static void z80_op(IrOp op) {
     case OP_I32STORE:
         z80_mem_imm(op, 0);
         break;
+    case OP_BCOPY:
+        z80_pop(Z80_POP_BC); /* len */
+        emit8(Z80_POP_HL);   /* src */
+        emit8(Z80_POP_DE);   /* dst */
+        emit8(0x78);         /* LD A, B */
+        emit8(0xB1);         /* OR C */
+        emit8_8(Z80_JR_Z, 0x02);
+        emit8(0xED); emit8(0xB0); /* LDIR */
+        break;
     case OP_SEXT:
         z80_pop(Z80_POP_HL);
         emit8(Z80_LD_A_L);

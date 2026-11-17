@@ -524,6 +524,16 @@ static void a64_op(IrOp op) {
     case OP_I32STORE:
         a64_mem_imm(op, 0);
         break;
+    case OP_BCOPY:
+        emit32(0xF84107E2UL); /* LDR X2, [SP], #16 (len) */
+        pop_x1();             /* src */
+        pop_x0(); /* dst */
+        emit32(0xB40000A2UL); /* CBZ X2, +20 */
+        emit32(0x38401423UL); /* LDRB W3, [X1], #1 */
+        emit32(0x38001403UL); /* STRB W3, [X0], #1 */
+        emit32(0xF1000442UL); /* SUBS X2, X2, #1 */
+        emit32(0x54FFFFA1UL); /* B.NE -12 */
+        break;
     case OP_SEXT:
         pop_x0();
         emit32(0x93401C00UL); /* SXTB X0, X0 */
