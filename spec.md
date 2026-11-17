@@ -11,27 +11,28 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 * Line comments start with `//` and extend to the end of the line.
 
 ### 1.2 Lexical Categories
-* **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:a`, `:f`).
+* **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:i32`, `:a`, `:f`).
 * **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `data`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`, `|`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a leading colon that is not a keyword.
 
 ## 2. Type System (v0.3)
 
-IR4th v0.3 defines **three stack types** on a **single unified stack** with **type-directed operator overloading** for arithmetic and comparisons. Nothing smaller than a native machine word `:i` exists on the stack; byte- and 16-bit memory accesses (`@u8`, `@i8`, `!i8`, `@u16`, `@i16`, `!i16`) implicitly widen to and truncate from `:i`.
+IR4th v0.3 defines **four stack types** on a **single unified stack** with **type-directed operator overloading** for arithmetic and comparisons. Nothing smaller than a native machine word `:i` exists on the stack; byte- and 16-bit memory accesses (`@u8`, `@i8`, `!i8`, `@u16`, `@i16`, `!i16`) implicitly widen to and truncate from `:i`.
 
 | Type Token | Name | Width & Semantics | Z80 / 6502 | ARM32 / RISC-V32 | ARM64 / x86-64 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`:i`** | Native Word | Target-native signed integer (`isize`) | 2 bytes (`i16`) | 4 bytes (`i32`) | 8 bytes (`i64`) |
+| **`:i32`** | 32-bit Integer | Fixed-width 32-bit integer | 4 bytes (`i32`) | 4 bytes (`i32`) | 4 bytes (`i32`, 8-byte slot) |
 | **`:a`** | Address | Target-width memory pointer (`usize`) | 2 bytes (`u16`) | 4 bytes (`u32`) | 8 bytes (`u64`) |
 | **`:f`** | Float | Target-native floating-point | **6 bytes** (Z80) / **4 bytes** (6502) | **4 bytes** (IEEE-754 `binary32`) | **8 bytes** (IEEE-754 `binary64`) |
 
 ### 2.1 Literal Typing Rules
 * **Bare Integer Literals** (`0`, `1`, `-42`, `0x10`, `$FF`) implicitly default to **`:i`**.
 * **Bare Floating-Point Literals** (`3.14`, `-0.5`, `1e-3` — containing `.` or `e`/`E`) implicitly default to **`:f`**.
+* **`:i32` Literals / Casts:** `100000 :i32` pushes a 32-bit integer of type `:i32` (folded at compile time when applied to an integer literal).
 * **Address Casts** convert an integer literal to `:a` via postfix `:a`:
-  * `0x0400 :a` — pushes target-width memory address `0x0400` (`:a`)
-  * `0x0400 :a` — casts integer literal `0x0400` to `:a` (folded at compile time)
+  * `0x0400 :a` — pushes target-width memory address `0x0400` (`:a`) (folded at compile time)
 * **Literal Width Restriction:** In the current implementation, integer and address literals are restricted to 32-bit values (`-2147483648..2147483647` for `:i`, `0..0xFFFFFFFF` for `:a`), even on 64-bit targets.
 
 ## 3. Functions, Parameters & Locals
@@ -68,11 +69,11 @@ end
 Top-level writable globals and fixed-size buffers can be declared outside word definitions:
 
 ```forth
-var <name> :i            // Typed scalar global (:i, :a, or :f)
+var <name> :i            // Typed scalar global (:i, :i32, :a, or :f)
 var <name> :bytes <size> // Raw byte buffer
 ```
 
-* Typed globals (`:i`, `:a`, `:f`) behave like locals: `<name>` reads the value, `-> <name>` assigns to it, and `& <name>` pushes its `:a` address.
+* Typed globals (`:i`, `:i32`, `:a`, `:f`) behave like locals: `<name>` reads the value, `-> <name>` assigns to it, and `& <name>` pushes its `:a` address.
 * `var <name> :bytes <size>` allocates `<size>` bytes aligned to `word_bytes`; referencing `<name>` pushes its `:a` base address (`( -> :a )`).
 * **`__heap_start`:** Built-in constant pushing the `:a` address immediately following all static code, `data`, `var`, and target runtime data.
 
@@ -89,7 +90,7 @@ end
 ```
 
 * `data <name> ... end` aligns the data pointer to the target's native word size and binds `<name>` (`( -- :a )`).
-* `:i8` emits 1 byte (`-128..255`). `:i16` emits 2 little-endian bytes (`-32768..65535`). `:i` (or a bare integer without a width specifier) emits 1 native word (`word_bytes`).
+* `:i8` emits 1 byte (`-128..255`). `:i16` emits 2 little-endian bytes (`-32768..65535`). `:i32` emits 4 little-endian bytes (`-2147483648..4294967295`). `:i` (or a bare integer without a width specifier) emits 1 native word (`word_bytes`).
 * `"..."` emits raw string bytes (supporting `\n`, `\r`, `\t`, `\0`, `\\`, `\"` escapes) without an implicit NUL terminator.
 * `align` advances the data pointer to the next multiple of `word_bytes`.
 * `data` blocks are semantically read-only.
@@ -135,24 +136,25 @@ In stack-effect notation `( before -- after )`, the rightmost item is the top of
 | `swap` | `( t1 t2 -- t2 t1 )` | Exchange top two stack items |
 | `over` | `( t1 t2 -- t1 t2 t1 )` | Copy second stack item to top |
 
-### 4.2 Word Arithmetic & Bitwise Operations (`:i`)
+### 4.2 Integer Arithmetic & Bitwise Operations (`:i` and `:i32`)
+All integer arithmetic and bitwise operators are overloaded for both `:i` and `:i32` (with shifts taking a `:i` shift count):
 
-| Instruction | Stack Effect | Description |
-| :--- | :--- | :--- |
-| `+` | `( :i :i -- :i )` | Word addition |
-| `-` | `( :i :i -- :i )` | Word subtraction (`a - b`) |
-| `*` | `( :i :i -- :i )` | Word multiplication |
-| `/` | `( :i :i -- :i )` | Signed word division (`a / b`) |
-| `mod` | `( :i :i -- :i )` | Signed word remainder (`a mod b`) |
-| `u/` | `( :i :i -- :i )` | Unsigned word division |
-| `umod` | `( :i :i -- :i )` | Unsigned word remainder |
-| `and` | `( :i :i -- :i )` | Bitwise AND |
-| `or` | `( :i :i -- :i )` | Bitwise OR |
-| `xor` | `( :i :i -- :i )` | Bitwise XOR |
-| `invert` | `( :i -- :i )` | Bitwise one's complement |
-| `<<` | `( :i :i -- :i )` | Logical shift left (`a << b`) |
-| `>>` | `( :i :i -- :i )` | Arithmetic (sign-preserving) shift right (`a >> b`) |
-| `u>>` | `( :i :i -- :i )` | Logical (zero-filling) shift right (`a u>> b`) |
+| Instruction | Stack Effect (`:i`) | Stack Effect (`:i32`) | Description |
+| :--- | :--- | :--- | :--- |
+| `+` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Addition |
+| `-` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Subtraction (`a - b`) |
+| `*` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Multiplication |
+| `/` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Signed division (`a / b`, truncating toward 0) |
+| `mod` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Signed remainder (`a mod b`) |
+| `u/` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Unsigned division |
+| `umod` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Unsigned remainder |
+| `and` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Bitwise AND |
+| `or` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Bitwise OR |
+| `xor` | `( :i :i -- :i )` | `( :i32 :i32 -- :i32 )` | Bitwise XOR |
+| `invert` | `( :i -- :i )` | `( :i32 -- :i32 )` | Bitwise one's complement |
+| `<<` | `( :i :i -- :i )` | `( :i32 :i -- :i32 )` | Logical shift left (`a << b`) |
+| `>>` | `( :i :i -- :i )` | `( :i32 :i -- :i32 )` | Arithmetic (sign-preserving) shift right (`a >> b`) |
+| `u>>` | `( :i :i -- :i )` | `( :i32 :i -- :i32 )` | Logical (zero-filling) shift right (`a u>> b`) |
 
 ### 4.3 Address Arithmetic (`:a`)
 Because `:i` and `:a` always share the same register width, address offsets require no sign-extension.
@@ -173,14 +175,14 @@ Because `:i` and `:a` always share the same register width, address offsets requ
 | `/` | `( :f :f -- :f )` | Floating-point division (`a / b`) |
 | `fnegate` | `( :f -- :f )` | Floating-point negation (`-a`) |
 
-### 4.5 Comparisons (`:i`, `:a`, and `:f`)
+### 4.5 Comparisons (`:i`, `:i32`, `:a`, and `:f`)
 All comparisons consume two values and push a boolean flag of type **`:i`** (`-1` for true, `0` for false).
 
 | Instruction | Stack Effect | Semantics |
 | :--- | :--- | :--- |
-| `==` , `!=` | `( :i :i -- :i )` | Word equal / not equal |
-| `<` , `>` , `<=` , `>=` | `( :i :i -- :i )` | Signed word comparisons |
-| `u<` , `u>` , `u<=` , `u>=` | `( :i :i -- :i )` | Unsigned word comparisons |
+| `==` , `!=` | `( :i :i -- :i )` / `( :i32 :i32 -- :i )` | Integer equal / not equal |
+| `<` , `>` , `<=` , `>=` | `( :i :i -- :i )` / `( :i32 :i32 -- :i )` | Signed integer comparisons |
+| `u<` , `u>` , `u<=` , `u>=` | `( :i :i -- :i )` / `( :i32 :i32 -- :i )` | Unsigned integer comparisons |
 | `==` , `!=` , `u<` , `u>` | `( :a :a -- :i )` | Address equality and unsigned pointer comparisons |
 | `==` , `!=` , `<` , `>` | `( :f :f -- :i )` | Floating-point comparisons |
 
@@ -195,6 +197,8 @@ Fixed-width memory operations (`@u8`, `@i8`, `!i8`, `@u16`, `@i16`, `!i16`) wide
 | `@i16` | `( :a -- :i )` | Fetch signed 16-bit integer from address, sign-extended to `:i` |
 | `@u16` | `( :a -- :i )` | Fetch unsigned 16-bit integer from address, zero-extended to `:i` |
 | `!i16` | `( :i :a -- )` | Store low 16 bits of `:i` to address |
+| `@i32` | `( :a -- :i32 )` | Fetch 32-bit integer (`:i32`) from address |
+| `!i32` | `( :i32 :a -- )` | Store 32-bit integer (`:i32`) to address |
 | `@i` | `( :a -- :i )` | Fetch native word (`:i`) from address |
 | `!i` | `( :i :a -- )` | Store native word (`:i`) to address |
 | `@a` | `( :a -- :a )` | Fetch target-width pointer (`:a`) from address |
@@ -211,6 +215,11 @@ Fixed-width memory operations (`@u8`, `@i8`, `!i8`, `@u16`, `@i16`, `!i16`) wide
 | `:i` | `( :a -- :i )` | Reinterpret address `:a` as native word `:i` |
 | `:f` | `( :i -- :f )` | Convert signed native word `:i` to float `:f` |
 | `:i` | `( :f -- :i )` | Truncate float `:f` to signed native word `:i` |
+| `:i32` | `( :i -- :i32 )` | Sign-extend (or truncate on 64-bit) `:i` to `:i32` |
+| `u:i32` | `( :i -- :i32 )` | Zero-extend (or truncate on 64-bit) `:i` to `:i32` |
+| `:i` | `( :i32 -- :i )` | Sign-extend (or truncate on 16-bit) `:i32` to `:i` |
+| `:f` | `( :i32 -- :f )` | Convert signed `:i32` to float `:f` (ARM64 / RV32) |
+| `:i32` | `( :f -- :i32 )` | Truncate float `:f` to signed `:i32` (ARM64 / RV32) |
 
 ## 5. Control Flow & Static Stack Invariants
 

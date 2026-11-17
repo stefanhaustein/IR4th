@@ -1,0 +1,94 @@
+// i32.ir4 - 32-bit integer (:i32) tests across all targets
+// Expected main() return value: 0
+
+data g_val
+  123456789 :i32
+end
+
+var g_buf :bytes 8
+
+fn check32 ( got :i32 expected :i32 code :i -> :i )
+  got expected == if
+    0 return
+  then
+  code
+end
+
+fn checkw ( got :i expected :i code :i -> :i )
+  got expected == if
+    0 return
+  then
+  code
+end
+
+fn sum_local_i32 ( a :i32 b :i32 | acc :i32 -> :i32 )
+  a b + -> acc
+  acc 100000 :i32 + -> acc
+  acc
+end
+
+fn main ( -> :i )
+  // 1. Literals & conversions
+  -1 0 + :i32 -1 :i32 1 check32 dup if return then drop
+  30000 0 + u:i32 30000 :i32 2 check32 dup if return then drop
+  123456 :i32 100000 :i32 - :i 23456 3 checkw dup if return then drop
+
+  // 2. Locals & calls
+  100000 :i32 200000 :i32 sum_local_i32 400000 :i32 4 check32 dup if return then drop
+
+  // 3. Globals & @i32 / !i32
+  g_val @i32 123456789 :i32 5 check32 dup if return then drop
+  -987654321 :i32 g_buf !i32
+  0x12345678 :i32 g_buf 4 + !i32
+  g_buf @i32 -987654321 :i32 6 check32 dup if return then drop
+  g_buf 4 + @i32 0x12345678 :i32 7 check32 dup if return then drop
+
+  // 4. Stack ops (dup, drop, swap, over, mixed)
+  100000 :i32 dup + 200000 :i32 8 check32 dup if return then drop
+  100000 :i32 200000 :i32 drop 100000 :i32 9 check32 dup if return then drop
+  100000 :i32 200000 :i32 swap - 100000 :i32 10 check32 dup if return then drop
+  100000 :i32 200000 :i32 over + + 400000 :i32 11 check32 dup if return then drop
+  10000 :i32 7 swap :i + 10007 12 checkw dup if return then drop
+
+  // 5. Arithmetic (+, -, *, /, mod, u/, umod)
+  100000 :i32 200000 :i32 + 300000 :i32 13 check32 dup if return then drop
+  100000 :i32 250000 :i32 - -150000 :i32 14 check32 dup if return then drop
+  100000 :i32 300 :i32 * 30000000 :i32 15 check32 dup if return then drop
+  -100000 :i32 300 :i32 * -30000000 :i32 16 check32 dup if return then drop
+  1000000 :i32 7 :i32 / 142857 :i32 17 check32 dup if return then drop
+  1000000 :i32 7 :i32 mod 1 :i32 18 check32 dup if return then drop
+  -1000000 :i32 7 :i32 / -142857 :i32 19 check32 dup if return then drop
+  -1000000 :i32 7 :i32 mod -1 :i32 20 check32 dup if return then drop
+  1000000 :i32 -7 :i32 / -142857 :i32 21 check32 dup if return then drop
+  1000000 :i32 -7 :i32 mod 1 :i32 22 check32 dup if return then drop
+  -1000000 :i32 -7 :i32 / 142857 :i32 23 check32 dup if return then drop
+  -1000000 :i32 -7 :i32 mod -1 :i32 24 check32 dup if return then drop
+  0x80000000 :i32 2 :i32 u/ 0x40000000 :i32 25 check32 dup if return then drop
+  0x80000003 :i32 4 :i32 umod 3 :i32 26 check32 dup if return then drop
+
+  // 6. Bitwise & shifts (and, or, xor, invert, <<, >>, u>>)
+  0x12345678 :i32 0x0F0F0F0F :i32 and 0x02040608 :i32 27 check32 dup if return then drop
+  0x12340000 :i32 0x00005678 :i32 or 0x12345678 :i32 28 check32 dup if return then drop
+  0x12345678 :i32 0xFFFFFFFF :i32 xor 0xEDCBA987 :i32 29 check32 dup if return then drop
+  0x12345678 :i32 invert 0xEDCBA987 :i32 30 check32 dup if return then drop
+  1 :i32 20 << 0x00100000 :i32 31 check32 dup if return then drop
+  -16 :i32 2 >> -4 :i32 32 check32 dup if return then drop
+  -1 :i32 4 u>> 0x0FFFFFFF :i32 33 check32 dup if return then drop
+  123456 :i32 0 << 123456 :i32 34 check32 dup if return then drop
+
+  // 7. Comparisons (==, !=, <, >, <=, >=, u<, u>, u<=, u>=)
+  100000 :i32 100000 :i32 == -1 35 checkw dup if return then drop
+  100000 :i32 100001 :i32 != -1 36 checkw dup if return then drop
+  -100000 :i32 100000 :i32 < -1 37 checkw dup if return then drop
+  100000 :i32 -100000 :i32 < 0 38 checkw dup if return then drop
+  -0x70000000 :i32 0x70000000 :i32 < -1 39 checkw dup if return then drop
+  0x70000000 :i32 -0x70000000 :i32 > -1 40 checkw dup if return then drop
+  100000 :i32 100000 :i32 <= -1 41 checkw dup if return then drop
+  100000 :i32 100000 :i32 >= -1 42 checkw dup if return then drop
+  -1 :i32 1 :i32 u> -1 43 checkw dup if return then drop
+  1 :i32 -1 :i32 u< -1 44 checkw dup if return then drop
+  0x80000000 :i32 0x80000000 :i32 u<= -1 45 checkw dup if return then drop
+  0x80000000 :i32 1 :i32 u>= -1 46 checkw dup if return then drop
+
+  0
+end
