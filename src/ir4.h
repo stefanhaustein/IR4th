@@ -157,9 +157,7 @@ typedef enum {
     OP_F2W,
     OP_W2I32,
     OP_U2I32,
-    OP_I322W,
-    OP_I322F,
-    OP_F2I32
+    OP_I322W
 } IrOp;
 
 typedef struct {

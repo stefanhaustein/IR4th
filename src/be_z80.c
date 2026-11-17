@@ -1341,9 +1341,6 @@ static void z80_op(IrOp op) {
         z80_i32_push_from(I32_OFF_A);
         break;
     }
-    case OP_I322F:
-    case OP_F2I32:
-        ir4_die("unimplemented Z80 i32<->f conversion");
     }
 }
 

@@ -499,10 +499,8 @@ static const BuiltinDef builtins[] = {
     { ":f",      OP_W2F,      TY_W,   TY_NONE, TY_F },
     { ":i",      OP_F2W,      TY_F,   TY_NONE, TY_W },
     { ":i32",    OP_W2I32,    TY_W,   TY_NONE, TY_I32 },
-    { "u:i32",   OP_U2I32,    TY_W,   TY_NONE, TY_I32 },
-    { ":i",      OP_I322W,    TY_I32, TY_NONE, TY_W },
-    { ":f",      OP_I322F,    TY_I32, TY_NONE, TY_F },
-    { ":i32",    OP_F2I32,    TY_F,   TY_NONE, TY_I32 }
+    { ":u32",    OP_U2I32,    TY_W,   TY_NONE, TY_I32 },
+    { ":i",      OP_I322W,    TY_I32, TY_NONE, TY_W }
 };
 
 static IrInstr *emit_ir(IrKind kind, WordIR *w) {

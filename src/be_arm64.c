@@ -554,17 +554,6 @@ static void a64_op(IrOp op) {
         emit32(0x2A0003E0UL); /* MOV W0, W0 (zero-extend 32->64) */
         push_x0();
         break;
-    case OP_I322F:
-        pop_x0();
-        emit32(0x1E620000UL); /* SCVTF D0, W0 */
-        push_d0();
-        break;
-    case OP_F2I32:
-        pop_d0();
-        emit32(0x1E780000UL); /* FCVTZS W0, D0 */
-        emit32(0x93407C00UL); /* SXTW X0, W0 */
-        push_x0();
-        break;
     }
 }
 

@@ -545,7 +545,6 @@ static void rv_op(IrOp op) {
         push_reg(RV_T0);
         break;
     case OP_W2F:
-    case OP_I322F:
         pop_reg(RV_A0);
         if (rv_obj_mode) {
             rv_emit_extern_call("__floatsisf");
@@ -556,7 +555,6 @@ static void rv_op(IrOp op) {
         push_reg(RV_A0);
         break;
     case OP_F2W:
-    case OP_F2I32:
         pop_reg(RV_A0);
         if (rv_obj_mode) {
             rv_emit_extern_call("__fixsfsi");

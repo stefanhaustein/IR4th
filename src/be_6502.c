@@ -1375,9 +1375,6 @@ static void m6502_op(IrOp op) {
         wozfp_push_from(I32_ZP_A);
         break;
     }
-    case OP_I322F:
-    case OP_F2I32:
-        ir4_die("unimplemented 6502 i32<->f conversion");
     }
 }
 

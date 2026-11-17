@@ -216,10 +216,8 @@ Fixed-width memory operations (`@u8`, `@i8`, `!i8`, `@u16`, `@i16`, `!i16`) wide
 | `:f` | `( :i -- :f )` | Convert signed native word `:i` to float `:f` |
 | `:i` | `( :f -- :i )` | Truncate float `:f` to signed native word `:i` |
 | `:i32` | `( :i -- :i32 )` | Sign-extend (or truncate on 64-bit) `:i` to `:i32` |
-| `u:i32` | `( :i -- :i32 )` | Zero-extend (or truncate on 64-bit) `:i` to `:i32` |
+| `:u32` | `( :i -- :i32 )` | Zero-extend (or truncate on 64-bit) `:i` to `:i32` |
 | `:i` | `( :i32 -- :i )` | Sign-extend (or truncate on 16-bit) `:i32` to `:i` |
-| `:f` | `( :i32 -- :f )` | Convert signed `:i32` to float `:f` (ARM64 / RV32) |
-| `:i32` | `( :f -- :i32 )` | Truncate float `:f` to signed `:i32` (ARM64 / RV32) |
 
 ## 5. Control Flow & Static Stack Invariants
 
