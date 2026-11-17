@@ -104,6 +104,17 @@ typedef struct {
 static SrcFile        src_stack[MAX_INCLUDE_DEPTH];
 static u8             src_depth = 0;
 static u16            next_req_group = 1;
+#define MAX_LIB_ROOTS 16
+static const char    *extra_lib_roots[MAX_LIB_ROOTS];
+static int            extra_lib_root_count = 0;
+
+void ir4_add_lib_root(const char *path) {
+    if (!path || path[0] == '\0') return;
+    if (extra_lib_root_count >= MAX_LIB_ROOTS) {
+        ir4_die("too many -I library roots");
+    }
+    extra_lib_roots[extra_lib_root_count++] = path;
+}
 static char           seen_files[MAX_INCLUDES][MAX_PATH];
 static u8             seen_count = 0;
 static const Backend *be;
@@ -361,10 +372,13 @@ static void push_require_ex(const char *name, int lib_only) {
     }
 
     if (found_cnt == 0 && seen_cnt == 0 && name[0] != '/') {
-        const char *roots[3];
+        const char *roots[MAX_LIB_ROOTS + 3];
         char root_bufs[2][MAX_PATH];
         int n_roots = 0;
         int r;
+        for (r = 0; r < extra_lib_root_count; r++) {
+            roots[n_roots++] = extra_lib_roots[r];
+        }
         if (exe_dir[0] != '\0') {
             if (strlen(exe_dir) + 8 < MAX_PATH) {
                 sprintf(root_bufs[0], "%s/../lib", exe_dir);

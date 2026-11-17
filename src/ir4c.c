@@ -13,7 +13,7 @@ static const Platform *const platforms[] = {
 };
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] [--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] [--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {
@@ -59,6 +59,11 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             i++;
             out_path = argv[i];
+        } else if (strcmp(argv[i], "-I") == 0 && i + 1 < argc) {
+            i++;
+            ir4_add_lib_root(argv[i]);
+        } else if (strncmp(argv[i], "-I", 2) == 0 && argv[i][2] != '\0') {
+            ir4_add_lib_root(argv[i] + 2);
         } else if (strcmp(argv[i], "--platform") == 0 && i + 1 < argc) {
             i++;
             platform = argv[i];
