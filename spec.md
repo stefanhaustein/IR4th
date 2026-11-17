@@ -87,11 +87,13 @@ data <name>
   "hi\n" 0 :i8
   align
   100 -200
+  & my_var & my_fn
 end
 ```
 
 * `data <name> ... end` aligns the data pointer to the target's native word size and binds `<name>` (`( -- :a )`).
 * `:i8` emits 1 byte (`-128..255`). `:i16` emits 2 little-endian bytes (`-32768..65535`). `:i32` emits 4 little-endian bytes (`-2147483648..4294967295`). `:i` (or a bare integer without a width specifier) emits 1 native word (`word_bytes`).
+* `& <ident>` emits the `addr_bytes`-wide relocated address of a previously declared `var`, `data`, or `fn` (`fwd` allowed; functions referenced via `&` are retained by dead-code elimination).
 * `"..."` emits raw string bytes (supporting `\n`, `\r`, `\t`, `\0`, `\\`, `\"` escapes) without an implicit NUL terminator.
 * `align` advances the data pointer to the next multiple of `word_bytes`.
 * `data` blocks are semantically read-only and must be declared before they are referenced.
