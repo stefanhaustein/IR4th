@@ -1,0 +1,113 @@
+var __heap_ptr :a
+var __heap_free :a
+
+fn fillchar ( dst :a len :i val :i )
+  begin
+    len 0 >
+  while
+    val dst !i8
+    dst 1 + -> dst
+    len 1 - -> len
+  repeat
+end
+
+fn memcpy ( dst :a src :a len :i )
+  dst src u> if
+    dst len + -> dst
+    src len + -> src
+    begin
+      len 0 >
+    while
+      src 1 - -> src
+      dst 1 - -> dst
+      src @u8 dst !i8
+      len 1 - -> len
+    repeat
+    return
+  then
+  begin
+    len 0 >
+  while
+    src @u8 dst !i8
+    src 1 + -> src
+    dst 1 + -> dst
+    len 1 - -> len
+  repeat
+end
+
+fn memcmp ( a :a b :a len :i | d :i -> :i )
+  begin
+    len 0 >
+  while
+    a @u8 b @u8 - -> d
+    d 0 != if d return then
+    a 1 + -> a
+    b 1 + -> b
+    len 1 - -> len
+  repeat
+  0
+end
+
+fn heap_reset ( )
+  __heap_start -> __heap_ptr
+  0 :a -> __heap_free
+end
+
+fn heap_alloc ( bytes :i | need :i prev :a cur :a bsz :i rem :i nxt :a split :a -> :a )
+  __heap_ptr 0 :a == if __heap_start -> __heap_ptr then
+  bytes 8 < if 8 -> bytes then
+  bytes 7 + -8 and 8 + -> need
+  0 :a -> prev
+  __heap_free -> cur
+  begin
+    cur 0 :a !=
+  while
+    cur @i -> bsz
+    bsz need >= if
+      cur 8 + @a -> nxt
+      bsz need - -> rem
+      rem 16 >= if
+        cur need + -> split
+        rem split !i
+        nxt split 8 + !a
+        need cur !i
+        split -> nxt
+      then
+      prev 0 :a == if nxt -> __heap_free else nxt prev 8 + !a then
+      cur 8 + return
+    then
+    cur -> prev
+    cur 8 + @a -> cur
+  repeat
+  __heap_ptr -> cur
+  need cur !i
+  cur need + -> __heap_ptr
+  cur 8 +
+end
+
+fn heap_free ( p :a | blk :a prev :a cur :a )
+  p 0 :a == if return then
+  p 8 - -> blk
+  0 :a -> prev
+  __heap_free -> cur
+  begin
+    cur 0 :a != if cur blk u< else 0 then
+  while
+    cur -> prev
+    cur 8 + @a -> cur
+  repeat
+  cur blk 8 + !a
+  prev 0 :a == if blk -> __heap_free else blk prev 8 + !a then
+  cur 0 :a != if
+    blk blk @i + cur == if
+      blk @i cur @i + blk !i
+      cur 8 + @a blk 8 + !a
+    then
+  then
+  prev 0 :a != if
+    prev prev @i + blk == if
+      prev @i blk @i + prev !i
+      blk 8 + @a prev 8 + !a
+    then
+  then
+end

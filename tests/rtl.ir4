@@ -1,0 +1,91 @@
+// rtl.ir4 - Portable RTL tests (stdio.ir4, mem.ir4, pascal.ir4)
+// Expected main() output ends with 0 (return code)
+
+require pascal.ir4
+
+data s_hi  2 :i8 "Hi" end
+data s_wld 5 :i8 "World" end
+data s_hi2 2 :i8 "Hi" end
+data s_exp 7 :i8 "HiWorld" end
+data c_msg "RTL:" 0 :i8 end
+
+var buf1 :bytes 16
+var buf2 :bytes 16
+
+fn assert_eq ( got :i expected :i code :i -> :i )
+  got expected == if 0 return then
+  code
+end
+
+fn main ( | p1 :a p2 :a -> :i )
+  // stdio formatting smoke test
+  c_msg prints
+  -42 puti
+  32 emit
+  65535 putu
+  32 emit
+  7 4 puti_w
+  32 emit
+  0xBEEF puthex4
+  32 emit
+
+  // mem.ir4: fillchar, memcpy, memcmp
+  buf1 8 65 fillchar
+  buf1 @u8 65 1 assert_eq
+  dup 0 != if return then drop
+  buf1 7 + @u8 65 2 assert_eq
+  dup 0 != if return then drop
+
+  buf2 buf1 8 memcpy
+  buf1 buf2 8 memcmp 0 3 assert_eq
+  dup 0 != if return then drop
+
+  66 buf2 3 + !i8
+  buf1 buf2 8 memcmp 0 < -1 4 assert_eq
+  dup 0 != if return then drop
+
+  // overlapping memcpy (dst > src, e.g. shifting "HiWorld" right by 2)
+  buf2 s_exp pas_strcopy
+  buf2 3 + buf2 1 + 5 memcpy
+  buf2 3 + @u8 72 15 assert_eq
+  dup 0 != if return then drop
+  buf2 7 + @u8 114 16 assert_eq
+  dup 0 != if return then drop
+
+  // heap_alloc / heap_free (with coalescing) / heap_reset
+  10 heap_alloc -> p1
+  4 heap_alloc -> p2
+  p2 p1 - 24 5 assert_eq
+  dup 0 != if return then drop
+  p1 __heap_start 8 + == -1 6 assert_eq
+  dup 0 != if return then drop
+  p1 heap_free
+  p2 heap_free
+  32 heap_alloc p1 == -1 7 assert_eq
+  dup 0 != if return then drop
+  heap_reset
+  8 heap_alloc p1 == -1 14 assert_eq
+  dup 0 != if return then drop
+
+  // pascal.ir4: abs, strlen, strcopy, streq, strconcat, prints
+  -123 pas_abs 123 8 assert_eq
+  dup 0 != if return then drop
+  s_hi pas_strlen 2 9 assert_eq
+  dup 0 != if return then drop
+  s_hi s_hi2 pas_streq -1 10 assert_eq
+  dup 0 != if return then drop
+  s_hi s_wld pas_streq 0 11 assert_eq
+  dup 0 != if return then drop
+
+  buf1 s_hi pas_strcopy
+  buf1 s_hi pas_streq -1 12 assert_eq
+  dup 0 != if return then drop
+
+  buf2 s_hi s_wld pas_strconcat
+  buf2 s_exp pas_streq -1 13 assert_eq
+  dup 0 != if return then drop
+
+  buf2 pas_prints
+  cr
+  0
+end

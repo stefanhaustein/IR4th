@@ -1,0 +1,36 @@
+require stdio.ir4
+require mem.ir4
+
+fn pas_abs ( n :i -> :i )
+  n 0 < if 0 n - return then
+  n
+end
+
+fn pas_strlen ( s :a -> :i )
+  s @u8
+end
+
+fn pas_prints ( s :a )
+  s 1 + s @u8 type
+end
+
+fn pas_strcopy ( dst :a src :a | len :i )
+  src @u8 -> len
+  dst src len 1 + memcpy
+end
+
+fn pas_streq ( a :a b :a | la :i lb :i -> :i )
+  a @u8 -> la
+  b @u8 -> lb
+  la lb != if 0 return then
+  a 1 + b 1 + la memcmp 0 ==
+end
+
+fn pas_strconcat ( dst :a a :a b :a | la :i lb :i )
+  a @u8 -> la
+  b @u8 -> lb
+  la lb + 255 > if 255 la - -> lb then
+  la lb + dst !i8
+  dst 1 + a 1 + la memcpy
+  dst 1 + la + b 1 + lb memcpy
+end
