@@ -226,6 +226,27 @@ static FILE *try_open_require(const char *path, int *already_seen) {
     return fopen(path, "r");
 }
 
+static char exe_dir[MAX_PATH] = "";
+
+void ir4_set_exe_path(const char *exe_path) {
+    const char *sep = NULL;
+    const char *p;
+    size_t len;
+    exe_dir[0] = '\0';
+    if (!exe_path) return;
+    for (p = exe_path; *p; p++) {
+        if (*p == '/' || *p == '\\') sep = p;
+    }
+    if (!sep) return;
+    len = (size_t)(sep - exe_path);
+    if (len == 0) {
+        strcpy(exe_dir, "/");
+    } else if (len < sizeof(exe_dir)) {
+        memcpy(exe_dir, exe_path, len);
+        exe_dir[len] = '\0';
+    }
+}
+
 static void push_require(const char *name) {
     char cands[3][MAX_PATH];
     int n_cands = 0;
@@ -259,12 +280,29 @@ static void push_require(const char *name) {
     }
 
     if (!fp && name[0] != '/') {
-        for (c = 0; c < n_cands; c++) {
-            if (4 + strlen(cands[c]) >= sizeof(path)) continue;
-            sprintf(path, "lib/%s", cands[c]);
-            fp = try_open_require(path, &seen);
-            if (seen) return;
-            if (fp) break;
+        const char *roots[3];
+        char root_bufs[2][MAX_PATH];
+        int n_roots = 0;
+        int r;
+        if (exe_dir[0] != '\0') {
+            if (strlen(exe_dir) + 8 < MAX_PATH) {
+                sprintf(root_bufs[0], "%s/../lib", exe_dir);
+                roots[n_roots++] = root_bufs[0];
+            }
+            if (strlen(exe_dir) + 5 < MAX_PATH) {
+                sprintf(root_bufs[1], "%s/lib", exe_dir);
+                roots[n_roots++] = root_bufs[1];
+            }
+        }
+        roots[n_roots++] = "lib";
+        for (r = 0; r < n_roots && !fp; r++) {
+            for (c = 0; c < n_cands; c++) {
+                if (strlen(roots[r]) + 1 + strlen(cands[c]) >= sizeof(path)) continue;
+                sprintf(path, "%s/%s", roots[r], cands[c]);
+                fp = try_open_require(path, &seen);
+                if (seen) return;
+                if (fp) break;
+            }
         }
     }
 

@@ -30,6 +30,8 @@ int main(int argc, char **argv) {
     FILE *in_fp;
     FILE *out_fp;
 
+    if (argc > 0 && argv[0]) ir4_set_exe_path(argv[0]);
+
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
             i++;
