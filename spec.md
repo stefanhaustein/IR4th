@@ -9,6 +9,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 ### 1.1 Tokenization & Whitespace
 * Programs consist of **whitespace-delimited tokens** (spaces, tabs, newlines).
 * Line comments start with `//` and extend to the end of the line.
+* `#line <num>` or `#line <num> "<filename>"` sets the current source line number (and optionally filename) for subsequent error messages.
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:i32`, `:a`, `:f`).

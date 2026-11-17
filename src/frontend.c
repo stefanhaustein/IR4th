@@ -186,23 +186,58 @@ static int skip_ws_and_comments(void) {
     }
 }
 
-static int next_tok(char *buf) {
-    int c = skip_ws_and_comments();
-    u8 len = 0;
+static void parse_line_directive(SrcFile *cur, int last_c) {
+    int c = last_c;
+    u32 new_line = 0;
+    int has_digits = 0;
 
-    if (c == EOF) return 0;
-
-    {
-        SrcFile *cur = &src_stack[src_depth - 1];
-        while (c != EOF && !isspace((unsigned char)c)) {
-            if (len >= MAX_TOK - 1) ir4_die("token too long");
-            buf[len++] = (char)c;
+    if (c == '\n' || c == EOF) ir4_die("expected line number after '#line'");
+    while (c == ' ' || c == '\t') c = fgetc(cur->fp);
+    while (c >= '0' && c <= '9') {
+        new_line = new_line * 10 + (u32)(c - '0');
+        has_digits = 1;
+        c = fgetc(cur->fp);
+    }
+    if (!has_digits || new_line == 0) ir4_die("invalid line number in '#line'");
+    while (c == ' ' || c == '\t') c = fgetc(cur->fp);
+    if (c == '"') {
+        size_t plen = 0;
+        c = fgetc(cur->fp);
+        while (c != EOF && c != '\n' && c != '"') {
+            if (plen < sizeof(cur->path) - 1) cur->path[plen++] = (char)c;
             c = fgetc(cur->fp);
         }
-        if (c == '\n') cur->line_num++;
+        if (c != '"') ir4_die("unterminated filename in '#line'");
+        cur->path[plen] = '\0';
+        c = fgetc(cur->fp);
     }
-    buf[len] = '\0';
-    return 1;
+    while (c != EOF && c != '\n') c = fgetc(cur->fp);
+    cur->line_num = (u16)new_line;
+}
+
+static int next_tok(char *buf) {
+    for (;;) {
+        int c = skip_ws_and_comments();
+        u8 len = 0;
+
+        if (c == EOF) return 0;
+
+        {
+            SrcFile *cur = &src_stack[src_depth - 1];
+            while (c != EOF && !isspace((unsigned char)c)) {
+                if (len >= MAX_TOK - 1) ir4_die("token too long");
+                buf[len++] = (char)c;
+                c = fgetc(cur->fp);
+            }
+            buf[len] = '\0';
+            if (strcmp(buf, "#line") == 0) {
+                parse_line_directive(cur, c);
+                continue;
+            }
+            if (c == '\n') cur->line_num++;
+        }
+        return 1;
+    }
 }
 
 static void resolve_path(const char *base_path, const char *rel, char *out, size_t out_sz) {
