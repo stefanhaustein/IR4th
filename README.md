@@ -39,7 +39,16 @@ fn fib ( n :i -> :i )
 end
 ```
 
-See [examples/](examples/) and [tests/](tests/) for more programs (including `core.ir4`, `float.ir4`, `math.ir4`, `rtl.ir4`, and `data.ir4`).
+See [tests/](tests/) for the full test suite.
+
+## Compiler Optimizations
+
+- **Dead-code elimination:** Only functions reachable from `main` and `init` blocks are emitted.
+- **Constant folding & casts:** Compile-time folding for integer arithmetic/comparisons and literal casts (`:a`, `:i32`, `:u32`).
+- **Strength reduction:** Power-of-2 `*`, `u/`, and `umod` by constants lower to shifts (`<<`, `u>>`) and masks (`and`); multiply/unsigned-divide by `1` is elided.
+- **Immediate lowering:** Constant-operand `+`/`-`, comparisons, shifts, and base+offset memory accesses emit immediate instructions where supported by the target.
+- **Static locals (Z80 / 6502):** Non-recursive functions place locals in static RAM rather than frame-pointer stacks.
+- **On-demand runtimes:** Math, `:i32`, and floating-point helpers are embedded only when referenced.
 
 ## Building & Testing
 
@@ -61,13 +70,13 @@ Compile with `ir4c`:
 
 ## Repository Layout
 
-- [src/](src/) — Compiler sources (`ir4c.c`, `ir4.h`, `frontend.c`, `frontend.h`, `codebuf.c`, `codebuf.h`, `be_z80*`, `be_6502*`, `be_arm64*`, `be_rv32*`)
-- [lib/](lib/) — Portable standard library (`stdio.ir4`, `mem.ir4`, `math.ir4`, `pascal.ir4`) and platform `io.ir4` (`cpm/`, `sim65/`, `c64/`, `arm64/`, `virt/`)
-- [examples/](examples/) — Standalone example programs (`hello.ir4`)
-- [tests/](tests/) — Test suite (`fib.ir4`, `core.ir4`, `muldiv.ir4`, `mem.ir4`, `float.ir4`, `math.ir4`, `rtl.ir4`, `req.ir4`, `data.ir4`, `ext.ir4`, and negative tests in [tests/errors/](tests/errors/))
-- [tools/](tools/) — Runtime generators (`rt_util.py`, `gen_math48.py`, `gen_wozfp.py`, `gen_rv32_fp.py`, `rv32_fp.c`)
+- [src/](src/) — Compiler frontend, code buffer, and target backends
+- [lib/](lib/) — Portable standard library and platform I/O modules
+- [examples/](examples/) — Standalone example programs
+- [tests/](tests/) — Cross-target test suite and negative compiler tests in [tests/errors/](tests/errors/)
+- [tools/](tools/) — Relocatable runtime generators
 - [spec.md](spec.md) — IR4th v0.3 language specification
 
 ## License
 
-Licensed under the **GNU General Public License v3.0 or later (GPLv3+)** with a compiled-output exception and a separate notice for Z80 `math48`. See [LICENSE](LICENSE) (and [GPLv3](GPLv3) for the full GPLv3 text).
+Licensed under the **GNU General Public License v3.0 or later (GPLv3+)** with a compiled-output exception and separate notices for third-party float runtimes (`math48` and `wozfp`). See [LICENSE](LICENSE) (and [GPLv3](GPLv3) for the full GPLv3 text).
