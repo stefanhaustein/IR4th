@@ -80,3 +80,7 @@ Compile with `ir4c`:
 ## License
 
 Licensed under the **GNU General Public License v3.0 or later (GPLv3+)** with a compiled-output exception and separate notices for third-party float runtimes (`math48` and `wozfp`). See [LICENSE](LICENSE) (and [GPLv3](GPLv3) for the full GPLv3 text).
+
+---
+
+*See also [hi5](https://github.com/stefanhaustein/hi5), an earlier Kotlin Multiplatform Z80 prototype.*
