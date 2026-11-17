@@ -8,11 +8,15 @@ version.
 
 See GPLv3 for the full text of the GNU General Public License v3.0.
 
-Third-Party Components (Z80 math48)
------------------------------------
+Third-Party Components
+----------------------
 Optional Z80 48-bit floating-point support via math48 (tools/math48.asm and
 src/be_z80_math48.h) is NOT covered by the GPLv3+. math48 is copyrighted by
 Anders Hejlsberg (1980) and is subject to its own terms.
+
+Optional 6502 32-bit floating-point support via wozfp (tools/wozfp.asm and
+src/be_6502_wozfp.h) is NOT covered by the GPLv3+. These routines were written
+by R. Rankin and S. Wozniak (1976) and are subject to their original terms.
 
 Compiled Output Exception
 -------------------------
