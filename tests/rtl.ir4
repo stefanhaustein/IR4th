@@ -17,6 +17,11 @@ fn assert_eq ( got :i expected :i code :i -> :i )
   code
 end
 
+fn mutate_copy ( b :bytes 16 -> :i )
+  99 b !i8
+  b @u8
+end
+
 fn main ( | p1 :a p2 :a -> :i )
   // stdio formatting smoke test
   c_msg prints
@@ -87,5 +92,11 @@ fn main ( | p1 :a p2 :a -> :i )
 
   buf2 pas_prints
   cr
+
+  // :bytes parameter (copy-by-value into callee frame)
+  buf1 mutate_copy 99 17 assert_eq
+  dup 0 != if return then drop
+  buf1 @u8 2 18 assert_eq
+  dup 0 != if return then drop
   0
 end

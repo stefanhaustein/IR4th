@@ -27,9 +27,9 @@ typedef signed long    i32;
 
 #define MAX_TOK    32
 #define MAX_LOCALS 16
-#define MAX_CODE   32768
-#define MAX_DATA   4096
-#define MAX_RELOCS 8192
+#define MAX_CODE   65535
+#define MAX_DATA   16384
+#define MAX_RELOCS 16384
 
 /* Stack types (v0.3) */
 typedef enum {
@@ -177,6 +177,7 @@ typedef struct {
     int  (*cmp_imm)(IrOp op, i32 imm);
     int  (*mem_imm)(IrOp op, i32 off);
     int  (*data_mem)(IrOp op, u16 data_offset);
+    int  (*local_mem)(u8 slot, i32 off, IrOp op, u16 stack_bytes);
 
     u16  (*emit_br_fwd)(BranchCond cond);
     void (*emit_br_back)(BranchCond cond, u16 target_addr);

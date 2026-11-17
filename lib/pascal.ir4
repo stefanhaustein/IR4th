@@ -1,5 +1,6 @@
 require stdio.ir4
 require mem.ir4
+require math.ir4
 
 fn pas_abs ( n :i -> :i )
   n 0 < if 0 n - return then
@@ -12,6 +13,23 @@ end
 
 fn pas_prints ( s :a )
   s 1 + s @u8 type
+end
+
+fn pas_prints_w ( s :a w :i | len :i )
+  s @u8 -> len
+  begin
+    w len >
+  while
+    32 emit
+    w 1 - -> w
+  repeat
+  s pas_prints
+end
+
+fn pas_char2str ( c :i dst :a -> :a )
+  1 dst !i8
+  c dst 1 + !i8
+  dst
 end
 
 fn pas_strcopy ( dst :a src :a | len :i )
@@ -33,4 +51,268 @@ fn pas_strconcat ( dst :a a :a b :a | la :i lb :i )
   la lb + dst !i8
   dst 1 + a 1 + la memcpy
   dst 1 + la + b 1 + lb memcpy
+end
+
+fn pas_stradd ( a :a b :a dst :a -> :a )
+  dst a b pas_strconcat
+  dst
+end
+
+fn pas_copy ( s :a start :i cnt :i dst :a | len :i avail :i -> :a )
+  s @u8 -> len
+  start 1 < if 1 -> start then
+  cnt 0 <= start len > or if
+    0 dst !i8
+    dst return
+  then
+  len start - 1 + -> avail
+  cnt avail > if avail -> cnt then
+  cnt dst !i8
+  dst 1 + s start + cnt memcpy
+  dst
+end
+
+fn pas_pos ( sub :a s :a | lsub :i ls :i i :i lim :i -> :i )
+  sub @u8 -> lsub
+  s @u8 -> ls
+  lsub 0 == lsub ls > or if 0 return then
+  ls lsub - 1 + -> lim
+  1 -> i
+  begin
+    i lim <=
+  while
+    sub 1 + s i + lsub memcmp 0 == if i return then
+    i 1 + -> i
+  repeat
+  0
+end
+
+fn pas_strcmp ( a :a b :a | la :i lb :i minl :i d :i -> :i )
+  a @u8 -> la
+  b @u8 -> lb
+  la lb < if la -> minl else lb -> minl then
+  a 1 + b 1 + minl memcmp -> d
+  d 0 != if d return then
+  la lb -
+end
+
+fn pas_set_empty ( dst :a -> :a )
+  dst 32 0 fillchar
+  dst
+end
+
+fn pas_set_incl ( s :a e :i | p :a -> :a )
+  e 0 < e 255 > or if s return then
+  s e 3 >> + -> p
+  p @u8 1 e 7 and << or p !i8
+  s
+end
+
+fn pas_set_range ( s :a lo :i hi :i -> :a )
+  begin
+    lo hi <=
+  while
+    s lo pas_set_incl drop
+    lo 1 + -> lo
+  repeat
+  s
+end
+
+fn pas_set_in ( e :i s :a -> :i )
+  e 0 < e 255 > or if 0 return then
+  s e 3 >> + @u8 1 e 7 and << and 0 !=
+end
+
+fn pas_set_add ( a :a b :a dst :a | i :i -> :a )
+  0 -> i
+  begin
+    i 32 <
+  while
+    a i + @u8 b i + @u8 or dst i + !i8
+    i 1 + -> i
+  repeat
+  dst
+end
+
+fn pas_set_sub ( a :a b :a dst :a | i :i -> :a )
+  0 -> i
+  begin
+    i 32 <
+  while
+    a i + @u8 b i + @u8 invert and dst i + !i8
+    i 1 + -> i
+  repeat
+  dst
+end
+
+fn pas_set_mul ( a :a b :a dst :a | i :i -> :a )
+  0 -> i
+  begin
+    i 32 <
+  while
+    a i + @u8 b i + @u8 and dst i + !i8
+    i 1 + -> i
+  repeat
+  dst
+end
+
+fn pas_set_eq ( a :a b :a -> :i )
+  a b 32 memcmp 0 ==
+end
+
+fn pas_set_leq ( a :a b :a | i :i -> :i )
+  0 -> i
+  begin
+    i 32 <
+  while
+    a i + @u8 b i + @u8 invert and 0 != if 0 return then
+    i 1 + -> i
+  repeat
+  -1
+end
+
+fn pas_set_geq ( a :a b :a -> :i )
+  b a pas_set_leq
+end
+
+fn pas_halt ( code :i )
+  code drop
+end
+
+fn pas_val_float ( s :a dst :a err :a | len :i i :i neg :i exp :i eneg :i hasd :i c :i val :f fracv :f scale :f )
+  s @u8 -> len
+  1 -> i
+  0 -> neg
+  0 -> hasd
+  0.0 -> val
+  0.0 -> fracv
+  1.0 -> scale
+
+  begin
+    i len <=
+  while
+    s i + @u8 32 == if i 1 + -> i else len 1 + -> i then
+  repeat
+  // re-skip leading spaces cleanly
+  1 -> i
+  begin
+    i len <= if s i + @u8 32 == else 0 then
+  while
+    i 1 + -> i
+  repeat
+
+  i len <= if
+    s i + @u8 -> c
+    c 45 == if 1 -> neg i 1 + -> i else c 43 == if i 1 + -> i then then
+  then
+
+  begin
+    i len <= if s i + @u8 -> c c 48 >= c 57 <= and else 0 then
+  while
+    1 -> hasd
+    val 10.0 * c 48 - :f + -> val
+    i 1 + -> i
+  repeat
+
+  i len <= if
+    s i + @u8 46 == if
+      i 1 + -> i
+      begin
+        i len <= if s i + @u8 -> c c 48 >= c 57 <= and else 0 then
+      while
+        1 -> hasd
+        scale 10.0 * -> scale
+        fracv c 48 - :f scale / + -> fracv
+        i 1 + -> i
+      repeat
+    then
+  then
+
+  val fracv + -> val
+  hasd 0 == if
+    0.0 dst !f
+    i err !i16
+    return
+  then
+
+  i len <= if
+    s i + @u8 -> c
+    c 69 == c 101 == or if
+      i 1 + -> i
+      0 -> eneg
+      0 -> exp
+      i len <= if
+        s i + @u8 -> c
+        c 45 == if 1 -> eneg i 1 + -> i else c 43 == if i 1 + -> i then then
+      then
+      0 -> hasd
+      begin
+        i len <= if s i + @u8 -> c c 48 >= c 57 <= and else 0 then
+      while
+        1 -> hasd
+        exp 10 * c 48 - + -> exp
+        i 1 + -> i
+      repeat
+      hasd 0 == if
+        0.0 dst !f
+        i err !i16
+        return
+      then
+      begin
+        exp 0 >
+      while
+        eneg if val 10.0 / -> val else val 10.0 * -> val then
+        exp 1 - -> exp
+      repeat
+    then
+  then
+
+  i len <= if
+    0.0 dst !f
+    i err !i16
+    return
+  then
+
+  neg if val fnegate -> val then
+  val dst !f
+  0 err !i16
+end
+
+fn pas_putf_fix ( x :f w :i d :i | neg :i ip :i k :i dig :i rnd :f fr :f )
+  0 -> neg
+  x 0.0 < if
+    1 -> neg
+    x fnegate -> x
+  then
+  d 0 < if 0 -> d then
+  d 6 > if 6 -> d then
+  0.5 -> rnd
+  0 -> k
+  begin
+    k d <
+  while
+    rnd 10.0 / -> rnd
+    k 1 + -> k
+  repeat
+  x rnd + -> x
+  x fint fround -> ip
+  x frac -> fr
+  neg if 45 emit then
+  ip putu
+  d 0 > if
+    46 emit
+    0 -> k
+    begin
+      k d <
+    while
+      fr 10.0 * -> fr
+      fr fint fround -> dig
+      dig 9 > if 9 -> dig then
+      dig 0 < if 0 -> dig then
+      dig 48 + emit
+      fr dig :f - -> fr
+      k 1 + -> k
+    repeat
+  then
+  w drop
 end

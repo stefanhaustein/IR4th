@@ -1093,6 +1093,12 @@ static void z80_op(IrOp op) {
     }
 }
 
+static int z80_local_mem(u8 slot, i32 off, IrOp op, u16 stack_bytes) {
+    (void)stack_bytes;
+    if (!z80_is_static_slot[slot]) return 0;
+    return z80_data_mem(op, (u16)(z80_static_base + z80_local_off[slot] + off));
+}
+
 static u16 z80_emit_br_fwd(BranchCond cond) {
     u16 patch_pos;
     if (cond == BR_JZ) {
@@ -1166,6 +1172,7 @@ const Backend be_z80 = {
     NULL,
     z80_mem_imm,
     z80_data_mem,
+    z80_local_mem,
     z80_emit_br_fwd,
     z80_emit_br_back,
     z80_patch_fwd,

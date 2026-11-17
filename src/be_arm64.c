@@ -565,6 +565,7 @@ const Backend be_arm64 = {
     a64_cmp_imm,
     a64_mem_imm,
     NULL,
+    NULL,
     a64_emit_br_fwd,
     a64_emit_br_back,
     a64_patch_fwd,

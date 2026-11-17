@@ -16,6 +16,8 @@ static void c64_begin(u16 base) {
     u16 stub_end;
     u16 next_line;
 
+    be_6502_set_ram_top(0xD000);
+
     /* 10 SYS <addr> : 2-byte next_line + 2-byte line_num + 1-byte SYS(0x9E) + digits + NUL + 2-byte end */
     sprintf(digits, "%u", (unsigned)(base + 12));
     while (digits[len]) len++;
@@ -36,7 +38,10 @@ static void c64_begin(u16 base) {
     emit16(0x0000);
     (void)stub_end;
 
-    /* JMP entry_addr (patched by c64_end) */
+    /* Unmap BASIC ROM ($A000-$BFFF -> RAM) while keeping KERNAL/I/O, then JMP entry_addr */
+    emit8_8(M6502_LDA_ZP, 0x01);
+    emit8_8(M6502_AND_IMM, 0xFE);
+    emit8_8(M6502_STA_ZP, 0x01);
     emit8(M6502_JMP);
     c64_jmp_pc = cb_pc();
     emit16(0x0000);
@@ -105,7 +110,10 @@ static void c64_end(int main_idx) {
         emit8(M6502_JSR); putchar_call2 = cb_pc(); emit16(0x0000);
     }
 
-    /* Return to BASIC */
+    /* Restore BASIC ROM before returning to READY. */
+    emit8_8(M6502_LDA_ZP, 0x01);
+    emit8_8(M6502_ORA_IMM, 0x01);
+    emit8_8(M6502_STA_ZP, 0x01);
     emit8(M6502_RTS);
 
     if (sig->out_count == 1) {

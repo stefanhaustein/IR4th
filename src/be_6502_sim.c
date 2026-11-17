@@ -9,6 +9,7 @@
 
 static void sim_begin(u16 base) {
     (void)base;
+    be_6502_set_ram_top(0xF000);
     /* Reserve JMP 0x0000 at base; patched by sim_end() */
     emit8_16(M6502_JMP, 0x0000);
 }

@@ -654,6 +654,7 @@ const Backend be_rv32 = {
     rv_cmp_imm,
     rv_mem_imm,
     NULL,
+    NULL,
     rv_emit_br_fwd,
     rv_emit_br_back,
     rv_patch_fwd,

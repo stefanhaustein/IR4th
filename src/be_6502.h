@@ -23,6 +23,8 @@ enum {
     M6502_INX      = 0xE8,
 
     /* Immediate */
+    M6502_ORA_IMM  = 0x09,
+    M6502_AND_IMM  = 0x29,
     M6502_EOR_IMM  = 0x49,
     M6502_ADC_IMM  = 0x69,
     M6502_LDY_IMM  = 0xA0,
@@ -64,5 +66,8 @@ enum {
     M6502_BNE      = 0xD0,
     M6502_BEQ      = 0xF0
 };
+
+void be_6502_set_zp(u8 zp);
+void be_6502_set_ram_top(u16 top);
 
 #endif /* BE_6502_H */

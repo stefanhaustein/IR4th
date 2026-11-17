@@ -14,6 +14,13 @@ static u16 stack_data_off  = 0;
 static u16 locals_data_off = 0;
 static u16 lfp_data_off    = 0;
 static int data_inited     = 0;
+static u16 bfp_data_off    = 0;
+static int big_inited      = 0;
+static u16 m6502_ram_top   = 0xE000;
+
+void be_6502_set_ram_top(u16 top) {
+    m6502_ram_top = top;
+}
 static u16 mul16_addr      = 0;
 static u16 udivmod16_addr  = 0;
 static u16 sdivmod16_addr  = 0;
@@ -29,6 +36,13 @@ static void ensure_data_alloc(void) {
         locals_data_off = cb_alloc_data(256, 1);
         lfp_data_off    = cb_alloc_data(1, 1);
         data_inited = 1;
+    }
+}
+
+static void ensure_big_alloc(void) {
+    if (!big_inited) {
+        bfp_data_off = cb_alloc_data(2, 1);
+        big_inited = 1;
     }
 }
 
@@ -74,7 +88,9 @@ static u16 m6502_cur_addr(void) {
 }
 
 static u16 m6502_local_off[MAX_LOCALS];
+static u8  m6502_local_is_big[MAX_LOCALS];
 static u16 m6502_frame_bytes = 0;
+static u16 m6502_big_bytes = 0;
 static u8  m6502_static_frame = 0;
 static u16 m6502_static_base = 0;
 
@@ -95,23 +111,33 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
     (void)name;
 
     m6502_frame_bytes = 0;
+    m6502_big_bytes = 0;
     for (i = 0; i < total_locals; i++) {
         u16 sz = (locals[i].size > 0) ? locals[i].size
                                       : (u16)((locals[i].type == TY_F) ? 4 : 2);
-        if (is_recursive && (u32)m6502_frame_bytes + sz > 255) {
-            ir4_die("6502 local frame exceeds 255 bytes");
+        if (is_recursive && locals[i].size > 0) {
+            m6502_local_is_big[i] = 1;
+            m6502_local_off[i] = m6502_big_bytes;
+            m6502_big_bytes += sz;
+        } else {
+            m6502_local_is_big[i] = 0;
+            if (is_recursive && (u32)m6502_frame_bytes + sz > 255) {
+                ir4_die("6502 local frame exceeds 255 bytes");
+            }
+            m6502_local_off[i] = m6502_frame_bytes;
+            m6502_frame_bytes += sz;
         }
-        m6502_local_off[i] = m6502_frame_bytes;
-        m6502_frame_bytes += sz;
     }
 
     m6502_static_frame = (u8)(!is_recursive);
     m6502_static_base = 0;
 
-    if (m6502_frame_bytes > 0) {
-        if (m6502_static_frame) {
+    if (m6502_static_frame) {
+        if (m6502_frame_bytes > 0) {
             m6502_static_base = cb_alloc_data(m6502_frame_bytes, 1);
-        } else {
+        }
+    } else {
+        if (m6502_frame_bytes > 0) {
             ensure_data_alloc();
             /* Save caller's lfp and allocate m6502_frame_bytes downward */
             emit8(M6502_LDA_ABS); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* LDA lfp */
@@ -120,6 +146,28 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
             emit8_8(M6502_SBC_IMM, (u8)m6502_frame_bytes);
             emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* STA lfp */
             emit8(M6502_TAY); /* TAY (Y = new lfp) */
+        }
+        if (m6502_big_bytes > 0) {
+            ensure_big_alloc();
+            /* Lazy-init bfp = m6502_ram_top if bfp+1 == 0 */
+            emit8(M6502_LDA_ABS); cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1)); emit16(0x0000);
+            emit8_8(M6502_BNE, 10);
+            emit8_8(M6502_LDA_IMM, (u8)(m6502_ram_top & 0xFF));
+            emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), bfp_data_off); emit16(0x0000);
+            emit8_8(M6502_LDA_IMM, (u8)(m6502_ram_top >> 8));
+            emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1)); emit16(0x0000);
+            /* Save caller's bfp and allocate m6502_big_bytes downward */
+            emit8(M6502_LDA_ABS); cb_add_data_reloc(cb_pc(), bfp_data_off); emit16(0x0000);
+            emit8(M6502_PHA);
+            emit8(M6502_LDA_ABS); cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1)); emit16(0x0000);
+            emit8(M6502_PHA);
+            emit8(M6502_SEC);
+            emit8(M6502_LDA_ABS); cb_add_data_reloc(cb_pc(), bfp_data_off); emit16(0x0000);
+            emit8_8(M6502_SBC_IMM, (u8)(m6502_big_bytes & 0xFF));
+            emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), bfp_data_off); emit16(0x0000);
+            emit8(M6502_LDA_ABS); cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1)); emit16(0x0000);
+            emit8_8(M6502_SBC_IMM, (u8)(m6502_big_bytes >> 8));
+            emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1)); emit16(0x0000);
         }
     }
 
@@ -156,10 +204,19 @@ static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_lo
     (void)locals;
     (void)total_locals;
 
-    if (!m6502_static_frame && m6502_frame_bytes > 0) {
-        ensure_data_alloc();
-        emit8(M6502_PLA);
-        emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* STA lfp */
+    if (!m6502_static_frame) {
+        if (m6502_big_bytes > 0) {
+            ensure_big_alloc();
+            emit8(M6502_PLA);
+            emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1)); emit16(0x0000);
+            emit8(M6502_PLA);
+            emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), bfp_data_off); emit16(0x0000);
+        }
+        if (m6502_frame_bytes > 0) {
+            ensure_data_alloc();
+            emit8(M6502_PLA);
+            emit8(M6502_STA_ABS); cb_add_data_reloc(cb_pc(), lfp_data_off); emit16(0x0000); /* STA lfp */
+        }
     }
 
     emit8(M6502_RTS);
@@ -321,6 +378,19 @@ static void m6502_local_addr(u8 slot) {
     u16 lo_pos, hi_pos;
     if (m6502_static_frame) {
         m6502_push_data((u16)(m6502_static_base + m6502_local_off[slot]));
+        return;
+    }
+    if (m6502_local_is_big[slot]) {
+        u16 off = m6502_local_off[slot];
+        ensure_big_alloc();
+        emit8(M6502_DEX); emit8(M6502_DEX);
+        emit8(M6502_CLC);
+        emit8(M6502_LDA_ABS); cb_add_data_reloc(cb_pc(), bfp_data_off); emit16(0x0000);
+        emit8_8(M6502_ADC_IMM, (u8)(off & 0xFF));
+        m6502_sta_stk(0);
+        emit8(M6502_LDA_ABS); cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1)); emit16(0x0000);
+        emit8_8(M6502_ADC_IMM, (u8)(off >> 8));
+        m6502_sta_stk(1);
         return;
     }
     ensure_data_alloc();
@@ -1110,6 +1180,12 @@ static void m6502_op(IrOp op) {
     }
 }
 
+static int m6502_local_mem(u8 slot, i32 off, IrOp op, u16 stack_bytes) {
+    (void)stack_bytes;
+    if (!m6502_static_frame) return 0;
+    return m6502_data_mem(op, (u16)(m6502_static_base + m6502_local_off[slot] + off));
+}
+
 static u16 m6502_emit_br_fwd(BranchCond cond) {
     u16 patch_pos;
     if (cond == BR_JZ) {
@@ -1181,6 +1257,7 @@ const Backend be_6502 = {
     NULL,
     m6502_mem_imm,
     m6502_data_mem,
+    m6502_local_mem,
     m6502_emit_br_fwd,
     m6502_emit_br_back,
     m6502_patch_fwd,
