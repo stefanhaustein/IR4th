@@ -16,7 +16,8 @@ Anders Hejlsberg (1980) and is subject to its own terms.
 
 Optional 6502 32-bit floating-point support via wozfp (tools/wozfp.asm and
 src/be_6502_wozfp.h) is NOT covered by the GPLv3+. These routines were written
-by R. Rankin and S. Wozniak (1976) and are subject to their original terms.
+by R. Rankin and S. Wozniak and originally published in Dr. Dobb's Journal
+(August 1976) without a copyright or license notice.
 
 Compiled Output Exception
 -------------------------
