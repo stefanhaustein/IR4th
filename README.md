@@ -9,9 +9,37 @@ See [spec.md](spec.md) for the full language specification.
 ## Targets
 
 - **Z80** (`-t z80`): Generates Z80 machine code, with optional `--cpm` support to emit a CP/M `.com` entry stub that prints `main`'s return value.
-- **6502** (`-t 6502`): Generates 6502 machine code (BSS stack/locals, 4-byte Zero Page scratch configurable via `--zp`), with optional `--sim65` support for `cc65`'s `sim65` simulator.
+- **6502** (`-t 6502`): Generates 6502 machine code (BSS stack/locals, 4-byte Zero Page scratch configurable via `--zp`), with `--sim65` for `cc65`'s `sim65` simulator and `--c64` for Commodore 64 `.prg` output (BASIC `SYS` stub, KERNAL `CHROUT`, and BASIC ROM unmapping).
 - **ARM64** (`-t arm64`): Generates AArch64 machine code, with `--run` support for direct JIT execution on macOS Apple Silicon.
 - **RISC-V RV32IM** (`-t rv32`): Generates RV32IM machine code, with `--virt` for standalone QEMU `virt` ELF32 execution and `--obj` for relocatable ELF32 `.o` output (linking `extern` symbols and `libgcc` soft-float).
+
+## Examples
+
+Hello world ([examples/hello.ir4](examples/hello.ir4)):
+
+```forth
+require stdio.ir4
+
+data msg
+  "Hello, world!\n" 0 :i8
+end
+
+fn main ( -> :i )
+  msg prints
+  0
+end
+```
+
+Typed memory loop & recursion ([tests/fib.ir4](tests/fib.ir4), [lib/mem.ir4](lib/mem.ir4)):
+
+```forth
+fn fib ( n :i -> :i )
+  n 2 < if n return then
+  n 1 - fib n 2 - fib +
+end
+```
+
+See [examples/](examples/) and [tests/](tests/) for more programs (including `core.ir4`, `float.ir4`, `math.ir4`, `rtl.ir4`, and `data.ir4`).
 
 ## Building & Testing
 
@@ -28,15 +56,17 @@ make test-z80     # Build CP/M .com binaries and run them via tnylpo (if install
 Compile with `ir4c`:
 
 ```sh
-./build/ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--run] [--cpm] [--sim65] [--virt] [--obj] <input.ir4>
+./build/ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>
 ```
 
 ## Repository Layout
 
-- `src/` — Compiler sources (`ir4c.c`, `ir4.h`, `frontend.c`, `frontend.h`, `codebuf.c`, `codebuf.h`, `be_z80*`, `be_6502*`, `be_arm64*`, `be_rv32*`)
-- `spec.md` — IR4th v0.3 language specification
-- `tests/` — Test programs (`fib.ir4`, `core.ir4`, `muldiv.ir4`, `mem.ir4`, `float.ir4`, `req.ir4`, `data.ir4`, `ext.ir4`) and platform/CPU subdirectories (`cpm/`, `sim65/`, `arm64/`, `virt/`)
-- `tools/` — Runtime generators (`rt_util.py`, `gen_math48.py`, `gen_wozfp.py`, `gen_rv32_fp.py`, `rv32_fp.c`)
+- [src/](src/) — Compiler sources (`ir4c.c`, `ir4.h`, `frontend.c`, `frontend.h`, `codebuf.c`, `codebuf.h`, `be_z80*`, `be_6502*`, `be_arm64*`, `be_rv32*`)
+- [lib/](lib/) — Portable standard library (`stdio.ir4`, `mem.ir4`, `math.ir4`, `pascal.ir4`) and platform `io.ir4` (`cpm/`, `sim65/`, `c64/`, `arm64/`, `virt/`)
+- [examples/](examples/) — Standalone example programs (`hello.ir4`)
+- [tests/](tests/) — Test suite (`fib.ir4`, `core.ir4`, `muldiv.ir4`, `mem.ir4`, `float.ir4`, `math.ir4`, `rtl.ir4`, `req.ir4`, `data.ir4`, `ext.ir4`, and negative tests in [tests/errors/](tests/errors/))
+- [tools/](tools/) — Runtime generators (`rt_util.py`, `gen_math48.py`, `gen_wozfp.py`, `gen_rv32_fp.py`, `rv32_fp.c`)
+- [spec.md](spec.md) — IR4th v0.3 language specification
 
 ## License
 

@@ -76,7 +76,7 @@ var <name> :bytes <size> // Raw byte buffer
 * `var <name> :bytes <size>` allocates `<size>` bytes aligned to `word_bytes`; referencing `<name>` pushes its `:a` base address (`( -> :a )`).
 * **`__heap_start`:** Built-in constant pushing the `:a` address immediately following all static code, `data`, `var`, and target runtime data.
 
-### 3.2b Pre-Initialized Data (`data ... end`)
+### 3.3 Pre-Initialized Data (`data ... end`)
 Top-level read-only tables and constants can be defined outside word definitions:
 
 ```forth
@@ -94,7 +94,7 @@ end
 * `align` advances the data pointer to the next multiple of `word_bytes`.
 * `data` blocks are semantically read-only.
 
-### 3.3 Including Files (`require`)
+### 3.4 Including Files (`require`)
 Top-level `require` loads another `.ir4` source file at most once (include-once semantics):
 
 ```forth
@@ -108,7 +108,7 @@ require <filename>
   3. `<base>/<filename>` (portable fallback)
 * Repeated `require` directives for an already-loaded file path are ignored.
 
-### 3.4 External Functions (`extern`)
+### 3.5 External Functions (`extern`)
 Top-level `extern` declares an external platform/OS function:
 
 ```forth
@@ -219,31 +219,4 @@ Fixed-width memory operations (`@u8`, `@i8`, `!i8`, `@u16`, `@i16`, `!i16`) wide
 * **Labels & Branches (`:: <name>`, `jmp <name>`, `<cond :i> jz <name>`):** Function-local labels and forward/backward branches. The type stack must be empty at `::`, at `jmp`, and after popping `:i` at `jz`; `::` cannot appear inside an open `if` or `begin` block.
 * **Calls & Early Return (`<word_name>`, `return`):** Validates caller stack against callee inputs and pushes outputs. `return` verifies the stack matches the word's declared output types after `--`.
 
-## 6. Complete Example Program
-
-```forth
-// Fill a memory buffer with a byte value and return the end address
-fn memset ( dst :a val :i len :i | i :i -> :a )
-  0 -> i
-  begin
-    i len u<
-  while
-    val dst i + !i8
-    i 1 + -> i
-  repeat
-  dst len +
-end
-
-// Sum an array of signed 8-bit bytes into a native word
-fn sum_signed_bytes ( ptr :a count :i | i :i acc :i -> :i )
-  0 -> i
-  0 -> acc
-  begin
-    i count <
-  while
-    ptr i + @i8 acc + -> acc
-    i 1 + -> i
-  repeat
-  acc
-end
-```
+For complete runnable programs, see [examples/](examples/) and [tests/](tests/).
