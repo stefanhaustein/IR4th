@@ -548,12 +548,10 @@ static u16 rv_emit_br_fwd(BranchCond cond) {
     u16 pos;
     if (cond == BR_JZ) {
         pop_reg(RV_T0);
-        pos = cb_pc();
-        emit32(enc_b(0, RV_ZERO, RV_T0, 0)); /* BEQ t0, x0, rel13 */
-    } else {
-        pos = cb_pc();
-        emit32(enc_j(0, RV_ZERO));           /* JAL x0, rel21 */
+        emit32(enc_b(8, RV_ZERO, RV_T0, 1)); /* BNE t0, x0, +8 */
     }
+    pos = cb_pc();
+    emit32(enc_j(0, RV_ZERO));               /* JAL x0, rel21 */
     return pos;
 }
 
@@ -562,8 +560,13 @@ static void rv_emit_br_back(BranchCond cond, u16 target_addr) {
     if (cond == BR_JZ) {
         pop_reg(RV_T0);
         diff = (i32)target_addr - (i32)cb_cur_addr();
-        if (diff < -4096 || diff > 4094) ir4_die("RV32 branch out of range");
-        emit32(enc_b(diff, RV_ZERO, RV_T0, 0));
+        if (diff >= -4096 && diff <= 4094) {
+            emit32(enc_b(diff, RV_ZERO, RV_T0, 0));
+        } else {
+            emit32(enc_b(8, RV_ZERO, RV_T0, 1)); /* BNE t0, x0, +8 */
+            diff = (i32)target_addr - (i32)cb_cur_addr();
+            emit32(enc_j(diff, RV_ZERO));
+        }
     } else {
         diff = (i32)target_addr - (i32)cb_cur_addr();
         emit32(enc_j(diff, RV_ZERO));
@@ -572,13 +575,7 @@ static void rv_emit_br_back(BranchCond cond, u16 target_addr) {
 
 static void rv_patch_fwd(u16 patch_offset) {
     i32 diff = (i32)cb_pc() - (i32)patch_offset;
-    u8 op = (u8)(cb_data()[patch_offset] & 0x7FU);
-    if (op == 0x63) {
-        if (diff < -4096 || diff > 4094) ir4_die("RV32 forward branch out of range");
-        patch32(patch_offset, enc_b(diff, RV_ZERO, RV_T0, 0));
-    } else {
-        patch32(patch_offset, enc_j(diff, RV_ZERO));
-    }
+    patch32(patch_offset, enc_j(diff, RV_ZERO));
 }
 
 static int rv_add_imm(i32 imm) {
