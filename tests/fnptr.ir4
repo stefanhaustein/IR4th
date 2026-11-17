@@ -3,12 +3,26 @@
 
 var fp_global :a
 var counter :i
+var num_val :i
+var probe_a :a
+var probe_b :a
+
+data msg_hi
+  "hi" 0 :i8
+end
 
 fn add2 ( a :i b :i -> :i )
   a b +
 end
 
 fwd later_sub ( a :i b :i -> :i )
+
+data vtable
+  & add2
+  & later_sub
+  & msg_hi
+  & num_val
+end
 
 fn apply2 ( a :i b :i f :a -> :i )
   a b f ( :i :i -> :i )
@@ -20,6 +34,8 @@ end
 
 fn main ( -> :i )
   var fp :a
+  var psz :i
+  & probe_b & probe_a adiff -> psz
   // Direct & of earlier function + indirect call via helper
   10 20 & add2 apply2 30 != if 1 return then
   // & of forward/later function (also tests DCE retention)
@@ -31,6 +47,12 @@ fn main ( -> :i )
   fp_global ( )
   fp ( )
   counter 10 != if 3 return then
+  // Test & fn, & data, & var inside 'data' table
+  3 4 vtable a@ ( :i :i -> :i ) 7 != if 4 return then
+  20 5 vtable psz a+ a@ ( :i :i -> :i ) 15 != if 5 return then
+  vtable psz 2 * a+ a@ u8@ 0x68 != if 6 return then
+  77 -> num_val
+  vtable psz 3 * a+ a@ @ 77 != if 7 return then
   0
 end
 

@@ -131,6 +131,7 @@ static void virt_end(int main_idx) {
     emit32(enc_j(0, 0));                           /* J . */
 
     data_addr = VIRT_BASE + (u32)cb_pc();
+    cb_patch_data_init_relocs_base(VIRT_BASE, data_addr);
     hi = (data_addr + 0x800UL) & 0xFFFFF000UL;
     lo = (i32)(data_addr - hi);
     patch32(db_patch_off, enc_u(hi, 18, 0x37UL));

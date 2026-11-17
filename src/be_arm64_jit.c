@@ -68,6 +68,19 @@ static void arm64_run_jit(u8 main_idx) {
         if (cb_init_data_size() > 0) {
             memcpy(data_mem, cb_init_data(), cb_init_data_size());
         }
+        {
+            u16 i;
+            for (i = 0; i < cb_data_init_reloc_count(); i++) {
+                u16 patch_off, target_val;
+                u8 addr_bytes, is_code;
+                unsigned long addr;
+                cb_get_data_init_reloc(i, &patch_off, &target_val, &addr_bytes, &is_code);
+                addr = (unsigned long)((u8 *)(is_code ? mem : data_mem) + target_val);
+                if (addr_bytes == 8) {
+                    memcpy((u8 *)data_mem + patch_off, &addr, 8);
+                }
+            }
+        }
     }
 
     {

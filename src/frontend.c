@@ -2037,6 +2037,26 @@ static void compile_data(void) {
                 has_pending = 0;
             }
             cb_alloc_data(0, be->word_bytes);
+        } else if (strcmp(tok, "&") == 0) {
+            int idx;
+            u16 patch_off;
+            if (has_pending) {
+                flush_vals_word(pending);
+                has_pending = 0;
+            }
+            if (!next_tok(tok)) ir4_die("expected identifier after '&' in 'data'");
+            patch_off = cb_data_size();
+            idx = find_buffer(tok);
+            if (idx >= 0) {
+                cb_emit_data_word(0, be->addr_bytes);
+                cb_add_data_init_reloc(patch_off, buffers[idx].offset, be->addr_bytes, 0);
+            } else {
+                idx = ir4_find_func(tok);
+                if (idx < 0) ir4_die("unknown variable or function in '&' inside 'data'");
+                if (funcs[idx].is_extern) ir4_die("cannot take address of 'extern' function in 'data'");
+                cb_emit_data_word(0, be->addr_bytes);
+                cb_add_data_init_reloc(patch_off, (u16)idx, be->addr_bytes, 1);
+            }
         } else if (strcmp(tok, ":i8") == 0) {
             if (!has_pending) ir4_die("expected integer before ':i8'");
             if (pending < -128 || pending > 255) ir4_die(":i8 value out of range");
@@ -2217,7 +2237,14 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             main_idx = wrap_idx;
         }
         if (main_idx >= 0) {
+            u16 di;
             mark_reachable((u8)main_idx);
+            for (di = 0; di < cb_data_init_reloc_count(); di++) {
+                u16 po, tv;
+                u8 ab, is_c;
+                cb_get_data_init_reloc(di, &po, &tv, &ab, &is_c);
+                if (is_c) mark_reachable((u8)tv);
+            }
         } else {
             for (f = 0; f < func_count; f++) {
                 if (!funcs[f].is_extern && funcs[f].is_defined) words[f].reachable = 1;
@@ -2249,6 +2276,14 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 } else {
                     be->patch_call(fwd_calls[c].call_pc, fwd_calls[c].call_addr,
                                    funcs[fwd_calls[c].func_idx].addr);
+                }
+            }
+            for (c = 0; c < cb_data_init_reloc_count(); c++) {
+                u16 po, tv;
+                u8 ab, is_c;
+                cb_get_data_init_reloc(c, &po, &tv, &ab, &is_c);
+                if (is_c) {
+                    cb_patch_data_init_reloc(c, funcs[tv].addr);
                 }
             }
         }
