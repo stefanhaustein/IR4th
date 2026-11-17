@@ -57,7 +57,7 @@ end
 * **Initialization Blocks (`init ... end`):**
   * One or more top-level `init ... end` blocks may be defined across the program and `require`d modules. Each behaves as an anonymous void function (`( )`) and runs once in source order before `main`.
 * **Machine-Code Words (`code ... end`):**
-  * `code <name> ( <inputs> -> <outputs> ) <bytes> end` defines a raw machine-code word emitted into the executable code segment (subject to DCE) using `:i8`, `:i16`, and `:i32` literals, following the target's `call` / `return` convention.
+  * `code <name> ( <inputs> -> <outputs> ) <bytes> end` defines a raw machine-code word emitted into the executable code segment (subject to DCE) using `:i8`, `:i16`, `:i32`, `:ar` (16-bit address relative to the start of the `code` block), and `:as` (16-bit address relative to the 6502 data stack buffer), following the target's `call` / `return` convention.
 
 ### 3.1 Accessing, Mutating & Addressing Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
@@ -201,8 +201,8 @@ Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) wide
 | `i16!` | `( :i :a -- )` | Store low 16 bits of `:i` to address |
 | `i32@` | `( :a -- :i32 )` | Fetch 32-bit integer (`:i32`) from address |
 | `i32!` | `( :i32 :a -- )` | Store 32-bit integer (`:i32`) to address |
-| `i@` | `( :a -- :i )` | Fetch native word (`:i`) from address |
-| `i!` | `( :i :a -- )` | Store native word (`:i`) to address |
+| `@` | `( :a -- :i )` | Fetch native word (`:i`) from address |
+| `!` | `( :i :a -- )` | Store native word (`:i`) to address |
 | `a@` | `( :a -- :a )` | Fetch target-width pointer (`:a`) from address |
 | `a!` | `( :a :a -- )` | Store target-width pointer (`:a`) to address |
 | `f@` | `( :a -- :f )` | Fetch target-width float (`:f`) from address |

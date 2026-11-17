@@ -60,9 +60,24 @@ typedef struct {
     } u;
 } IrInstr;
 
+#define MAX_CODE_RELOCS 512
+
+enum {
+    CODE_REL_SELF  = 1,
+    CODE_REL_STACK = 2
+};
+
+typedef struct {
+    u16 ir_off;
+    u16 addend;
+    u8  kind;
+} CodeReloc;
+
 typedef struct {
     u16      ir_start;
     u16      ir_len;
+    u16      reloc_start;
+    u16      reloc_cnt;
     u8       param_cnt;
     u8       local_count;
     LocalVar locals[MAX_LOCALS];
@@ -70,12 +85,14 @@ typedef struct {
     u8       is_code;
 } WordIR;
 
-static IrInstr ir_buf[MAX_IR];
-static u16     ir_count = 0;
-static u16     fold_fence = 0;
-static WordIR  words[MAX_SYMS];
-static u8      raw_code_buf[MAX_CODE];
-static u16     raw_code_len = 0;
+static IrInstr   ir_buf[MAX_IR];
+static u16       ir_count = 0;
+static u16       fold_fence = 0;
+static WordIR    words[MAX_SYMS];
+static u8        raw_code_buf[MAX_CODE];
+static u16       raw_code_len = 0;
+static CodeReloc code_relocs[MAX_CODE_RELOCS];
+static u16       code_reloc_count = 0;
 
 typedef struct {
     FILE *fp;
@@ -247,7 +264,7 @@ void ir4_set_exe_path(const char *exe_path) {
     }
 }
 
-static void push_require(const char *name) {
+static void push_require_ex(const char *name, int lib_only) {
     char cands[3][MAX_PATH];
     int n_cands = 0;
     int c;
@@ -272,11 +289,13 @@ static void push_require(const char *name) {
     }
     strcpy(cands[n_cands++], name);
 
-    for (c = 0; c < n_cands; c++) {
-        resolve_path(src_stack[src_depth - 1].path, cands[c], path, sizeof(path));
-        fp = try_open_require(path, &seen);
-        if (seen) return;
-        if (fp) break;
+    if (!lib_only) {
+        for (c = 0; c < n_cands; c++) {
+            resolve_path(src_stack[src_depth - 1].path, cands[c], path, sizeof(path));
+            fp = try_open_require(path, &seen);
+            if (seen) return;
+            if (fp) break;
+        }
     }
 
     if (!fp && name[0] != '/') {
@@ -326,6 +345,10 @@ static void push_require(const char *name) {
     memcpy(src_stack[src_depth].path, path, strlen(path) + 1);
     src_stack[src_depth].line_num = 1;
     src_depth++;
+}
+
+static void push_require(const char *name) {
+    push_require_ex(name, 0);
 }
 
 static int parse_int(const char *s, i32 *val) {
@@ -527,8 +550,8 @@ static const BuiltinDef builtins[] = {
     { "i16@",      OP_I16FETCH, TY_A,   TY_NONE, TY_W },
     { "u16@",      OP_U16FETCH, TY_A,   TY_NONE, TY_W },
     { "i16!",      OP_I16STORE, TY_A,   TY_W,    TY_NONE },
-    { "i@",        OP_FETCH,    TY_A,   TY_NONE, TY_W },
-    { "i!",        OP_STORE,    TY_A,   TY_W,    TY_NONE },
+    { "@",         OP_FETCH,    TY_A,   TY_NONE, TY_W },
+    { "!",         OP_STORE,    TY_A,   TY_W,    TY_NONE },
     { "a@",        OP_AFETCH,   TY_A,   TY_NONE, TY_A },
     { "a!",        OP_ASTORE,   TY_A,   TY_A,    TY_NONE },
     { "f@",        OP_FFETCH,   TY_A,   TY_NONE, TY_F },
@@ -655,6 +678,13 @@ static int handle_builtin(const char *tok, WordIR *w) {
         for (i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {
             int need;
             if (strcmp(tok, builtins[i].name) != 0) continue;
+            if (be->word_bytes == 2 &&
+                (builtins[i].op == OP_MUL32 || builtins[i].op == OP_DIV32 ||
+                 builtins[i].op == OP_MOD32 || builtins[i].op == OP_UDIV32 ||
+                 builtins[i].op == OP_UMOD32 || builtins[i].op == OP_SHL32 ||
+                 builtins[i].op == OP_ASHR32 || builtins[i].op == OP_RSHR32)) {
+                continue;
+            }
             matched_name = 1;
             need = (builtins[i].in2 != TY_NONE) ? 2 : 1;
             if (tsp < need) continue;
@@ -1035,6 +1065,8 @@ static void compile_code(void) {
     w->is_code = 1;
     w->ir_start = raw_code_len;
     w->ir_len = 0;
+    w->reloc_start = code_reloc_count;
+    w->reloc_cnt = 0;
 
     while (next_tok(tok)) {
         if (strcmp(tok, "end") == 0) {
@@ -1061,6 +1093,22 @@ static void compile_code(void) {
             raw_emit_u8(w, (u8)((v >> 8) & 0xFF));
             raw_emit_u8(w, (u8)((v >> 16) & 0xFF));
             raw_emit_u8(w, (u8)((v >> 24) & 0xFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":ar") == 0 || strcmp(tok, ":as") == 0) {
+            CodeReloc *rel;
+            if (!has_pending) ir4_die("expected offset before ':ar' or ':as'");
+            if (pending < 0 || pending > 0xFFFF) ir4_die("relocation offset out of range");
+            if (code_reloc_count >= MAX_CODE_RELOCS) ir4_die("too many code relocations");
+            rel = &code_relocs[code_reloc_count++];
+            rel->ir_off = w->ir_len;
+            rel->addend = (u16)pending;
+            rel->kind = (strcmp(tok, ":ar") == 0) ? CODE_REL_SELF : CODE_REL_STACK;
+            if (rel->kind == CODE_REL_STACK && !be->stack_data_off) {
+                ir4_die("':as' is only supported on targets with a RAM data stack");
+            }
+            w->reloc_cnt++;
+            raw_emit_u8(w, 0x00);
+            raw_emit_u8(w, 0x00);
             has_pending = 0;
         } else if (parse_int(tok, &num_val)) {
             if (has_pending) ir4_die("missing width (:i8, :i16, :i32) before literal in 'code'");
@@ -1562,10 +1610,20 @@ static void emit_word(u8 fidx) {
     u16 i, p;
 
     if (w->is_code) {
+        u16 base_pc = cb_pc();
         sig->addr = be->cur_addr();
         sig->has_addr = 1;
         for (i = 0; i < w->ir_len; i++) {
             emit8(raw_code_buf[w->ir_start + i]);
+        }
+        for (i = 0; i < w->reloc_cnt; i++) {
+            const CodeReloc *rel = &code_relocs[w->reloc_start + i];
+            u16 pc = (u16)(base_pc + rel->ir_off);
+            if (rel->kind == CODE_REL_SELF) {
+                patch16(pc, (u16)(sig->addr + rel->addend));
+            } else if (rel->kind == CODE_REL_STACK) {
+                cb_add_data_reloc(pc, (u16)(be->stack_data_off() + rel->addend));
+            }
         }
         return;
     }
@@ -1842,8 +1900,13 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     buffer_count = 0;
     ir_count = 0;
     raw_code_len = 0;
+    code_reloc_count = 0;
     fwd_call_count = 0;
     init_count = 0;
+
+    if (be->word_bytes == 2) {
+        push_require_ex("i32.ir4", 1);
+    }
 
     while (next_tok(tok)) {
         if (strcmp(tok, "fn") == 0) {

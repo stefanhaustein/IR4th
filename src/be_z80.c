@@ -6,14 +6,12 @@
 #include "codebuf.h"
 #include "be_z80.h"
 #include "be_z80_math48.h"
-#include "be_z80_i32.h"
 #include <math.h>
 
 static u16 rt_mul_addr     = 0;
 static u16 rt_udivmod_addr = 0;
 static u16 rt_sdivmod_addr = 0;
 static u16 rt_math48_addr  = 0;
-static u16 rt_i32_addr     = 0;
 static u16 z80_local_off[MAX_LOCALS];
 static u16 z80_local_bytes = 0;
 static u16 z80_last_push_pc = 0;
@@ -113,7 +111,6 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
         rt_udivmod_addr = 0;
         rt_sdivmod_addr = 0;
         rt_math48_addr  = 0;
-        rt_i32_addr     = 0;
     }
 
     for (i = 0; i < total_locals; i++) z80_is_static_slot[i] = 0;
@@ -728,25 +725,6 @@ static void z80_ensure_math48(void) {
                        be_z80_math48_relocs, (u16)BE_Z80_MATH48_RELOC_CNT);
 }
 
-static void z80_ensure_i32(void) {
-    z80_ensure_rt_blob(&rt_i32_addr, be_z80_i32, (u16)sizeof(be_z80_i32),
-                       be_z80_i32_relocs, (u16)BE_Z80_I32_RELOC_CNT);
-}
-
-static void z80_i32_pop_to(u16 off) {
-    z80_pop(Z80_POP_HL);
-    emit8_16(0x22, (u16)(rt_i32_addr + off));
-    emit8(Z80_POP_HL);
-    emit8_16(0x22, (u16)(rt_i32_addr + off + 2));
-}
-
-static void z80_i32_push_from(u16 off) {
-    emit8_16(0x2A, (u16)(rt_i32_addr + off + 2));
-    emit8(Z80_PUSH_HL);
-    emit8_16(0x2A, (u16)(rt_i32_addr + off));
-    z80_push(Z80_PUSH_HL);
-}
-
 static void z80_call_math48(u16 entry_offset) {
     z80_ensure_math48();
     z80_call((u16)(rt_math48_addr + entry_offset));
@@ -1316,31 +1294,11 @@ static void z80_op(IrOp op) {
     case OP_DIV32:
     case OP_MOD32:
     case OP_UDIV32:
-    case OP_UMOD32: {
-        u16 entry = (op == OP_MUL32) ? RT_I32_MUL
-                  : (op == OP_UDIV32 || op == OP_UMOD32) ? RT_I32_UDIVMOD
-                  : RT_I32_SDIVMOD;
-        u16 res_off = (op == OP_MOD32 || op == OP_UMOD32) ? I32_OFF_R : I32_OFF_A;
-        z80_ensure_i32();
-        z80_i32_pop_to(I32_OFF_B);
-        z80_i32_pop_to(I32_OFF_A);
-        z80_call((u16)(rt_i32_addr + entry));
-        z80_i32_push_from(res_off);
-        break;
-    }
+    case OP_UMOD32:
     case OP_SHL32:
     case OP_RSHR32:
-    case OP_ASHR32: {
-        u16 entry = (op == OP_SHL32) ? RT_I32_SHL
-                  : (op == OP_RSHR32) ? RT_I32_SHR : RT_I32_ASHR;
-        z80_ensure_i32();
-        z80_pop(Z80_POP_HL);
-        emit8_16(0x22, (u16)(rt_i32_addr + I32_OFF_B));
-        z80_i32_pop_to(I32_OFF_A);
-        z80_call((u16)(rt_i32_addr + entry));
-        z80_i32_push_from(I32_OFF_A);
-        break;
-    }
+    case OP_ASHR32:
+        ir4_die("Z80 i32 mul/div/shift handled by lib/i32.ir4");
     }
 }
 
@@ -1480,5 +1438,6 @@ const Backend be_z80 = {
     z80_emit_br_fwd,
     z80_emit_br_back,
     z80_patch_fwd,
-    z80_patch_call
+    z80_patch_call,
+    NULL
 };

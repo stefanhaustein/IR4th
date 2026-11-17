@@ -70,15 +70,15 @@ fn heap_alloc ( bytes :i -> :a )
   begin
     cur 0 i>a a!=
   while
-    cur i@ -> bsz
+    cur @ -> bsz
     bsz need >= if
       cur 8 a+ a@ -> nxt
       bsz need - -> rem
       rem 16 >= if
         cur need a+ -> split
-        rem split i!
+        rem split !
         nxt split 8 a+ a!
-        need cur i!
+        need cur !
         split -> nxt
       then
       prev 0 i>a a== if nxt -> __heap_free else nxt prev 8 a+ a! then
@@ -88,7 +88,7 @@ fn heap_alloc ( bytes :i -> :a )
     cur 8 a+ a@ -> cur
   repeat
   __heap_ptr -> cur
-  need cur i!
+  need cur !
   cur need a+ -> __heap_ptr
   cur 8 a+
 end
@@ -110,14 +110,14 @@ fn heap_free ( p :a )
   cur blk 8 a+ a!
   prev 0 i>a a== if blk -> __heap_free else blk prev 8 a+ a! then
   cur 0 i>a a!= if
-    blk blk i@ a+ cur a== if
-      blk i@ cur i@ + blk i!
+    blk blk @ a+ cur a== if
+      blk @ cur @ + blk !
       cur 8 a+ a@ blk 8 a+ a!
     then
   then
   prev 0 i>a a!= if
-    prev prev i@ a+ blk a== if
-      prev i@ blk i@ + prev i!
+    prev prev @ a+ blk a== if
+      prev @ blk @ + prev !
       blk 8 a+ a@ prev 8 a+ a!
     then
   then

@@ -33,14 +33,14 @@ var g_ptr :a
 var g_flt :f
 
 init
-  10 g_init i!
+  10 g_init !
   123 -> g_word
   scratch -> g_ptr
   1.5 -> g_flt
 end
 
 init
-  g_init i@ 5 + g_init i!
+  g_init @ 5 + g_init !
 end
 
 fn word_bytes ( -> :i )
@@ -59,12 +59,12 @@ fn main ( -> :i )
   words16_tbl 2 a+ i16@ -1234 != if 5 return then
 
   // Check , (native word)
-  w_pos i@ 42 != if 6 return then
-  w_neg i@ -7 != if 7 return then
+  w_pos @ 42 != if 6 return then
+  w_neg @ -7 != if 7 return then
 
   // Check mid-table align before ,
   mixed_tbl u8@ 7 != if 8 return then
-  mixed_tbl word_bytes a+ i@ 99 != if 9 return then
+  mixed_tbl word_bytes a+ @ 99 != if 9 return then
 
   // Check writable buffers still work alongside create
   99 scratch i8!
@@ -73,10 +73,10 @@ fn main ( -> :i )
   tail_buf u8@ 77 != if 11 return then
 
   // Re-verify create data wasn't disturbed
-  w_pos i@ 42 != if 12 return then
+  w_pos @ 42 != if 12 return then
 
   // Verify multiple init blocks ran in order before main
-  g_init i@ 15 != if 13 return then
+  g_init @ 15 != if 13 return then
 
   // Verify __heap_start is after the last static buffer
   __heap_start tail_buf 16 a+ a< if 14 return then
@@ -91,7 +91,7 @@ fn main ( -> :i )
   g_word 123 != if 19 return then
   456 -> g_word
   g_word 456 != if 20 return then
-  789 & g_word i!
+  789 & g_word !
   g_word 789 != if 21 return then
   g_ptr scratch a!= if 22 return then
   g_flt 1.5 f!= if 23 return then

@@ -713,5 +713,6 @@ const Backend be_rv32 = {
     rv_emit_br_fwd,
     rv_emit_br_back,
     rv_patch_fwd,
-    rv_patch_call
+    rv_patch_call,
+    NULL
 };

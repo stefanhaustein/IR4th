@@ -7,7 +7,6 @@
 #include "codebuf.h"
 #include "be_6502.h"
 #include "be_6502_wozfp.h"
-#include "be_6502_i32.h"
 #include <math.h>
 
 static u8  zp_scratch      = 0xFB;
@@ -26,7 +25,6 @@ static u16 mul16_addr      = 0;
 static u16 udivmod16_addr  = 0;
 static u16 sdivmod16_addr  = 0;
 static u16 wozfp_addr      = 0;
-static u16 i32_addr        = 0;
 
 void be_6502_set_zp(u8 zp) {
     zp_scratch = zp;
@@ -751,11 +749,6 @@ static void ensure_wozfp(void) {
                    be_6502_wozfp_relocs, (u16)BE_6502_WOZFP_RELOC_CNT);
 }
 
-static void ensure_i32_6502(void) {
-    ensure_rt_blob(&i32_addr, be_6502_i32, (u16)sizeof(be_6502_i32),
-                   be_6502_i32_relocs, (u16)BE_6502_I32_RELOC_CNT);
-}
-
 static void wozfp_pop_to(u8 zp_base) {
     u8 b;
     for (b = 0; b < 4; b++) {
@@ -1348,33 +1341,11 @@ static void m6502_op(IrOp op) {
     case OP_DIV32:
     case OP_MOD32:
     case OP_UDIV32:
-    case OP_UMOD32: {
-        u16 entry = (op == OP_MUL32) ? RT_I32_MUL
-                  : (op == OP_UDIV32 || op == OP_UMOD32) ? RT_I32_UDIVMOD
-                  : RT_I32_SDIVMOD;
-        u8 res_zp = (op == OP_MOD32 || op == OP_UMOD32) ? I32_ZP_R : I32_ZP_A;
-        ensure_i32_6502();
-        wozfp_pop_to(I32_ZP_B);
-        wozfp_pop_to(I32_ZP_A);
-        emit8_16(M6502_JSR, (u16)(i32_addr + entry));
-        wozfp_push_from(res_zp);
-        break;
-    }
+    case OP_UMOD32:
     case OP_SHL32:
     case OP_RSHR32:
-    case OP_ASHR32: {
-        u16 entry = (op == OP_SHL32) ? RT_I32_SHL
-                  : (op == OP_RSHR32) ? RT_I32_SHR : RT_I32_ASHR;
-        ensure_i32_6502();
-        m6502_lda_stk(0);
-        emit8_8(M6502_STA_ZP, I32_ZP_B);
-        emit8(M6502_INX);
-        emit8(M6502_INX);
-        wozfp_pop_to(I32_ZP_A);
-        emit8_16(M6502_JSR, (u16)(i32_addr + entry));
-        wozfp_push_from(I32_ZP_A);
-        break;
-    }
+    case OP_ASHR32:
+        ir4_die("6502 i32 mul/div/shift handled by lib/i32.ir4");
     }
 }
 
@@ -1507,5 +1478,6 @@ const Backend be_6502 = {
     m6502_emit_br_fwd,
     m6502_emit_br_back,
     m6502_patch_fwd,
-    m6502_patch_call
+    m6502_patch_call,
+    be_6502_stack_data_off
 };

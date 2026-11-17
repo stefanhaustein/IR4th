@@ -215,6 +215,7 @@ typedef struct {
     void (*emit_br_back)(BranchCond cond, u16 target_addr);
     void (*patch_fwd)(u16 patch_offset);
     void (*patch_call)(u16 call_pc, u16 call_addr, u16 target_addr);
+    u16  (*stack_data_off)(void);
 } Backend;
 
 /* Error reporting (implemented in frontend.c) */

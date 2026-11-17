@@ -12,15 +12,15 @@ fn assert_eq ( got :i expected :i code :i -> :i )
 end
 
 fn add_to_var ( vp :a delta :i )
-  vp i@ delta + vp i!
+  vp @ delta + vp !
 end
 
 // Recursive test for stack-allocated :bytes local buffers
 fn sum_local_buf ( n :i -> :i )
   var tmp :bytes 8
   n 0 <= if 0 return then
-  n tmp i!
-  n 1 - sum_local_buf tmp i@ +
+  n tmp !
+  n 1 - sum_local_buf tmp @ +
 end
 
 fn main ( -> :i )
@@ -37,11 +37,11 @@ fn main ( -> :i )
   dup 0 != if return then drop
 
   // Native word store / fetch
-  12345 buf_b i!
-  -5432 buf_b 8 a+ i!
-  buf_b i@ 12345 4 assert_eq
+  12345 buf_b !
+  -5432 buf_b 8 a+ !
+  buf_b @ 12345 4 assert_eq
   dup 0 != if return then drop
-  buf_b 8 a+ i@ -5432 5 assert_eq
+  buf_b 8 a+ @ -5432 5 assert_eq
   dup 0 != if return then drop
 
   // Address store / fetch (a!, a@)
@@ -68,7 +68,7 @@ fn main ( -> :i )
 
   // Address-of local (&)
   40 -> x
-  & x i@ 40 12 assert_eq
+  & x @ 40 12 assert_eq
   dup 0 != if return then drop
   & x 2 add_to_var
   x 42 13 assert_eq
@@ -78,7 +78,7 @@ fn main ( -> :i )
   5 sum_local_buf 15 14 assert_eq
   dup 0 != if return then drop
 
-  // Fused swap + store (swap i8!, swap i16!, swap i!, swap a!, swap f!)
+  // Fused swap + store (swap i8!, swap i16!, swap !, swap a!, swap f!)
   buf_a 3 a+ 0x7B swap i8!
   buf_a 3 a+ u8@ 0x7B 15 assert_eq
   dup 0 != if return then drop
@@ -87,7 +87,7 @@ fn main ( -> :i )
   buf_b 28 a+ i16@ -4321 16 assert_eq
   dup 0 != if return then drop
 
-  & x 99 swap i!
+  & x 99 swap !
   x 99 17 assert_eq
   dup 0 != if return then drop
 

@@ -1,0 +1,26 @@
+require i32_prim.ir4
+
+fn i32/ ( a :i32 b :i32 -> :i32 )
+  var neg :i
+  var ua :i32
+  var ub :i32
+  var q :i32
+  0 -> neg
+  a 0 i>i32 i32< if 0 i>i32 a i32- -> ua neg 1 xor -> neg else a -> ua then
+  b 0 i>i32 i32< if 0 i>i32 b i32- -> ub neg 1 xor -> neg else b -> ub then
+  ua ub u32/ -> q
+  neg if 0 i>i32 q i32- return then
+  q
+end
+
+fn i32mod ( a :i32 b :i32 -> :i32 )
+  var neg :i
+  var ua :i32
+  var ub :i32
+  var r :i32
+  a 0 i>i32 i32< if 1 -> neg 0 i>i32 a i32- -> ua else 0 -> neg a -> ua then
+  b 0 i>i32 i32< if 0 i>i32 b i32- -> ub else b -> ub then
+  ua ub u32mod -> r
+  neg if 0 i>i32 r i32- return then
+  r
+end
