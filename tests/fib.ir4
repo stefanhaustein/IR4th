@@ -9,7 +9,11 @@ fn fib_rec ( n :i -> :i )
   +
 end
 
-fn fib_iter ( n :i | a :i b :i tmp :i i :i -> :i )
+fn fib_iter ( n :i -> :i )
+  var a :i
+  var b :i
+  var tmp :i
+  var i :i
   0 -> a
   1 -> b
   0 -> i

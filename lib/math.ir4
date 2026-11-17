@@ -5,7 +5,10 @@ fn fabs ( x :f -> :f )
   x
 end
 
-fn fint ( x :f | ax :f p :f res :f -> :f )
+fn fint ( x :f -> :f )
+  var ax :f
+  var p :f
+  var res :f
   x fabs -> ax
   ax 16384.0 < if x :i :f return then
   ax 1.0 + ax == if x return then
@@ -38,7 +41,10 @@ fn fround ( x :f -> :i )
   x 0.5 + :i
 end
 
-fn sqrt ( x :f | scale :f g :f i :i -> :f )
+fn sqrt ( x :f -> :f )
+  var scale :f
+  var g :f
+  var i :i
   x 0.0 > 0 == if 0.0 return then
   1.0 -> scale
   begin
@@ -64,7 +70,8 @@ fn sqrt ( x :f | scale :f g :f i :i -> :f )
   g scale *
 end
 
-fn sin ( x :f | x2 :f -> :f )
+fn sin ( x :f -> :f )
+  var x2 :f
   x x 6.283185307179586 / fint 6.283185307179586 * - -> x
   x 3.141592653589793 > if
     x 6.283185307179586 - -> x
@@ -91,7 +98,11 @@ fn cos ( x :f -> :f )
   1.5707963267948966 x - sin
 end
 
-fn arctan ( x :f | sign :f inv :i corr :i x2 :f -> :f )
+fn arctan ( x :f -> :f )
+  var sign :f
+  var inv :i
+  var corr :i
+  var x2 :f
   1.0 -> sign
   x 0.0 < if
     -1.0 -> sign
@@ -117,7 +128,10 @@ fn arctan ( x :f | sign :f inv :i corr :i x2 :f -> :f )
   sign *
 end
 
-fn exp ( x :f | k :i r :f res :f -> :f )
+fn exp ( x :f -> :f )
+  var k :i
+  var r :f
+  var res :f
   x 1.4426950408889634 * fround -> k
   x k :f 0.6931471805599453 * - -> r
   1.0 r 6.0 / +
@@ -141,7 +155,10 @@ fn exp ( x :f | k :i r :f res :f -> :f )
   res
 end
 
-fn ln ( x :f | k :i u :f u2 :f -> :f )
+fn ln ( x :f -> :f )
+  var k :i
+  var u :f
+  var u2 :f
   x 0.0 > 0 == if 0.0 return then
   begin
     x 1.4142135623730951 >

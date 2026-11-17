@@ -16,13 +16,16 @@ fn add_to_var ( vp :a delta :i )
 end
 
 // Recursive test for stack-allocated :bytes local buffers
-fn sum_local_buf ( n :i | tmp :bytes 8 -> :i )
+fn sum_local_buf ( n :i -> :i )
+  var tmp :bytes 8
   n 0 <= if 0 return then
   n tmp !i
   n 1 - sum_local_buf tmp @i +
 end
 
-fn main ( | p :a x :i -> :i )
+fn main ( -> :i )
+  var p :a
+  var x :i
   // Byte store / fetch / sext
   0x41 buf_a !i8
   0xFF buf_a 1 + !i8

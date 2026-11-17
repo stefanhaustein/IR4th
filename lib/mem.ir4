@@ -35,7 +35,8 @@ fn memcpy ( dst :a src :a len :i )
   repeat
 end
 
-fn memcmp ( a :a b :a len :i | d :i -> :i )
+fn memcmp ( a :a b :a len :i -> :i )
+  var d :i
   begin
     len 0 >
   while
@@ -53,7 +54,14 @@ fn heap_reset ( )
   0 :a -> __heap_free
 end
 
-fn heap_alloc ( bytes :i | need :i prev :a cur :a bsz :i rem :i nxt :a split :a -> :a )
+fn heap_alloc ( bytes :i -> :a )
+  var need :i
+  var prev :a
+  var cur :a
+  var bsz :i
+  var rem :i
+  var nxt :a
+  var split :a
   __heap_ptr 0 :a == if __heap_start -> __heap_ptr then
   bytes 8 < if 8 -> bytes then
   bytes 7 + -8 and 8 + -> need
@@ -85,7 +93,10 @@ fn heap_alloc ( bytes :i | need :i prev :a cur :a bsz :i rem :i nxt :a split :a 
   cur 8 +
 end
 
-fn heap_free ( p :a | blk :a prev :a cur :a )
+fn heap_free ( p :a )
+  var blk :a
+  var prev :a
+  var cur :a
   p 0 :a == if return then
   p 8 - -> blk
   0 :a -> prev

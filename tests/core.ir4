@@ -63,7 +63,9 @@ fn test_cmp ( -> :i )
   -1 -1 u>= -1 29 assert_eq
 end
 
-fn test_addr ( | p :a q :a -> :i )
+fn test_addr ( -> :i )
+  var p :a
+  var q :a
   0x1000 :a -> p
   p 16 + 4 - -> q
   q p - 12 30 assert_eq
@@ -79,7 +81,8 @@ fn test_addr ( | p :a q :a -> :i )
   q :i 0x100C 35 assert_eq
 end
 
-fn test_ctrl ( x :i | acc :i -> :i )
+fn test_ctrl ( x :i -> :i )
+  var acc :i
   // if ... else ... then
   x 0 > if
     100
@@ -115,7 +118,9 @@ fn is_odd ( n :i -> :i )
   n 1 - is_even
 end
 
-fn test_labels ( n :i | acc :i i :i -> :i )
+fn test_labels ( n :i -> :i )
+  var acc :i
+  var i :i
   // Forward jz + jmp skipping block
   0 -> acc
   0 -> i
@@ -140,7 +145,8 @@ fn test_labels ( n :i | acc :i i :i -> :i )
 end
 
 // Exercise >4KB forward (if) and backward (jz) conditional branches on RV32
-fn test_long_branch ( flag :i | x :i -> :i )
+fn test_long_branch ( flag :i -> :i )
+  var x :i
   0 -> x
   flag if
     x 1 + -> x  x 1 + -> x  x 1 + -> x  x 1 + -> x  x 1 + -> x  x 1 + -> x  x 1 + -> x  x 1 + -> x  x 1 + -> x  x 1 + -> x

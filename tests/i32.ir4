@@ -21,7 +21,8 @@ fn checkw ( got :i expected :i code :i -> :i )
   code
 end
 
-fn sum_local_i32 ( a :i32 b :i32 | acc :i32 -> :i32 )
+fn sum_local_i32 ( a :i32 b :i32 -> :i32 )
+  var acc :i32
   a b + -> acc
   acc 100000 :i32 + -> acc
   acc

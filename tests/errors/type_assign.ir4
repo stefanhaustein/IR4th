@@ -1,5 +1,6 @@
 // Error test: assigning i: into f: local via '->'
-fn main ( | x :f -> :i )
+fn main ( -> :i )
+  var x :f
   1 -> x
   0
 end

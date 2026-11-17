@@ -22,7 +22,9 @@ fn mutate_copy ( b :bytes 16 -> :i )
   b @u8
 end
 
-fn main ( | p1 :a p2 :a -> :i )
+fn main ( -> :i )
+  var p1 :a
+  var p2 :a
   // stdio formatting smoke test
   c_msg prints
   -42 puti

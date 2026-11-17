@@ -8,12 +8,14 @@ fn assert_true ( cond :i code :i -> :i )
   code
 end
 
-fn add_mul_f ( a :f b :f k :i | acc :f -> :f )
+fn add_mul_f ( a :f b :f k :i -> :f )
+  var acc :f
   a b + -> acc
   acc k :f *
 end
 
-fn main ( | x :f -> :i )
+fn main ( -> :i )
+  var x :f
   // Basic arithmetic & literals
   1.5 2.25 + 3.75 == 1 assert_true
   dup 0 != if return then drop

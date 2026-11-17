@@ -742,10 +742,9 @@ static void flush_bytes_params(u8 *params_flushed) {
     local_count++;
 }
 
-static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
+static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
     char tok[MAX_TOK];
     u8 param_cnt = 0;
-    u8 in_locals = 0;
     u8 in_outs = 0;
     u8 params_flushed = 0;
 
@@ -754,7 +753,7 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
     cur_bytes_copy_count = 0;
     cur_bytes_cnt_slot = 0;
 
-    /* Parse inputs | locals -> outputs ) (after '(' has been consumed) */
+    /* Parse inputs -> outputs ) (after '(' has been consumed) */
     while (next_tok(tok)) {
         u8 ty;
         char ty_tok[MAX_TOK];
@@ -763,13 +762,6 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
             if (in_outs && sig->out_count == 0) ir4_die("expected return type after '->'");
             if (param_cnt_out) *param_cnt_out = param_cnt;
             return;
-        }
-        if (strcmp(tok, "|") == 0) {
-            if (!allow_locals) ir4_die("locals '|' not allowed in extern signature");
-            if (in_outs) ir4_die("'|' not allowed after '->' in signature");
-            flush_bytes_params(&params_flushed);
-            in_locals = 1;
-            continue;
         }
         if (strcmp(tok, "->") == 0) {
             if (in_outs) ir4_die("duplicate '->' in signature");
@@ -781,7 +773,7 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
         if (in_outs) {
             ty = parse_type_tok(tok);
             if (ty == TY_NONE) {
-                if (!allow_locals && cur_out_count == 0 && sig->out_reg[0] == '\0') {
+                if (!allow_bytes && cur_out_count == 0 && sig->out_reg[0] == '\0') {
                     size_t len = strlen(tok);
                     memcpy(sig->out_reg, tok, len + 1);
                     if (!next_tok(tok)) ir4_die("expected type token (:i, :a, :f) after extern register");
@@ -804,27 +796,20 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
                 if (!next_tok(ty_tok) || !parse_int(ty_tok, &sz) || sz <= 0 || sz > MAX_DATA) {
                     ir4_die("invalid byte count after ':bytes'");
                 }
-                if (in_locals) {
-                    locals[local_count].type = TY_A;
-                    locals[local_count].slot = local_count;
-                    locals[local_count].size = (u16)sz;
-                    local_count++;
-                } else {
-                    if (!allow_locals) ir4_die("':bytes' not allowed in extern signature");
-                    if (sig->in_count >= 8) ir4_die("too many parameters");
-                    cur_bytes_copies[cur_bytes_copy_count].src_slot = local_count;
-                    cur_bytes_copies[cur_bytes_copy_count].size = (u16)sz;
-                    memcpy(cur_bytes_copies[cur_bytes_copy_count].name, tok, strlen(tok) + 1);
-                    cur_bytes_copy_count++;
-                    sprintf(locals[local_count].name, "__bp%u", (unsigned)param_cnt);
-                    locals[local_count].type = TY_A;
-                    locals[local_count].slot = local_count;
-                    locals[local_count].size = 0;
-                    sig->in_types[sig->in_count] = TY_A;
-                    sig->in_count++;
-                    param_cnt++;
-                    local_count++;
-                }
+                if (!allow_bytes) ir4_die("':bytes' not allowed in extern signature");
+                if (sig->in_count >= 8) ir4_die("too many parameters");
+                cur_bytes_copies[cur_bytes_copy_count].src_slot = local_count;
+                cur_bytes_copies[cur_bytes_copy_count].size = (u16)sz;
+                memcpy(cur_bytes_copies[cur_bytes_copy_count].name, tok, strlen(tok) + 1);
+                cur_bytes_copy_count++;
+                sprintf(locals[local_count].name, "__bp%u", (unsigned)param_cnt);
+                locals[local_count].type = TY_A;
+                locals[local_count].slot = local_count;
+                locals[local_count].size = 0;
+                sig->in_types[sig->in_count] = TY_A;
+                sig->in_count++;
+                param_cnt++;
+                local_count++;
                 continue;
             }
             ty = parse_type_tok(ty_tok);
@@ -832,14 +817,12 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_locals) {
             locals[local_count].type = ty;
             locals[local_count].slot = local_count;
             locals[local_count].size = 0;
-            if (!in_locals) {
-                if (sig->in_count >= 8) ir4_die("too many parameters");
-                sig->in_types[sig->in_count] = ty;
-                memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
-                       strlen(locals[local_count].name) + 1);
-                sig->in_count++;
-                param_cnt++;
-            }
+            if (sig->in_count >= 8) ir4_die("too many parameters");
+            sig->in_types[sig->in_count] = ty;
+            memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
+                   strlen(locals[local_count].name) + 1);
+            sig->in_count++;
+            param_cnt++;
             local_count++;
         }
     }
@@ -968,10 +951,6 @@ static void compile_word(void) {
     }
 
     w->param_cnt = param_cnt;
-    w->local_count = local_count;
-    if (local_count > 0) {
-        memcpy(w->locals, locals, local_count * sizeof(LocalVar));
-    }
     emit_bytes_param_copies(w);
     compile_body(w);
 }
@@ -1167,7 +1146,38 @@ static void compile_body(WordIR *w) {
                 check_return_stack();
                 emit_ir(IR_FN_END, w);
             }
+            w->local_count = local_count;
+            if (local_count > 0) {
+                memcpy(w->locals, locals, local_count * sizeof(LocalVar));
+            }
             return;
+        }
+
+        if (strcmp(tok, "var") == 0) {
+            char vname[MAX_TOK], vtype[MAX_TOK];
+            u8 ty;
+            if (!next_tok(vname)) ir4_die("expected local variable name after 'var'");
+            if (parse_type_tok(vname) != TY_NONE) ir4_die("expected identifier after 'var'");
+            if (find_local(vname) >= 0) ir4_die("duplicate local variable name");
+            if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
+            if (!next_tok(vtype)) ir4_die("expected type after local 'var' name");
+            memcpy(locals[local_count].name, vname, strlen(vname) + 1);
+            locals[local_count].slot = local_count;
+            if (strcmp(vtype, ":bytes") == 0) {
+                i32 sz = 0;
+                if (!next_tok(vtype) || !parse_int(vtype, &sz) || sz <= 0 || sz > MAX_DATA) {
+                    ir4_die("invalid byte count after ':bytes'");
+                }
+                locals[local_count].type = TY_A;
+                locals[local_count].size = (u16)sz;
+            } else {
+                ty = parse_type_tok(vtype);
+                if (ty == TY_NONE) ir4_die("expected type token (:i, :i32, :a, :f, :bytes) after 'var'");
+                locals[local_count].type = ty;
+                locals[local_count].size = 0;
+            }
+            local_count++;
+            continue;
         }
 
         if (strcmp(tok, "return") == 0) {

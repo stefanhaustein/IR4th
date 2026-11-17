@@ -12,7 +12,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:i32`, `:a`, `:f`).
-* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `data`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`, `|`).
+* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `data`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a leading colon that is not a keyword.
 
@@ -40,21 +40,22 @@ IR4th v0.3 defines **four stack types** on a **single unified stack** with **typ
 Functions are defined at the top level using `fn ... end` syntax with a `( ... -> ... )` signature header.
 
 ```forth
-fn <name> ( <inputs> | <locals> -> <outputs> )
+fn <name> ( <inputs> -> <outputs> )
+  var <local> <type>
   <body>
 end
 ```
 
-* **Inputs (before `|`, `->`, or `)`):**
+* **Inputs (before `->` or `)`):**
   * Declared as `IDENT TYPE` pairs (e.g., `ptr :a count :i`). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names. Unnamed input parameters are not permitted.
-* **Scratch Locals (optional, after `|` and before `->` or `)`):**
-  * Declared as `IDENT TYPE` pairs (e.g., `| i :i sum :i acc :f`) or `IDENT :bytes <size>` for a stack-allocated byte buffer (e.g., `| tmp :bytes 16`).
-  * Scalar locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `:f`) on function entry.
+* **Local Variables (`var` inside function/`init` bodies):**
+  * Declared anywhere in the function body as `var IDENT TYPE` (e.g., `var sum :i`) or `var IDENT :bytes <size>` for a stack-allocated byte buffer (e.g., `var tmp :bytes 16`).
+  * Scalar locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `:f`) once on function entry.
   * `:bytes <size>` locals allocate `<size>` bytes in the function's stack frame (freed on `end`/`return`), and referencing `<ident>` pushes its `:a` base address onto the stack.
 * **Outputs (optional, after `->` and before `)`):**
   * A nameless sequence of `TYPE` tokens specifying the exact stack state required at `end` or `return` (e.g., `-> :i`, `-> :f`, `-> :a :i`, or omitted for `void`).
 * **Forward Declarations (`fwd`):**
-  * `fwd <name> ( <inputs> -> <outputs> )` declares a function signature before its `fn <name> ... end` definition (allowing mutual recursion). Locals after `|` are not allowed in `fwd`, and the later `fn` definition must match the declared input and output types.
+  * `fwd <name> ( <inputs> -> <outputs> )` declares a function signature before its `fn <name> ... end` definition (allowing mutual recursion); the later `fn` definition must match the declared input and output types.
 * **Initialization Blocks (`init ... end`):**
   * One or more top-level `init ... end` blocks may be defined across the program and `require`d modules. Each behaves as an anonymous void function (`( )`) and runs once in source order before `main`.
 * **Machine-Code Words (`code ... end`):**
@@ -117,7 +118,7 @@ extern putchar ( c :i -> :i )                  // ARM64 JIT (dlsym, C ABI)
 extern bdos 0x0005 ( C :i DE :i -> A :i )      // Z80 CP/M (fixed addr + registers)
 ```
 
-* Signatures use `( inputs -> outputs )` (or `( inputs )` for void) without `|` locals and with at most 1 return value.
+* Signatures use `( inputs -> outputs )` (or `( inputs )` for void) with at most 1 return value.
 * On ARM64 JIT (`--run`), no address is given; symbols are resolved via `dlsym` and called using the ARM64 C ABI (`X0..X7`, `D0..D7`).
 * On RISC-V RV32 (`--obj`), symbolic `extern` calls emit ELF relocations (`R_RISCV_HI20` / `R_RISCV_LO12_I`) using the `ilp32` C ABI (`a0..a7`); fixed-address `extern` declarations are also supported for bare-metal targets (`--virt`).
 * On 16-bit targets (Z80 / 6502), a fixed 16-bit address is required and parameter/return names specify CPU registers (`A, B, C, D, E, H, L, BC, DE, HL` on Z80; `A, X, Y` on 6502).

@@ -15,7 +15,8 @@ fn pas_prints ( s :a )
   s 1 + s @u8 type
 end
 
-fn pas_prints_w ( s :a w :i | len :i )
+fn pas_prints_w ( s :a w :i )
+  var len :i
   s @u8 -> len
   begin
     w len >
@@ -32,19 +33,24 @@ fn pas_char2str ( c :i dst :a -> :a )
   dst
 end
 
-fn pas_strcopy ( dst :a src :a | len :i )
+fn pas_strcopy ( dst :a src :a )
+  var len :i
   src @u8 -> len
   dst src len 1 + memcpy
 end
 
-fn pas_streq ( a :a b :a | la :i lb :i -> :i )
+fn pas_streq ( a :a b :a -> :i )
+  var la :i
+  var lb :i
   a @u8 -> la
   b @u8 -> lb
   la lb != if 0 return then
   a 1 + b 1 + la memcmp 0 ==
 end
 
-fn pas_strconcat ( dst :a a :a b :a | la :i lb :i )
+fn pas_strconcat ( dst :a a :a b :a )
+  var la :i
+  var lb :i
   a @u8 -> la
   b @u8 -> lb
   la lb + 255 > if 255 la - -> lb then
@@ -58,7 +64,9 @@ fn pas_stradd ( a :a b :a dst :a -> :a )
   dst
 end
 
-fn pas_copy ( s :a start :i cnt :i dst :a | len :i avail :i -> :a )
+fn pas_copy ( s :a start :i cnt :i dst :a -> :a )
+  var len :i
+  var avail :i
   s @u8 -> len
   start 1 < if 1 -> start then
   cnt 0 <= start len > or if
@@ -72,7 +80,11 @@ fn pas_copy ( s :a start :i cnt :i dst :a | len :i avail :i -> :a )
   dst
 end
 
-fn pas_pos ( sub :a s :a | lsub :i ls :i i :i lim :i -> :i )
+fn pas_pos ( sub :a s :a -> :i )
+  var lsub :i
+  var ls :i
+  var i :i
+  var lim :i
   sub @u8 -> lsub
   s @u8 -> ls
   lsub 0 == lsub ls > or if 0 return then
@@ -87,7 +99,11 @@ fn pas_pos ( sub :a s :a | lsub :i ls :i i :i lim :i -> :i )
   0
 end
 
-fn pas_strcmp ( a :a b :a | la :i lb :i minl :i d :i -> :i )
+fn pas_strcmp ( a :a b :a -> :i )
+  var la :i
+  var lb :i
+  var minl :i
+  var d :i
   a @u8 -> la
   b @u8 -> lb
   la lb < if la -> minl else lb -> minl then
@@ -101,7 +117,8 @@ fn pas_set_empty ( dst :a -> :a )
   dst
 end
 
-fn pas_set_incl ( s :a e :i | p :a -> :a )
+fn pas_set_incl ( s :a e :i -> :a )
+  var p :a
   e 0 < e 255 > or if s return then
   s e 3 >> + -> p
   p @u8 1 e 7 and << or p !i8
@@ -123,7 +140,8 @@ fn pas_set_in ( e :i s :a -> :i )
   s e 3 >> + @u8 1 e 7 and << and 0 !=
 end
 
-fn pas_set_add ( a :a b :a dst :a | i :i -> :a )
+fn pas_set_add ( a :a b :a dst :a -> :a )
+  var i :i
   0 -> i
   begin
     i 32 <
@@ -134,7 +152,8 @@ fn pas_set_add ( a :a b :a dst :a | i :i -> :a )
   dst
 end
 
-fn pas_set_sub ( a :a b :a dst :a | i :i -> :a )
+fn pas_set_sub ( a :a b :a dst :a -> :a )
+  var i :i
   0 -> i
   begin
     i 32 <
@@ -145,7 +164,8 @@ fn pas_set_sub ( a :a b :a dst :a | i :i -> :a )
   dst
 end
 
-fn pas_set_mul ( a :a b :a dst :a | i :i -> :a )
+fn pas_set_mul ( a :a b :a dst :a -> :a )
+  var i :i
   0 -> i
   begin
     i 32 <
@@ -160,7 +180,8 @@ fn pas_set_eq ( a :a b :a -> :i )
   a b 32 memcmp 0 ==
 end
 
-fn pas_set_leq ( a :a b :a | i :i -> :i )
+fn pas_set_leq ( a :a b :a -> :i )
+  var i :i
   0 -> i
   begin
     i 32 <
@@ -179,7 +200,17 @@ fn pas_halt ( code :i )
   code drop
 end
 
-fn pas_val_float ( s :a dst :a err :a | len :i i :i neg :i exp :i eneg :i hasd :i c :i val :f fracv :f scale :f )
+fn pas_val_float ( s :a dst :a err :a )
+  var len :i
+  var i :i
+  var neg :i
+  var exp :i
+  var eneg :i
+  var hasd :i
+  var c :i
+  var val :f
+  var fracv :f
+  var scale :f
   s @u8 -> len
   1 -> i
   0 -> neg
@@ -278,7 +309,13 @@ fn pas_val_float ( s :a dst :a err :a | len :i i :i neg :i exp :i eneg :i hasd :
   0 err !i16
 end
 
-fn pas_putf_fix ( x :f w :i d :i | neg :i ip :i k :i dig :i rnd :f fr :f )
+fn pas_putf_fix ( x :f w :i d :i )
+  var neg :i
+  var ip :i
+  var k :i
+  var dig :i
+  var rnd :f
+  var fr :f
   0 -> neg
   x 0.0 < if
     1 -> neg

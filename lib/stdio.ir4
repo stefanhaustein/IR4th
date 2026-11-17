@@ -14,7 +14,8 @@ fn type ( s :a len :i )
   repeat
 end
 
-fn prints ( s :a | c :i )
+fn prints ( s :a )
+  var c :i
   begin
     s @u8 -> c
     c 0 !=
@@ -38,7 +39,9 @@ fn puti ( n :i )
   n putu
 end
 
-fn puti_w ( n :i w :i | d :i t :i )
+fn puti_w ( n :i w :i )
+  var d :i
+  var t :i
   n -> t
   t 0 < if
     1 -> d
