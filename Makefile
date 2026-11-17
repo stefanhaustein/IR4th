@@ -58,6 +58,9 @@ test: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 test
 	./$(TARGET) -t z80   -o $(BUILD)/math_z80.bin     tests/math.ir4
 	./$(TARGET) -t 6502  -o $(BUILD)/math_6502.bin    tests/math.ir4
 	./$(TARGET) -t arm64 -o $(BUILD)/math_arm64.bin   --run tests/math.ir4
+	./$(TARGET) -t z80   -o $(BUILD)/fnptr_z80.bin    tests/fnptr.ir4
+	./$(TARGET) -t 6502  -o $(BUILD)/fnptr_6502.bin   tests/fnptr.ir4
+	./$(TARGET) -t arm64 -o $(BUILD)/fnptr_arm64.bin  --run tests/fnptr.ir4
 	$(MAKE) test-err
 
 test-err: $(TARGET)
@@ -78,6 +81,7 @@ test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 
 	./$(TARGET) -t z80 --cpm -o build/req.com    tests/req.ir4
 	./$(TARGET) -t z80 --cpm -o build/data.com   tests/data.ir4
 	./$(TARGET) -t z80 --cpm -o build/ext.com    tests/ext.ir4
+	./$(TARGET) -t z80 --cpm -o build/fnptr.com  tests/fnptr.ir4
 	@if command -v tnylpo >/dev/null 2>&1; then \
 		out=$$(cd $(BUILD) && tnylpo fib.com | tr -d '\r\n'); \
 		echo "tnylpo fib.com -> $$out"; \
@@ -145,6 +149,10 @@ test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 		out=$$(sim65 $(BUILD)/math_sim65.bin | tr -d '\r\n'); \
 		echo "sim65 math_sim65.bin -> $$out"; \
 		test "$$out" = "0"; \
+		./$(TARGET) -t 6502 --sim65 -o $(BUILD)/fnptr_sim65.bin tests/fnptr.ir4; \
+		out=$$(sim65 $(BUILD)/fnptr_sim65.bin | tr -d '\r\n'); \
+		echo "sim65 fnptr_sim65.bin -> $$out"; \
+		test "$$out" = "0"; \
 	else \
 		echo "sim65 not found; skipping 6502 execution"; \
 	fi
@@ -159,8 +167,9 @@ test-rv32: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 	./$(TARGET) -t rv32 --virt -o $(BUILD)/data_rv32.elf   tests/data.ir4
 	./$(TARGET) -t rv32 --virt -o $(BUILD)/ext_rv32.elf    tests/ext.ir4
 	./$(TARGET) -t rv32 --virt -o $(BUILD)/math_rv32.elf   tests/math.ir4
+	./$(TARGET) -t rv32 --virt -o $(BUILD)/fnptr_rv32.elf  tests/fnptr.ir4
 	@if command -v qemu-system-riscv32 >/dev/null 2>&1; then \
-		for pair in "fib_rv32.elf:110" "core_rv32.elf:0" "muldiv_rv32.elf:0" "mem_rv32.elf:0" "float_rv32.elf:0" "req_rv32.elf:0" "data_rv32.elf:0" "ext_rv32.elf:OK0" "math_rv32.elf:0"; do \
+		for pair in "fib_rv32.elf:110" "core_rv32.elf:0" "muldiv_rv32.elf:0" "mem_rv32.elf:0" "float_rv32.elf:0" "req_rv32.elf:0" "data_rv32.elf:0" "ext_rv32.elf:OK0" "math_rv32.elf:0" "fnptr_rv32.elf:0"; do \
 			f=$${pair%%:*}; exp=$${pair#*:}; \
 			out=$$(qemu-system-riscv32 -machine virt -cpu rv32 -bios none -nographic -kernel $(BUILD)/$$f | tr -d '\r\n'); \
 			echo "qemu-system-riscv32 $$f -> $$out"; \

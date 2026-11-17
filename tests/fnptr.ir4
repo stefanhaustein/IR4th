@@ -1,0 +1,39 @@
+// fnptr.ir4 - Function addresses (& fn) and typed indirect calls (( ... -> ... ))
+// Expected main() return value: 0
+
+var fp_global :a
+var counter :i
+
+fn add2 ( a :i b :i -> :i )
+  a b +
+end
+
+fwd later_sub ( a :i b :i -> :i )
+
+fn apply2 ( a :i b :i f :a -> :i )
+  a b f ( :i :i -> :i )
+end
+
+fn inc_counter ( )
+  counter 5 + -> counter
+end
+
+fn main ( -> :i )
+  var fp :a
+  // Direct & of earlier function + indirect call via helper
+  10 20 & add2 apply2 30 != if 1 return then
+  // & of forward/later function (also tests DCE retention)
+  50 8 & later_sub apply2 42 != if 2 return then
+  // Store in typed global :a and local :a
+  & inc_counter -> fp_global
+  & inc_counter -> fp
+  0 -> counter
+  fp_global ( )
+  fp ( )
+  counter 10 != if 3 return then
+  0
+end
+
+fn later_sub ( a :i b :i -> :i )
+  a b -
+end
