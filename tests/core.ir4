@@ -66,19 +66,19 @@ end
 fn test_addr ( -> :i )
   var p :a
   var q :a
-  0x1000 :a -> p
-  p 16 + 4 - -> q
-  q p - 12 30 assert_eq
+  0x1000 i>a -> p
+  p 16 a+ 4 a- -> q
+  q p adiff 12 30 assert_eq
   dup 0 != if return then drop
-  p q u< -1 31 assert_eq
+  p q a< -1 31 assert_eq
   dup 0 != if return then drop
-  q p u> -1 32 assert_eq
+  q p a> -1 32 assert_eq
   dup 0 != if return then drop
-  p p == -1 33 assert_eq
+  p p a== -1 33 assert_eq
   dup 0 != if return then drop
-  p q != -1 34 assert_eq
+  p q a!= -1 34 assert_eq
   dup 0 != if return then drop
-  q :i 0x100C 35 assert_eq
+  q a>i 0x100C 35 assert_eq
 end
 
 fn test_ctrl ( x :i -> :i )

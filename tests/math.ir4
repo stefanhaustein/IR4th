@@ -4,7 +4,7 @@
 require ../lib/math.ir4
 
 fn assert_near ( got :f expected :f code :i -> :i )
-  got expected - fabs 0.001 < if 0 return then
+  got expected f- fabs 0.001 f< if 0 return then
   code
 end
 

@@ -3,9 +3,9 @@ var cstack :bytes 4
 extern sim_write 0xFFF7 ( A :i X :i -> A :i )
 
 fn emit ( c :i )
-  c ch !i8
-  ch cstack !a
-  1 cstack 2 + !i
-  cstack 0x10 :a !a
+  c ch i8!
+  ch cstack a!
+  1 cstack 2 a+ i!
+  cstack 0x10 i>a a!
   1 0 sim_write drop
 end

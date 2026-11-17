@@ -33,14 +33,14 @@ var g_ptr :a
 var g_flt :f
 
 init
-  10 g_init !i
+  10 g_init i!
   123 -> g_word
   scratch -> g_ptr
   1.5 -> g_flt
 end
 
 init
-  g_init @i 5 + g_init !i
+  g_init i@ 5 + g_init i!
 end
 
 fn word_bytes ( -> :i )
@@ -50,50 +50,50 @@ end
 
 fn main ( -> :i )
   // Check i8, values (unsigned & signed reads)
-  bytes_tbl @u8 10 != if 1 return then
-  bytes_tbl 1 + @u8 255 != if 2 return then
-  bytes_tbl 2 + @i8 -5 != if 3 return then
+  bytes_tbl u8@ 10 != if 1 return then
+  bytes_tbl 1 a+ u8@ 255 != if 2 return then
+  bytes_tbl 2 a+ i8@ -5 != if 3 return then
 
   // Check i16, values (unsigned & signed reads)
-  words16_tbl @i16 1000 != if 4 return then
-  words16_tbl 2 + @i16 -1234 != if 5 return then
+  words16_tbl i16@ 1000 != if 4 return then
+  words16_tbl 2 a+ i16@ -1234 != if 5 return then
 
   // Check , (native word)
-  w_pos @i 42 != if 6 return then
-  w_neg @i -7 != if 7 return then
+  w_pos i@ 42 != if 6 return then
+  w_neg i@ -7 != if 7 return then
 
   // Check mid-table align before ,
-  mixed_tbl @u8 7 != if 8 return then
-  mixed_tbl word_bytes + @i 99 != if 9 return then
+  mixed_tbl u8@ 7 != if 8 return then
+  mixed_tbl word_bytes a+ i@ 99 != if 9 return then
 
   // Check writable buffers still work alongside create
-  99 scratch !i8
-  77 tail_buf !i8
-  scratch @u8 99 != if 10 return then
-  tail_buf @u8 77 != if 11 return then
+  99 scratch i8!
+  77 tail_buf i8!
+  scratch u8@ 99 != if 10 return then
+  tail_buf u8@ 77 != if 11 return then
 
   // Re-verify create data wasn't disturbed
-  w_pos @i 42 != if 12 return then
+  w_pos i@ 42 != if 12 return then
 
   // Verify multiple init blocks ran in order before main
-  g_init @i 15 != if 13 return then
+  g_init i@ 15 != if 13 return then
 
   // Verify __heap_start is after the last static buffer
-  __heap_start tail_buf 16 + u< if 14 return then
+  __heap_start tail_buf 16 a+ a< if 14 return then
 
   // Check string literal in data
-  str_tbl @u8 104 != if 15 return then
-  str_tbl 1 + @u8 105 != if 16 return then
-  str_tbl 2 + @u8 10 != if 17 return then
-  str_tbl 3 + @u8 0 != if 18 return then
+  str_tbl u8@ 104 != if 15 return then
+  str_tbl 1 a+ u8@ 105 != if 16 return then
+  str_tbl 2 a+ u8@ 10 != if 17 return then
+  str_tbl 3 a+ u8@ 0 != if 18 return then
 
   // Check typed global vars (:i, :a, :f), ->, and &
   g_word 123 != if 19 return then
   456 -> g_word
   g_word 456 != if 20 return then
-  789 & g_word !i
+  789 & g_word i!
   g_word 789 != if 21 return then
-  g_ptr scratch != if 22 return then
-  g_flt 1.5 != if 23 return then
+  g_ptr scratch a!= if 22 return then
+  g_flt 1.5 f!= if 23 return then
   0
 end

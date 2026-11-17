@@ -5,22 +5,22 @@ fn fillchar ( dst :a len :i val :i )
   begin
     len 0 >
   while
-    val dst !i8
-    dst 1 + -> dst
+    val dst i8!
+    dst 1 a+ -> dst
     len 1 - -> len
   repeat
 end
 
 fn memcpy ( dst :a src :a len :i )
-  dst src u> if
-    dst len + -> dst
-    src len + -> src
+  dst src a> if
+    dst len a+ -> dst
+    src len a+ -> src
     begin
       len 0 >
     while
-      src 1 - -> src
-      dst 1 - -> dst
-      src @u8 dst !i8
+      src 1 a- -> src
+      dst 1 a- -> dst
+      src u8@ dst i8!
       len 1 - -> len
     repeat
     return
@@ -28,9 +28,9 @@ fn memcpy ( dst :a src :a len :i )
   begin
     len 0 >
   while
-    src @u8 dst !i8
-    src 1 + -> src
-    dst 1 + -> dst
+    src u8@ dst i8!
+    src 1 a+ -> src
+    dst 1 a+ -> dst
     len 1 - -> len
   repeat
 end
@@ -40,10 +40,10 @@ fn memcmp ( a :a b :a len :i -> :i )
   begin
     len 0 >
   while
-    a @u8 b @u8 - -> d
+    a u8@ b u8@ - -> d
     d 0 != if d return then
-    a 1 + -> a
-    b 1 + -> b
+    a 1 a+ -> a
+    b 1 a+ -> b
     len 1 - -> len
   repeat
   0
@@ -51,7 +51,7 @@ end
 
 fn heap_reset ( )
   __heap_start -> __heap_ptr
-  0 :a -> __heap_free
+  0 i>a -> __heap_free
 end
 
 fn heap_alloc ( bytes :i -> :a )
@@ -62,63 +62,63 @@ fn heap_alloc ( bytes :i -> :a )
   var rem :i
   var nxt :a
   var split :a
-  __heap_ptr 0 :a == if __heap_start -> __heap_ptr then
+  __heap_ptr 0 i>a a== if __heap_start -> __heap_ptr then
   bytes 8 < if 8 -> bytes then
   bytes 7 + -8 and 8 + -> need
-  0 :a -> prev
+  0 i>a -> prev
   __heap_free -> cur
   begin
-    cur 0 :a !=
+    cur 0 i>a a!=
   while
-    cur @i -> bsz
+    cur i@ -> bsz
     bsz need >= if
-      cur 8 + @a -> nxt
+      cur 8 a+ a@ -> nxt
       bsz need - -> rem
       rem 16 >= if
-        cur need + -> split
-        rem split !i
-        nxt split 8 + !a
-        need cur !i
+        cur need a+ -> split
+        rem split i!
+        nxt split 8 a+ a!
+        need cur i!
         split -> nxt
       then
-      prev 0 :a == if nxt -> __heap_free else nxt prev 8 + !a then
-      cur 8 + return
+      prev 0 i>a a== if nxt -> __heap_free else nxt prev 8 a+ a! then
+      cur 8 a+ return
     then
     cur -> prev
-    cur 8 + @a -> cur
+    cur 8 a+ a@ -> cur
   repeat
   __heap_ptr -> cur
-  need cur !i
-  cur need + -> __heap_ptr
-  cur 8 +
+  need cur i!
+  cur need a+ -> __heap_ptr
+  cur 8 a+
 end
 
 fn heap_free ( p :a )
   var blk :a
   var prev :a
   var cur :a
-  p 0 :a == if return then
-  p 8 - -> blk
-  0 :a -> prev
+  p 0 i>a a== if return then
+  p 8 a- -> blk
+  0 i>a -> prev
   __heap_free -> cur
   begin
-    cur 0 :a != if cur blk u< else 0 then
+    cur 0 i>a a!= if cur blk a< else 0 then
   while
     cur -> prev
-    cur 8 + @a -> cur
+    cur 8 a+ a@ -> cur
   repeat
-  cur blk 8 + !a
-  prev 0 :a == if blk -> __heap_free else blk prev 8 + !a then
-  cur 0 :a != if
-    blk blk @i + cur == if
-      blk @i cur @i + blk !i
-      cur 8 + @a blk 8 + !a
+  cur blk 8 a+ a!
+  prev 0 i>a a== if blk -> __heap_free else blk prev 8 a+ a! then
+  cur 0 i>a a!= if
+    blk blk i@ a+ cur a== if
+      blk i@ cur i@ + blk i!
+      cur 8 a+ a@ blk 8 a+ a!
     then
   then
-  prev 0 :a != if
-    prev prev @i + blk == if
-      prev @i blk @i + prev !i
-      blk 8 + @a prev 8 + !a
+  prev 0 i>a a!= if
+    prev prev i@ a+ blk a== if
+      prev i@ blk i@ + prev i!
+      blk 8 a+ a@ prev 8 a+ a!
     then
   then
 end

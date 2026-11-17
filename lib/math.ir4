@@ -1,7 +1,7 @@
 // lib/math.ir4 - Portable floating-point math library for IR4th
 
 fn fabs ( x :f -> :f )
-  x 0.0 < if x fnegate return then
+  x 0.0 f< if x fnegate return then
   x
 end
 
@@ -10,92 +10,92 @@ fn fint ( x :f -> :f )
   var p :f
   var res :f
   x fabs -> ax
-  ax 16384.0 < if x :i :f return then
-  ax 1.0 + ax == if x return then
+  ax 16384.0 f< if x f>i i>f return then
+  ax 1.0 f+ ax f== if x return then
   16384.0 -> p
   begin
-    p 2.0 * ax > 0 ==
+    p 2.0 f* ax f> 0 ==
   while
-    p 2.0 * -> p
+    p 2.0 f* -> p
   repeat
   0.0 -> res
   begin
-    p 16384.0 < 0 ==
+    p 16384.0 f< 0 ==
   while
-    ax p < 0 == if
-      ax p - -> ax
-      res p + -> res
+    ax p f< 0 == if
+      ax p f- -> ax
+      res p f+ -> res
     then
-    p 0.5 * -> p
+    p 0.5 f* -> p
   repeat
-  res ax :i :f +
-  x 0.0 < if fnegate then
+  res ax f>i i>f f+
+  x 0.0 f< if fnegate then
 end
 
 fn frac ( x :f -> :f )
-  x x fint -
+  x x fint f-
 end
 
 fn fround ( x :f -> :i )
-  x 0.0 < if x 0.5 - :i return then
-  x 0.5 + :i
+  x 0.0 f< if x 0.5 f- f>i return then
+  x 0.5 f+ f>i
 end
 
 fn sqrt ( x :f -> :f )
   var scale :f
   var g :f
   var i :i
-  x 0.0 > 0 == if 0.0 return then
+  x 0.0 f> 0 == if 0.0 return then
   1.0 -> scale
   begin
-    x 2.0 < 0 ==
+    x 2.0 f< 0 ==
   while
-    x 0.25 * -> x
-    scale 2.0 * -> scale
+    x 0.25 f* -> x
+    scale 2.0 f* -> scale
   repeat
   begin
-    x 0.5 <
+    x 0.5 f<
   while
-    x 4.0 * -> x
-    scale 0.5 * -> scale
+    x 4.0 f* -> x
+    scale 0.5 f* -> scale
   repeat
   1.0 -> g
   0 -> i
   begin
     i 6 <
   while
-    g x g / + 0.5 * -> g
+    g x g f/ f+ 0.5 f* -> g
     i 1 + -> i
   repeat
-  g scale *
+  g scale f*
 end
 
 fn sin ( x :f -> :f )
   var x2 :f
-  x x 6.283185307179586 / fint 6.283185307179586 * - -> x
-  x 3.141592653589793 > if
-    x 6.283185307179586 - -> x
+  x x 6.283185307179586 f/ fint 6.283185307179586 f* f- -> x
+  x 3.141592653589793 f> if
+    x 6.283185307179586 f- -> x
   then
-  x -3.141592653589793 < if
-    x 6.283185307179586 + -> x
+  x -3.141592653589793 f< if
+    x 6.283185307179586 f+ -> x
   then
-  x 1.5707963267948966 > if
-    3.141592653589793 x - -> x
+  x 1.5707963267948966 f> if
+    3.141592653589793 x f- -> x
   then
-  x -1.5707963267948966 < if
-    -3.141592653589793 x - -> x
+  x -1.5707963267948966 f< if
+    -3.141592653589793 x f- -> x
   then
-  x x * -> x2
-  1.0 x2 110.0 / -
-  1.0 swap x2 72.0 / * -
-  1.0 swap x2 42.0 / * -
-  1.0 swap x2 20.0 / * -
-  1.0 swap x2 6.0 / * -
-  x *
+  x x f* -> x2
+  1.0 x2 110.0 f/ f-
+  1.0 swap x2 72.0 f/ f* f-
+  1.0 swap x2 42.0 f/ f* f-
+  1.0 swap x2 20.0 f/ f* f-
+  1.0 swap x2 6.0 f/ f* f-
+  x f*
 end
 
 fn cos ( x :f -> :f )
-  1.5707963267948966 x - sin
+  1.5707963267948966 x f- sin
 end
 
 fn arctan ( x :f -> :f )
@@ -104,52 +104,52 @@ fn arctan ( x :f -> :f )
   var corr :i
   var x2 :f
   1.0 -> sign
-  x 0.0 < if
+  x 0.0 f< if
     -1.0 -> sign
     x fnegate -> x
   then
-  x 1.0 > if
+  x 1.0 f> if
     1 -> inv
-    1.0 x / -> x
+    1.0 x f/ -> x
   then
-  x 0.2679491924311227 > if
+  x 0.2679491924311227 f> if
     1 -> corr
-    x 1.7320508075688772 * 1.0 -
-    1.7320508075688772 x + / -> x
+    x 1.7320508075688772 f* 1.0 f-
+    1.7320508075688772 x f+ f/ -> x
   then
-  x x * -> x2
-  0.1111111111111111 x2 * 0.14285714285714285 -
-  x2 * 0.2 +
-  x2 * 0.3333333333333333 -
-  x2 * 1.0 +
-  x *
-  corr 0 != if 0.5235987755982988 + then
-  inv 0 != if 1.5707963267948966 swap - then
-  sign *
+  x x f* -> x2
+  0.1111111111111111 x2 f* 0.14285714285714285 f-
+  x2 f* 0.2 f+
+  x2 f* 0.3333333333333333 f-
+  x2 f* 1.0 f+
+  x f*
+  corr 0 != if 0.5235987755982988 f+ then
+  inv 0 != if 1.5707963267948966 swap f- then
+  sign f*
 end
 
 fn exp ( x :f -> :f )
   var k :i
   var r :f
   var res :f
-  x 1.4426950408889634 * fround -> k
-  x k :f 0.6931471805599453 * - -> r
-  1.0 r 6.0 / +
-  r 5.0 / * 1.0 +
-  r 4.0 / * 1.0 +
-  r 3.0 / * 1.0 +
-  r 2.0 / * 1.0 +
-  r * 1.0 + -> res
+  x 1.4426950408889634 f* fround -> k
+  x k i>f 0.6931471805599453 f* f- -> r
+  1.0 r 6.0 f/ f+
+  r 5.0 f/ f* 1.0 f+
+  r 4.0 f/ f* 1.0 f+
+  r 3.0 f/ f* 1.0 f+
+  r 2.0 f/ f* 1.0 f+
+  r f* 1.0 f+ -> res
   begin
     k 0 >
   while
-    res 2.0 * -> res
+    res 2.0 f* -> res
     k 1 - -> k
   repeat
   begin
     k 0 <
   while
-    res 0.5 * -> res
+    res 0.5 f* -> res
     k 1 + -> k
   repeat
   res
@@ -159,24 +159,24 @@ fn ln ( x :f -> :f )
   var k :i
   var u :f
   var u2 :f
-  x 0.0 > 0 == if 0.0 return then
+  x 0.0 f> 0 == if 0.0 return then
   begin
-    x 1.4142135623730951 >
+    x 1.4142135623730951 f>
   while
-    x 0.5 * -> x
+    x 0.5 f* -> x
     k 1 + -> k
   repeat
   begin
-    x 0.7071067811865476 <
+    x 0.7071067811865476 f<
   while
-    x 2.0 * -> x
+    x 2.0 f* -> x
     k 1 - -> k
   repeat
-  x 1.0 - x 1.0 + / -> u
-  u u * -> u2
-  0.14285714285714285 u2 * 0.2 +
-  u2 * 0.3333333333333333 +
-  u2 * 1.0 +
-  u * 2.0 *
-  k :f 0.6931471805599453 * +
+  x 1.0 f- x 1.0 f+ f/ -> u
+  u u f* -> u2
+  0.14285714285714285 u2 f* 0.2 f+
+  u2 f* 0.3333333333333333 f+
+  u2 f* 1.0 f+
+  u f* 2.0 f*
+  k i>f 0.6931471805599453 f* f+
 end
