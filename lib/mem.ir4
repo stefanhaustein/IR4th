@@ -1,7 +1,7 @@
 var __heap_ptr :a
 var __heap_free :a
 
-fn fillchar ( dst :a len :i val :i )
+default fn fillchar ( dst :a len :i val :i )
   begin
     len 0 >
   while
@@ -11,7 +11,7 @@ fn fillchar ( dst :a len :i val :i )
   repeat
 end
 
-fn memcpy ( dst :a src :a len :i )
+default fn memcpy ( dst :a src :a len :i )
   dst src a> if
     dst len a+ -> dst
     src len a+ -> src
@@ -35,7 +35,7 @@ fn memcpy ( dst :a src :a len :i )
   repeat
 end
 
-fn memcmp ( a :a b :a len :i -> :i )
+default fn memcmp ( a :a b :a len :i -> :i )
   var d :i
   begin
     len 0 >

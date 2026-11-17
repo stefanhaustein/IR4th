@@ -174,11 +174,13 @@ rt: rt-z80 rt-6502 rt-rv32
 
 rt-z80:
 	python3 tools/gen_math48.py --input tools/math48.asm --output src/be_z80_math48.h
-	python3 tools/asm2ir4.py --cpu z80 --input tools/z80/i32_prim.asm --output lib/z80/i32.ir4
+	python3 tools/asm2ir4.py --cpu z80 --input tools/z80/i32.asm --output lib/z80/i32.ir4
+	python3 tools/asm2ir4.py --cpu z80 --input tools/z80/mem.asm --output lib/z80/mem.ir4
 
 rt-6502:
 	python3 tools/gen_wozfp.py --input tools/wozfp.asm --output src/be_6502_wozfp.h
-	python3 tools/asm2ir4.py --cpu 6502 --input tools/6502/i32_prim.asm --output lib/6502/i32.ir4
+	python3 tools/asm2ir4.py --cpu 6502 --input tools/6502/i32.asm --output lib/6502/i32.ir4
+	python3 tools/asm2ir4.py --cpu 6502 --input tools/6502/mem.asm --output lib/6502/mem.ir4
 
 rt-rv32:
 	python3 tools/gen_rv32_fp.py --input tools/rv32_fp.c --output src/be_rv32_fp.h

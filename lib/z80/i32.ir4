@@ -1,4 +1,4 @@
-// Auto-generated from tools/z80/i32_prim.asm by tools/asm2ir4.py (do not edit manually).
+// Auto-generated from tools/z80/i32.asm by tools/asm2ir4.py (do not edit manually).
 
 code i32* ( a :i32 b :i32 -> :i32 )
   0xFD :i8 0xE1 :i8 0x21 :i8 0x00 :i8 0x00 :i8 0xE5 :i8 0xE5 :i8 0xDD :i8
