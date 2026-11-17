@@ -27,6 +27,7 @@ void be_6502_set_ram_top(u16 top) {
 static u16 mul16_addr      = 0;
 static u16 udivmod16_addr  = 0;
 static u16 sdivmod16_addr  = 0;
+static u16 icall_addr      = 0;
 static u16 wozfp_addr      = 0;
 
 void be_6502_set_zp(u8 zp) {
@@ -1537,6 +1538,42 @@ static void m6502_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
     patch16((u16)(call_pc + 1), target_addr);
 }
 
+static u16 m6502_push_fn(u16 target_addr) {
+    u16 pc;
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    pc = cb_pc();
+    emit8_8(M6502_LDA_IMM, (u8)(target_addr & 0xFF));
+    m6502_sta_stk(0);
+    emit8_8(M6502_LDA_IMM, (u8)((target_addr >> 8) & 0xFF));
+    m6502_sta_stk(1);
+    return pc;
+}
+
+static void m6502_patch_fn(u16 patch_pc, u16 patch_addr, u16 target_addr) {
+    u16 sta_len = (stack_zp_base != 0) ? 2 : 3;
+    (void)patch_addr;
+    patch8((u16)(patch_pc + 1), (u8)(target_addr & 0xFF));
+    patch8((u16)(patch_pc + 2 + sta_len + 1), (u8)((target_addr >> 8) & 0xFF));
+}
+
+static void m6502_icall(void) {
+    m6502_lda_stk(0);
+    emit8_8(M6502_STA_ZP, zp_scratch);
+    m6502_lda_stk(1);
+    emit8_8(M6502_STA_ZP, (u8)(zp_scratch + 1));
+    emit8(M6502_INX);
+    emit8(M6502_INX);
+    if (icall_addr == 0) {
+        u16 skip_jmp;
+        emit8(M6502_JMP); skip_jmp = cb_pc(); emit16(0x0000);
+        icall_addr = cb_cur_addr();
+        emit8_16(0x6C, (u16)zp_scratch); /* JMP (zp_scratch) */
+        patch16(skip_jmp, cb_cur_addr());
+    }
+    emit8_16(M6502_JSR, icall_addr);
+}
+
 const Backend be_6502 = {
     "6502",
     2, 2, 4,
@@ -1563,5 +1600,8 @@ const Backend be_6502 = {
     m6502_emit_br_back,
     m6502_patch_fwd,
     m6502_patch_call,
+    m6502_push_fn,
+    m6502_patch_fn,
+    m6502_icall,
     be_6502_stack_data_off
 };

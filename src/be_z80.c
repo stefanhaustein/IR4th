@@ -11,6 +11,7 @@
 static u16 rt_mul_addr     = 0;
 static u16 rt_udivmod_addr = 0;
 static u16 rt_sdivmod_addr = 0;
+static u16 rt_icall_addr   = 0;
 static u16 rt_math48_addr  = 0;
 static u16 z80_local_off[MAX_LOCALS];
 static u16 z80_local_bytes = 0;
@@ -1422,6 +1423,28 @@ static void z80_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
     patch16((u16)(call_pc + 1), target_addr);
 }
 
+static u16 z80_push_fn(u16 target_addr) {
+    u16 pc = cb_pc();
+    emit8_16(Z80_LD_HL_NN, target_addr);
+    z80_push(Z80_PUSH_HL);
+    return pc;
+}
+
+static void z80_patch_fn(u16 patch_pc, u16 patch_addr, u16 target_addr) {
+    (void)patch_addr;
+    patch16((u16)(patch_pc + 1), target_addr);
+}
+
+static void z80_icall(void) {
+    z80_pop(Z80_POP_HL);
+    if (rt_icall_addr == 0) {
+        emit8_8(Z80_JR, 1);
+        rt_icall_addr = cb_cur_addr();
+        emit8(0xE9); /* JP (HL) */
+    }
+    z80_call(rt_icall_addr);
+}
+
 const Backend be_z80 = {
     "z80",
     2, 2, 6,
@@ -1448,5 +1471,8 @@ const Backend be_z80 = {
     z80_emit_br_back,
     z80_patch_fwd,
     z80_patch_call,
+    z80_push_fn,
+    z80_patch_fn,
+    z80_icall,
     NULL
 };

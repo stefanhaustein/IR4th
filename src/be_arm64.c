@@ -666,6 +666,26 @@ static void a64_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
     patch32(call_pc, 0x94000000UL | (((u32)(diff >> 2)) & 0x03FFFFFFUL));
 }
 
+static u16 a64_push_fn(u16 target_addr) {
+    u16 pc = cb_pc();
+    i32 diff = (i32)target_addr - (i32)cb_cur_addr();
+    u32 imm = (u32)diff;
+    emit32(0x10000000UL | ((imm & 0x3UL) << 29) | (((imm >> 2) & 0x7FFFFUL) << 5)); /* ADR X0, diff */
+    push_x0();
+    return pc;
+}
+
+static void a64_patch_fn(u16 patch_pc, u16 patch_addr, u16 target_addr) {
+    i32 diff = (i32)target_addr - (i32)patch_addr;
+    u32 imm = (u32)diff;
+    patch32(patch_pc, 0x10000000UL | ((imm & 0x3UL) << 29) | (((imm >> 2) & 0x7FFFFUL) << 5));
+}
+
+static void a64_icall(void) {
+    pop_x0();
+    emit32(0xD63F0000UL); /* BLR X0 */
+}
+
 const Backend be_arm64 = {
     "arm64",
     8, 8, 8,
@@ -692,5 +712,8 @@ const Backend be_arm64 = {
     a64_emit_br_back,
     a64_patch_fwd,
     a64_patch_call,
+    a64_push_fn,
+    a64_patch_fn,
+    a64_icall,
     NULL
 };

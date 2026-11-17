@@ -700,6 +700,30 @@ static void rv_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
     patch32(call_pc, enc_j(diff, RV_RA));
 }
 
+static u16 rv_push_fn(u16 target_addr) {
+    u16 pc = cb_pc();
+    i32 diff = (i32)target_addr - (i32)cb_cur_addr();
+    u32 hi = (u32)((diff + 0x800) & 0xFFFFF000L);
+    i32 lo = diff - (i32)hi;
+    emit32(enc_u(hi, RV_T0, 0x17UL));           /* AUIPC t0, hi */
+    emit32(enc_i(lo, RV_T0, 0, RV_T0, 0x13UL)); /* ADDI t0, t0, lo */
+    push_reg(RV_T0);
+    return pc;
+}
+
+static void rv_patch_fn(u16 patch_pc, u16 patch_addr, u16 target_addr) {
+    i32 diff = (i32)target_addr - (i32)patch_addr;
+    u32 hi = (u32)((diff + 0x800) & 0xFFFFF000L);
+    i32 lo = diff - (i32)hi;
+    patch32(patch_pc, enc_u(hi, RV_T0, 0x17UL));
+    patch32((u16)(patch_pc + 4), enc_i(lo, RV_T0, 0, RV_T0, 0x13UL));
+}
+
+static void rv_icall(void) {
+    pop_reg(RV_T0);
+    emit32(enc_i(0, RV_T0, 0, RV_RA, 0x67UL)); /* JALR ra, t0, 0 */
+}
+
 const Backend be_rv32 = {
     "rv32",
     4, 4, 4,
@@ -726,5 +750,8 @@ const Backend be_rv32 = {
     rv_emit_br_back,
     rv_patch_fwd,
     rv_patch_call,
+    rv_push_fn,
+    rv_patch_fn,
+    rv_icall,
     NULL
 };

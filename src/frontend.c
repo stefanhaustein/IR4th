@@ -41,6 +41,8 @@ typedef enum {
     IR_ALU_OP,
     IR_CALL,
     IR_CALL_EXTERN,
+    IR_PUSH_FN,
+    IR_ICALL,
     IR_BR_FWD,
     IR_BR_BACK
 } IrKind;
@@ -905,6 +907,34 @@ static void flush_bytes_params(u8 *params_flushed) {
     }
 }
 
+static void parse_icall_sig(FuncSig *sig) {
+    char tok[MAX_TOK];
+    u8 in_outs = 0;
+
+    while (next_tok(tok)) {
+        u8 ty;
+        if (strcmp(tok, ")") == 0) {
+            if (in_outs && sig->out_count == 0) ir4_die("expected return type after '->'");
+            return;
+        }
+        if (strcmp(tok, "->") == 0) {
+            if (in_outs) ir4_die("duplicate '->' in signature");
+            in_outs = 1;
+            continue;
+        }
+        ty = parse_type_tok(tok);
+        if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f, :i32) in indirect call signature");
+        if (in_outs) {
+            if (sig->out_count >= 4) ir4_die("too many return types");
+            sig->out_types[sig->out_count++] = ty;
+        } else {
+            if (sig->in_count >= 8) ir4_die("too many input types");
+            sig->in_types[sig->in_count++] = ty;
+        }
+    }
+    ir4_die("unterminated '(' in indirect call");
+}
+
 static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
     char tok[MAX_TOK];
     u8 param_cnt = 0;
@@ -1421,11 +1451,37 @@ static void compile_body(WordIR *w) {
                 continue;
             }
             idx = find_buffer(tok);
-            if (idx < 0) ir4_die("unknown variable in '&'");
-            if (buffers[idx].type == TY_NONE) ir4_die("':bytes' or 'data' symbol is already an address");
-            ins = emit_ir(IR_PUSH_DATA, w);
-            ins->u.offset = buffers[idx].offset;
-            tpush(TY_A);
+            if (idx >= 0) {
+                if (buffers[idx].type == TY_NONE) ir4_die("':bytes' or 'data' symbol is already an address");
+                ins = emit_ir(IR_PUSH_DATA, w);
+                ins->u.offset = buffers[idx].offset;
+                tpush(TY_A);
+                continue;
+            }
+            idx = ir4_find_func(tok);
+            if (idx >= 0) {
+                if (funcs[idx].is_extern) ir4_die("cannot take address of 'extern' function");
+                ins = emit_ir(IR_PUSH_FN, w);
+                ins->u.func_idx = (u8)idx;
+                tpush(TY_A);
+                continue;
+            }
+            ir4_die("unknown variable or function in '&'");
+        }
+
+        if (strcmp(tok, "(") == 0) {
+            FuncSig icall_sig;
+            int k;
+            memset(&icall_sig, 0, sizeof(FuncSig));
+            parse_icall_sig(&icall_sig);
+            tpop_expect(TY_A);
+            for (k = (int)icall_sig.in_count - 1; k >= 0; k--) {
+                tpop_expect(icall_sig.in_types[k]);
+            }
+            for (k = 0; k < (int)icall_sig.out_count; k++) {
+                tpush(icall_sig.out_types[k]);
+            }
+            emit_ir(IR_ICALL, w);
             continue;
         }
 
@@ -1689,6 +1745,8 @@ static void mark_reachable(u8 fidx) {
         const IrInstr *ins = &ir_buf[w->ir_start + i];
         if (ins->kind == IR_CALL) {
             mark_reachable(ins->u.func_idx);
+        } else if (ins->kind == IR_PUSH_FN) {
+            mark_reachable(ins->u.func_idx);
         }
     }
 }
@@ -1703,6 +1761,7 @@ typedef struct {
     u16 call_pc;
     u16 call_addr;
     u8  func_idx;
+    u8  is_fn_ptr;
 } FwdCall;
 
 static FwdCall fwd_calls[MAX_FWD_CALLS];
@@ -1871,10 +1930,28 @@ static void emit_word(u8 fidx) {
                     fwd_calls[fwd_call_count].call_pc = call_pc;
                     fwd_calls[fwd_call_count].call_addr = call_addr;
                     fwd_calls[fwd_call_count].func_idx = target;
+                    fwd_calls[fwd_call_count].is_fn_ptr = 0;
                     fwd_call_count++;
                 }
                 break;
             }
+            case IR_PUSH_FN: {
+                u8 target = ins->u.func_idx;
+                u16 fn_addr = be->cur_addr();
+                u16 fn_pc = be->push_fn(funcs[target].addr);
+                if (!funcs[target].has_addr) {
+                    if (fwd_call_count >= MAX_FWD_CALLS) ir4_die("too many forward calls");
+                    fwd_calls[fwd_call_count].call_pc = fn_pc;
+                    fwd_calls[fwd_call_count].call_addr = fn_addr;
+                    fwd_calls[fwd_call_count].func_idx = target;
+                    fwd_calls[fwd_call_count].is_fn_ptr = 1;
+                    fwd_call_count++;
+                }
+                break;
+            }
+            case IR_ICALL:
+                be->icall();
+                break;
             case IR_CALL_EXTERN:
                 be->call_extern(&funcs[ins->u.func_idx]);
                 break;
@@ -2166,8 +2243,13 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
         {
             u16 c;
             for (c = 0; c < fwd_call_count; c++) {
-                be->patch_call(fwd_calls[c].call_pc, fwd_calls[c].call_addr,
-                               funcs[fwd_calls[c].func_idx].addr);
+                if (fwd_calls[c].is_fn_ptr) {
+                    be->patch_fn(fwd_calls[c].call_pc, fwd_calls[c].call_addr,
+                                 funcs[fwd_calls[c].func_idx].addr);
+                } else {
+                    be->patch_call(fwd_calls[c].call_pc, fwd_calls[c].call_addr,
+                                   funcs[fwd_calls[c].func_idx].addr);
+                }
             }
         }
     }
