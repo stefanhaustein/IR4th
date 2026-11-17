@@ -1,6 +1,6 @@
 // Test platform-resolved require + extern (emit)
 
-require io.ir4
+require "io.ir4"
 
 fn main ( -> :i )
   79 emit

@@ -1,7 +1,7 @@
 // rtl.ir4 - Portable RTL tests (stdio.ir4, mem.ir4, pascal.ir4)
 // Expected main() output ends with 0 (return code)
 
-require pascal.ir4
+require "pascal.ir4"
 
 data s_hi  2 :i8 "Hi" end
 data s_wld 5 :i8 "World" end

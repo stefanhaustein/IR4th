@@ -25,10 +25,10 @@ typedef unsigned long  u32;
 typedef signed long    i32;
 #endif
 
-#define MAX_TOK    32
-#define MAX_LOCALS 16
+#define MAX_TOK    64
+#define MAX_LOCALS 64
 #define MAX_CODE   65535
-#define MAX_DATA   16384
+#define MAX_DATA   49152
 #define MAX_RELOCS 16384
 
 /* Stack types (v0.3) */

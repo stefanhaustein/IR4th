@@ -1,4 +1,4 @@
-require i32_prim.ir4
+require "i32_prim.ir4"
 
 fn i32/ ( a :i32 b :i32 -> :i32 )
   var neg :i

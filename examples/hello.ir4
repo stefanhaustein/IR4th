@@ -1,4 +1,4 @@
-require stdio.ir4
+require "stdio.ir4"
 
 data msg
   "Hello, world!\n" 0 :i8

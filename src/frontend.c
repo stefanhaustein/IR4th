@@ -382,6 +382,22 @@ static void push_require_ex(const char *name, int lib_only) {
     src_depth++;
 }
 
+static void read_require_path(char *out, size_t out_sz) {
+    int c = skip_ws_and_comments();
+    SrcFile *cur = &src_stack[src_depth - 1];
+    size_t len = 0;
+
+    if (c != '"') ir4_die("expected quoted filename after 'require'");
+    c = fgetc(cur->fp);
+    while (c != EOF && c != '\n' && c != '"') {
+        if (len + 1 >= out_sz) ir4_die("required file path too long");
+        out[len++] = (char)c;
+        c = fgetc(cur->fp);
+    }
+    if (c != '"') ir4_die("unterminated filename in 'require'");
+    out[len] = '\0';
+}
+
 static void push_require(const char *name) {
     push_require_ex(name, 0);
 }
@@ -1985,8 +2001,9 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             parse_sig_body(sig, NULL, 0);
             if (sig->out_count > 1) ir4_die("extern supports at most 1 return value");
         } else if (strcmp(tok, "require") == 0) {
-            if (!next_tok(tok)) ir4_die("expected filename after 'require'");
-            push_require(tok);
+            char req_path[MAX_PATH];
+            read_require_path(req_path, sizeof(req_path));
+            push_require(req_path);
         } else if (strcmp(tok, "data") == 0) {
             compile_data();
         } else if (strcmp(tok, "var") == 0) {

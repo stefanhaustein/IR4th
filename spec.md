@@ -100,7 +100,7 @@ end
 Top-level `require` loads another `.ir4` source file at most once (include-once semantics):
 
 ```forth
-require <filename>
+require "<filename>"
 ```
 
 * `<filename>` is resolved relative to the directory of the file containing `require`, falling back to `lib/` if not found there.

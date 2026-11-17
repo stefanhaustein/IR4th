@@ -1,4 +1,4 @@
-require io.ir4
+require "io.ir4"
 
 fn cr ( )
   10 emit

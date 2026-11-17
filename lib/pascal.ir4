@@ -1,6 +1,6 @@
-require stdio.ir4
-require mem.ir4
-require math.ir4
+require "stdio.ir4"
+require "mem.ir4"
+require "math.ir4"
 
 fn pas_abs ( n :i -> :i )
   n 0 < if 0 n - return then

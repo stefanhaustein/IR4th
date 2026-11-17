@@ -21,7 +21,7 @@ This project is based on [hi5](https://github.com/stefanhaustein/hi5), an earlie
 Hello world ([examples/hello.ir4](examples/hello.ir4)):
 
 ```forth
-require stdio.ir4
+require "stdio.ir4"
 
 data msg
   "Hello, world!\n" 0 :i8
