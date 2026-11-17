@@ -624,6 +624,33 @@ static int a64_cmp_imm(IrOp op, i32 imm) {
     return 1;
 }
 
+static int a64_shift_imm(IrOp op, u8 count) {
+    u32 c = (u32)count;
+    if (c == 0) return 1;
+    emit32(0xF94003E0UL); /* LDR X0, [SP] */
+    switch (op) {
+    case OP_LSHIFT:  emit32(0xD3400000UL | ((64 - c) << 16) | ((63 - c) << 10)); break;
+    case OP_RSHIFT:  emit32(0xD340FC00UL | (c << 16)); break;
+    case OP_ARSHIFT: emit32(0x9340FC00UL | (c << 16)); break;
+    case OP_SHL32:
+        emit32(0x53000000UL | ((32 - c) << 16) | ((31 - c) << 10));
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
+        break;
+    case OP_RSHR32:
+        emit32(0x53007C00UL | (c << 16));
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
+        break;
+    case OP_ASHR32:
+        emit32(0x13007C00UL | (c << 16));
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
+        break;
+    default:
+        return 0;
+    }
+    emit32(0xF90003E0UL); /* STR X0, [SP] */
+    return 1;
+}
+
 static void a64_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
     i32 diff = (i32)target_addr - (i32)call_addr;
     patch32(call_pc, 0x94000000UL | (((u32)(diff >> 2)) & 0x03FFFFFFUL));
@@ -647,6 +674,7 @@ const Backend be_arm64 = {
     a64_op,
     a64_add_imm,
     a64_cmp_imm,
+    a64_shift_imm,
     a64_mem_imm,
     NULL,
     NULL,

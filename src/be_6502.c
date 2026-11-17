@@ -1431,6 +1431,52 @@ static int m6502_add_imm(i32 imm) {
     return 1;
 }
 
+static int m6502_shift_imm(IrOp op, u8 count) {
+    u8 k;
+    if (count == 0) return 1;
+    if (op != OP_LSHIFT && op != OP_RSHIFT && op != OP_ARSHIFT) return 0;
+    if (count == 8) {
+        if (op == OP_LSHIFT) {
+            m6502_lda_stk(0);
+            m6502_sta_stk(1);
+            emit8_8(M6502_LDA_IMM, 0x00);
+            m6502_sta_stk(0);
+        } else if (op == OP_RSHIFT) {
+            m6502_lda_stk(1);
+            m6502_sta_stk(0);
+            emit8_8(M6502_LDA_IMM, 0x00);
+            m6502_sta_stk(1);
+        } else {
+            m6502_lda_stk(1);
+            m6502_sta_stk(0);
+            emit8_8(M6502_BPL, 0x04);
+            emit8_8(M6502_LDA_IMM, 0xFF);
+            emit8_8(M6502_BMI, 0x02);
+            emit8_8(M6502_LDA_IMM, 0x00);
+            m6502_sta_stk(1);
+        }
+        return 1;
+    }
+    if (count > 3) return 0;
+    for (k = 0; k < count; k++) {
+        if (op == OP_LSHIFT) {
+            m6502_asl_stk(0);
+            m6502_lda_stk(1);
+            emit8(M6502_ROL_A);
+            m6502_sta_stk(1);
+        } else if (op == OP_RSHIFT) {
+            m6502_lsr_stk(1);
+            m6502_ror_stk(0);
+        } else {
+            m6502_lda_stk(1);
+            emit8(0x0A); /* ASL A */
+            m6502_ror_stk(1);
+            m6502_ror_stk(0);
+        }
+    }
+    return 1;
+}
+
 static void m6502_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
     (void)call_addr;
     patch16((u16)(call_pc + 1), target_addr);
@@ -1454,6 +1500,7 @@ const Backend be_6502 = {
     m6502_op,
     m6502_add_imm,
     NULL,
+    m6502_shift_imm,
     m6502_mem_imm,
     m6502_data_mem,
     m6502_local_mem,

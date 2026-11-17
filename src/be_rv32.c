@@ -668,6 +668,21 @@ static int rv_cmp_imm(IrOp op, i32 imm) {
     return 1;
 }
 
+static int rv_shift_imm(IrOp op, u8 count) {
+    u32 c = (u32)(count & 31);
+    if (c == 0) return 1;
+    op = rv_norm32(op);
+    rv_lw(RV_T0, 0, RV_DSP);
+    switch (op) {
+    case OP_LSHIFT:  emit32(enc_i(c, RV_T0, 1, RV_T0, 0x13UL)); break;         /* SLLI */
+    case OP_RSHIFT:  emit32(enc_i(c, RV_T0, 5, RV_T0, 0x13UL)); break;         /* SRLI */
+    case OP_ARSHIFT: emit32(enc_i(0x400 | c, RV_T0, 5, RV_T0, 0x13UL)); break; /* SRAI */
+    default: return 0;
+    }
+    rv_sw(RV_T0, 0, RV_DSP);
+    return 1;
+}
+
 static void rv_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
     i32 diff = (i32)target_addr - (i32)call_addr;
     patch32(call_pc, enc_j(diff, RV_RA));
@@ -691,6 +706,7 @@ const Backend be_rv32 = {
     rv_op,
     rv_add_imm,
     rv_cmp_imm,
+    rv_shift_imm,
     rv_mem_imm,
     NULL,
     NULL,

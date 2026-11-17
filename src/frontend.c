@@ -655,6 +655,44 @@ static int handle_builtin(const char *tok, WordIR *w) {
                     return 1;
                 }
             }
+            if (w->ir_len >= fold_fence + 1) {
+                IrOp rop = builtins[i].op;
+                if (rop == OP_MUL || rop == OP_UDIV || rop == OP_UMOD ||
+                    rop == OP_MUL32 || rop == OP_UDIV32 || rop == OP_UMOD32) {
+                    IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
+                    u8 is32 = (rop == OP_MUL32 || rop == OP_UDIV32 || rop == OP_UMOD32);
+                    if ((!is32 && p1->kind == IR_PUSH_W) ||
+                        (is32 && p1->kind == IR_PUSH_I32)) {
+                        u32 v = (!is32 && be->word_bytes == 2)
+                              ? (u32)(u16)p1->u.w : (u32)p1->u.w;
+                        if (v == 1 && (rop == OP_MUL || rop == OP_UDIV ||
+                                       rop == OP_MUL32 || rop == OP_UDIV32)) {
+                            w->ir_len--;
+                            ir_count--;
+                            return 1;
+                        }
+                        if (v >= 2 && (v & (v - 1)) == 0 &&
+                            (is32 || be->word_bytes == 2 || p1->u.w > 0)) {
+                            u8 sh = 0;
+                            while ((v >> sh) > 1) sh++;
+                            if (rop == OP_UMOD || rop == OP_UMOD32) {
+                                p1->u.w = (i32)(v - 1);
+                                ins = emit_ir(IR_ALU_OP, w);
+                                ins->u.op = is32 ? OP_AND32 : OP_AND;
+                                return 1;
+                            }
+                            p1->kind = IR_PUSH_W;
+                            p1->u.w = (i32)sh;
+                            ins = emit_ir(IR_ALU_OP, w);
+                            ins->u.op = (rop == OP_MUL)   ? OP_LSHIFT
+                                      : (rop == OP_UDIV)  ? OP_RSHIFT
+                                      : (rop == OP_MUL32) ? OP_SHL32
+                                                          : OP_RSHR32;
+                            return 1;
+                        }
+                    }
+                }
+            }
             ins = emit_ir(IR_ALU_OP, w);
             ins->u.op = builtins[i].op;
             return 1;
@@ -1525,6 +1563,15 @@ static void emit_word(u8 fidx) {
                         }
                     } else if (aop >= OP_EQ && aop <= OP_UGE) {
                         if (be->cmp_imm && be->cmp_imm(aop, imm)) {
+                            i++;
+                            break;
+                        }
+                    } else if (aop == OP_LSHIFT || aop == OP_RSHIFT || aop == OP_ARSHIFT ||
+                               aop == OP_SHL32 || aop == OP_RSHR32 || aop == OP_ASHR32) {
+                        u8 max_sh = (aop >= OP_SHL32 || be->word_bytes == 4) ? 31
+                                  : (be->word_bytes == 8) ? 63 : 15;
+                        if (imm >= 0 && imm <= (i32)max_sh &&
+                            be->shift_imm && be->shift_imm(aop, (u8)imm)) {
                             i++;
                             break;
                         }
