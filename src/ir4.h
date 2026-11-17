@@ -173,8 +173,10 @@ typedef struct {
     u16  addr;
     u8   is_extern;
     u8   is_defined;
+    u8   is_default;
     u8   has_addr;
     u8   is_recursive;
+    u16  req_group;
     u8   in_types[8];
     char in_regs[8][MAX_TOK];
     u8   in_count;

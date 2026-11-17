@@ -9,8 +9,8 @@ Converts annotated 6502 (`ca65`/`ld65`) or Z80 (`z80asm`) assembly files into `l
 ### Usage
 
 ```sh
-python3 tools/asm2ir4.py --cpu 6502 --input tools/6502/i32_prim.asm --output lib/6502/i32_prim.ir4
-python3 tools/asm2ir4.py --cpu z80  --input tools/z80/i32_prim.asm  --output lib/z80/i32_prim.ir4
+python3 tools/asm2ir4.py --cpu 6502 --input tools/6502/i32_prim.asm --output lib/6502/i32.ir4
+python3 tools/asm2ir4.py --cpu z80  --input tools/z80/i32_prim.asm  --output lib/z80/i32.ir4
 ```
 
 ### Assembly Format

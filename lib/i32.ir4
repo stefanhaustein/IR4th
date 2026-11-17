@@ -1,6 +1,4 @@
-require "i32_prim.ir4"
-
-fn i32/ ( a :i32 b :i32 -> :i32 )
+default fn i32/ ( a :i32 b :i32 -> :i32 )
   var neg :i
   var ua :i32
   var ub :i32
@@ -13,7 +11,7 @@ fn i32/ ( a :i32 b :i32 -> :i32 )
   q
 end
 
-fn i32mod ( a :i32 b :i32 -> :i32 )
+default fn i32mod ( a :i32 b :i32 -> :i32 )
   var neg :i
   var ua :i32
   var ub :i32

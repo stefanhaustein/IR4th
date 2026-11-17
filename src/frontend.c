@@ -98,10 +98,12 @@ typedef struct {
     FILE *fp;
     char  path[MAX_PATH];
     u16   line_num;
+    u16   req_group;
 } SrcFile;
 
 static SrcFile        src_stack[MAX_INCLUDE_DEPTH];
 static u8             src_depth = 0;
+static u16            next_req_group = 1;
 static char           seen_files[MAX_INCLUDES][MAX_PATH];
 static u8             seen_count = 0;
 static const Backend *be;
@@ -299,13 +301,31 @@ void ir4_set_exe_path(const char *exe_path) {
     }
 }
 
+static void push_src_file(FILE *fp, const char *path, u16 req_group) {
+    if (seen_count >= MAX_INCLUDES) {
+        fclose(fp);
+        ir4_die("too many required files");
+    }
+    if (src_depth >= MAX_INCLUDE_DEPTH) {
+        fclose(fp);
+        ir4_die("require nesting too deep");
+    }
+    memcpy(seen_files[seen_count++], path, strlen(path) + 1);
+    src_stack[src_depth].fp = fp;
+    memcpy(src_stack[src_depth].path, path, strlen(path) + 1);
+    src_stack[src_depth].line_num = 1;
+    src_stack[src_depth].req_group = req_group;
+    src_depth++;
+}
+
 static void push_require_ex(const char *name, int lib_only) {
     char cands[3][MAX_PATH];
     int n_cands = 0;
     int c;
-    char path[MAX_PATH];
-    FILE *fp = NULL;
-    int seen = 0;
+    FILE *found_fps[3];
+    char found_paths[3][MAX_PATH];
+    int found_cnt = 0;
+    int seen_cnt = 0;
 
     if (name[0] != '/') {
         if (platform_name != NULL && platform_name[0] != '\0') {
@@ -326,14 +346,21 @@ static void push_require_ex(const char *name, int lib_only) {
 
     if (!lib_only) {
         for (c = 0; c < n_cands; c++) {
+            char path[MAX_PATH];
+            int seen = 0;
+            FILE *fp;
             resolve_path(src_stack[src_depth - 1].path, cands[c], path, sizeof(path));
             fp = try_open_require(path, &seen);
-            if (seen) return;
-            if (fp) break;
+            if (seen) seen_cnt++;
+            else if (fp) {
+                found_fps[found_cnt] = fp;
+                strcpy(found_paths[found_cnt], path);
+                found_cnt++;
+            }
         }
     }
 
-    if (!fp && name[0] != '/') {
+    if (found_cnt == 0 && seen_cnt == 0 && name[0] != '/') {
         const char *roots[3];
         char root_bufs[2][MAX_PATH];
         int n_roots = 0;
@@ -349,37 +376,41 @@ static void push_require_ex(const char *name, int lib_only) {
             }
         }
         roots[n_roots++] = "lib";
-        for (r = 0; r < n_roots && !fp; r++) {
+        for (r = 0; r < n_roots && found_cnt == 0 && seen_cnt == 0; r++) {
             for (c = 0; c < n_cands; c++) {
+                char path[MAX_PATH];
+                int seen = 0;
+                FILE *fp;
                 if (strlen(roots[r]) + 1 + strlen(cands[c]) >= sizeof(path)) continue;
                 sprintf(path, "%s/%s", roots[r], cands[c]);
                 fp = try_open_require(path, &seen);
-                if (seen) return;
-                if (fp) break;
+                if (seen) seen_cnt++;
+                else if (fp) {
+                    found_fps[found_cnt] = fp;
+                    strcpy(found_paths[found_cnt], path);
+                    found_cnt++;
+                }
             }
         }
     }
 
-    if (!fp) {
+    if (found_cnt > 0) {
+        u16 grp = next_req_group++;
+        int i;
+        /* Push least-specific first so most-specific is parsed first on LIFO stack. */
+        for (i = found_cnt - 1; i >= 0; i--) {
+            push_src_file(found_fps[i], found_paths[i], grp);
+        }
+        return;
+    }
+    if (seen_cnt > 0) return;
+
+    {
         const SrcFile *cur = &src_stack[src_depth - 1];
         fprintf(stderr, "ir4c error (%s:%u): cannot open required file '%s'\n",
                 cur->path, cur->line_num, name);
         exit(1);
     }
-    if (seen_count >= MAX_INCLUDES) {
-        fclose(fp);
-        ir4_die("too many required files");
-    }
-    if (src_depth >= MAX_INCLUDE_DEPTH) {
-        fclose(fp);
-        ir4_die("require nesting too deep");
-    }
-
-    memcpy(seen_files[seen_count++], path, strlen(path) + 1);
-    src_stack[src_depth].fp = fp;
-    memcpy(src_stack[src_depth].path, path, strlen(path) + 1);
-    src_stack[src_depth].line_num = 1;
-    src_depth++;
 }
 
 static void read_require_path(char *out, size_t out_sz) {
@@ -975,14 +1006,25 @@ static void emit_bytes_param_copies(WordIR *w) {
     }
 }
 
-static void compile_word(void) {
+static int sigs_match(const FuncSig *a, const FuncSig *b) {
+    return a->in_count == b->in_count &&
+           a->out_count == b->out_count &&
+           memcmp(a->in_types, b->in_types, a->in_count) == 0 &&
+           memcmp(a->out_types, b->out_types, a->out_count) == 0;
+}
+
+static void compile_word(int is_default) {
     char tok[MAX_TOK];
     char name[MAX_TOK];
     FuncSig *sig;
     WordIR *w;
+    WordIR discard_w;
+    int discard_body = 0;
+    u16 saved_ir_count = ir_count;
     u8 fidx;
     int existing;
     u8 param_cnt = 0;
+    u16 cur_grp = src_stack[src_depth - 1].req_group;
 
     if (!next_tok(name)) ir4_die("expected word name after 'fn'");
     if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after word name");
@@ -990,8 +1032,19 @@ static void compile_word(void) {
     existing = ir4_find_func(name);
     if (existing >= 0) {
         FuncSig fn_sig;
-        if (funcs[existing].is_defined || funcs[existing].is_extern) {
+        if (funcs[existing].is_extern) {
             ir4_die("duplicate function definition");
+        }
+        if (funcs[existing].is_defined) {
+            if (cur_grp == 0 || funcs[existing].req_group != cur_grp) {
+                ir4_die("duplicate function definition");
+            }
+            if (is_default && funcs[existing].is_default) {
+                ir4_die("duplicate 'default' function definition");
+            }
+            if (!is_default && !funcs[existing].is_default) {
+                ir4_die("duplicate function definition");
+            }
         }
         fidx = (u8)existing;
         memset(&fn_sig, 0, sizeof(FuncSig));
@@ -999,17 +1052,25 @@ static void compile_word(void) {
         tsp = 0;
         bsp = 0;
         parse_sig_body(&fn_sig, &param_cnt, 1);
-        if (fn_sig.in_count != funcs[fidx].in_count ||
-            fn_sig.out_count != funcs[fidx].out_count ||
-            memcmp(fn_sig.in_types, funcs[fidx].in_types, fn_sig.in_count) != 0 ||
-            memcmp(fn_sig.out_types, funcs[fidx].out_types, fn_sig.out_count) != 0) {
-            ir4_die("function signature does not match 'fwd' declaration");
+        if (!sigs_match(&fn_sig, &funcs[fidx])) {
+            ir4_die(funcs[fidx].is_defined
+                    ? "override signature does not match 'default' declaration"
+                    : "function signature does not match 'fwd' declaration");
         }
-        funcs[fidx] = fn_sig;
-        funcs[fidx].is_defined = 1;
-        sig = &funcs[fidx];
-        w = &words[fidx];
-        memset(w, 0, sizeof(WordIR));
+        if (is_default && funcs[fidx].is_defined) {
+            /* Already overridden by a more-specific file in this require group. */
+            discard_body = 1;
+            memset(&discard_w, 0, sizeof(WordIR));
+            w = &discard_w;
+        } else {
+            funcs[fidx] = fn_sig;
+            funcs[fidx].is_defined = 1;
+            funcs[fidx].is_default = (u8)is_default;
+            funcs[fidx].req_group = cur_grp;
+            sig = &funcs[fidx];
+            w = &words[fidx];
+            memset(w, 0, sizeof(WordIR));
+        }
     } else {
         if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
         fidx = func_count++;
@@ -1019,6 +1080,8 @@ static void compile_word(void) {
         memset(w, 0, sizeof(WordIR));
         memcpy(sig->name, name, strlen(name) + 1);
         sig->is_defined = 1;
+        sig->is_default = (u8)is_default;
+        sig->req_group = cur_grp;
         tsp = 0;
         bsp = 0;
         parse_sig_body(sig, &param_cnt, 1);
@@ -1027,6 +1090,9 @@ static void compile_word(void) {
     w->param_cnt = param_cnt;
     emit_bytes_param_copies(w);
     compile_body(w);
+    if (discard_body) {
+        ir_count = saved_ir_count;
+    }
 }
 
 static u8 init_funcs[MAX_SYMS];
@@ -1048,19 +1114,47 @@ static void compile_code(void) {
     i32 pending = 0;
     int has_pending = 0;
 
-    if (!next_tok(name)) ir4_die("expected word name after 'code'");
-    if (ir4_find_func(name) >= 0) ir4_die("duplicate function definition");
-    if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after 'code' name");
-    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+    int existing;
+    u16 cur_grp = src_stack[src_depth - 1].req_group;
 
-    fidx = func_count++;
-    sig = &funcs[fidx];
-    w = &words[fidx];
-    memset(sig, 0, sizeof(FuncSig));
-    memset(w, 0, sizeof(WordIR));
-    memcpy(sig->name, name, strlen(name) + 1);
-    sig->is_defined = 1;
-    parse_sig_body(sig, NULL, 0);
+    if (!next_tok(name)) ir4_die("expected word name after 'code'");
+    existing = ir4_find_func(name);
+    if (existing >= 0) {
+        FuncSig code_sig;
+        if (!funcs[existing].is_defined || funcs[existing].is_extern ||
+            !funcs[existing].is_default || cur_grp == 0 ||
+            funcs[existing].req_group != cur_grp) {
+            ir4_die("duplicate function definition");
+        }
+        if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after 'code' name");
+        fidx = (u8)existing;
+        memset(&code_sig, 0, sizeof(FuncSig));
+        memcpy(code_sig.name, name, strlen(name) + 1);
+        parse_sig_body(&code_sig, NULL, 0);
+        if (!sigs_match(&code_sig, &funcs[fidx])) {
+            ir4_die("override signature does not match 'default' declaration");
+        }
+        funcs[fidx] = code_sig;
+        funcs[fidx].is_defined = 1;
+        funcs[fidx].is_default = 0;
+        funcs[fidx].req_group = cur_grp;
+        sig = &funcs[fidx];
+        w = &words[fidx];
+        memset(w, 0, sizeof(WordIR));
+    } else {
+        if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after 'code' name");
+        if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+
+        fidx = func_count++;
+        sig = &funcs[fidx];
+        w = &words[fidx];
+        memset(sig, 0, sizeof(FuncSig));
+        memset(w, 0, sizeof(WordIR));
+        memcpy(sig->name, name, strlen(name) + 1);
+        sig->is_defined = 1;
+        sig->req_group = cur_grp;
+        parse_sig_body(sig, NULL, 0);
+    }
 
     w->is_code = 1;
     w->ir_start = raw_code_len;
@@ -1894,6 +1988,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     src_stack[0].fp = in;
     memcpy(src_stack[0].path, root_path, plen + 1);
     src_stack[0].line_num = 1;
+    src_stack[0].req_group = 0;
+    next_req_group = 1;
 
     seen_count = 1;
     memcpy(seen_files[0], root_path, plen + 1);
@@ -1914,7 +2010,12 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
 
     while (next_tok(tok)) {
         if (strcmp(tok, "fn") == 0) {
-            compile_word();
+            compile_word(0);
+        } else if (strcmp(tok, "default") == 0) {
+            if (!next_tok(tok) || strcmp(tok, "fn") != 0) {
+                ir4_die("expected 'fn' after 'default'");
+            }
+            compile_word(1);
         } else if (strcmp(tok, "code") == 0) {
             compile_code();
         } else if (strcmp(tok, "init") == 0) {
