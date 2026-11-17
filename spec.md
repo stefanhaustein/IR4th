@@ -45,7 +45,8 @@ end
 ```
 
 * **Inputs (before `->` or `)`):**
-  * Declared as `IDENT TYPE` pairs (e.g., `ptr :a count :i`). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names. Unnamed input parameters are not permitted.
+  * Declared as `IDENT TYPE` pairs (e.g., `ptr :a count :i`) or `IDENT :bytes <size>` (e.g., `buf :bytes 16`, in `fn` definitions only). On entry, arguments are popped from the unified data stack in standard Forth order (rightmost parameter popped from the top of the stack) and bound to their local names. Unnamed input parameters are not permitted.
+  * For `IDENT :bytes <size>` parameters, the caller passes an `:a` source pointer; on entry, the callee allocates a local `<size>`-byte buffer, copies `<size>` bytes from the source pointer into it, and binds `IDENT` to the copy's `:a` base address (pass-by-value semantics).
 * **Local Variables (`var` inside function/`init` bodies):**
   * Declared anywhere in the function body as `var IDENT TYPE` (e.g., `var sum :i`) or `var IDENT :bytes <size>` for a stack-allocated byte buffer (e.g., `var tmp :bytes 16`).
   * Scalar locals do **not** pop from the caller's stack; they allocate local storage slots initialized to `0` (`0.0` for `:f`) once on function entry.
@@ -53,7 +54,7 @@ end
 * **Outputs (optional, after `->` and before `)`):**
   * A nameless sequence of `TYPE` tokens specifying the exact stack state required at `end` or `return` (e.g., `-> :i`, `-> :f`, `-> :a :i`, or omitted for `void`).
 * **Forward Declarations (`fwd`):**
-  * `fwd <name> ( <inputs> -> <outputs> )` declares a function signature before its `fn <name> ... end` definition (allowing mutual recursion); the later `fn` definition must match the declared input and output types.
+  * `fwd <name> ( <inputs> -> <outputs> )` declares a function signature before its `fn <name> ... end` definition (allowing mutual recursion); the later `fn` definition must match the declared input and output types. Forward declarations apply only to functions—`var` and `data` must be declared before use.
 * **Initialization Blocks (`init ... end`):**
   * One or more top-level `init ... end` blocks may be defined across the program and `require`d modules. Each behaves as an anonymous void function (`( )`) and runs once in source order before `main`.
 * **Machine-Code Words (`code ... end`):**
@@ -92,7 +93,7 @@ end
 * `:i8` emits 1 byte (`-128..255`). `:i16` emits 2 little-endian bytes (`-32768..65535`). `:i32` emits 4 little-endian bytes (`-2147483648..4294967295`). `:i` (or a bare integer without a width specifier) emits 1 native word (`word_bytes`).
 * `"..."` emits raw string bytes (supporting `\n`, `\r`, `\t`, `\0`, `\\`, `\"` escapes) without an implicit NUL terminator.
 * `align` advances the data pointer to the next multiple of `word_bytes`.
-* `data` blocks are semantically read-only.
+* `data` blocks are semantically read-only and must be declared before they are referenced.
 
 ### 3.4 Including Files (`require`)
 Top-level `require` loads another `.ir4` source file at most once (include-once semantics):
