@@ -10,6 +10,9 @@
 #include <math.h>
 
 static u8  zp_scratch      = 0xFB;
+static u8  stack_zp_base   = 0;
+static u8  stack_zp_init_x = 0;
+static int stack_zp_explicit = 0;
 static u16 stack_data_off  = 0;
 static u16 locals_data_off = 0;
 static u16 lfp_data_off    = 0;
@@ -30,9 +33,32 @@ void be_6502_set_zp(u8 zp) {
     zp_scratch = zp;
 }
 
+void be_6502_set_stack_zp(u8 base, u8 init_x) {
+    stack_zp_base = base;
+    stack_zp_init_x = init_x;
+    stack_zp_explicit = 1;
+}
+
+void be_6502_set_default_stack_zp(u8 base, u8 init_x) {
+    if (!stack_zp_explicit) {
+        stack_zp_base = base;
+        stack_zp_init_x = init_x;
+    }
+}
+
+u8 be_6502_stack_zp_base(void) {
+    return stack_zp_base;
+}
+
+u8 be_6502_stack_zp_init_x(void) {
+    return stack_zp_init_x;
+}
+
 static void ensure_data_alloc(void) {
     if (!data_inited) {
-        stack_data_off  = cb_alloc_data(256, 1);
+        if (stack_zp_base == 0) {
+            stack_data_off = cb_alloc_data(256, 1);
+        }
         locals_data_off = cb_alloc_data(256, 1);
         lfp_data_off    = cb_alloc_data(1, 1);
         data_inited = 1;
@@ -47,11 +73,19 @@ static void ensure_big_alloc(void) {
 }
 
 u16 be_6502_stack_data_off(void) {
+    if (stack_zp_base != 0) {
+        return (u16)stack_zp_base;
+    }
     ensure_data_alloc();
     return stack_data_off;
 }
 
 static void emit_stack_op(u8 opcode, u8 disp) {
+    if (stack_zp_base != 0) {
+        /* Every abs,X stack opcode in be_6502 maps to zp,X via (opcode - 0x08). */
+        emit8_8((u8)(opcode - 0x08), (u8)(stack_zp_base + disp));
+        return;
+    }
     ensure_data_alloc();
     emit8(opcode);
     cb_add_data_reloc(cb_pc(), (u16)(stack_data_off + disp));
@@ -1022,27 +1056,39 @@ static void m6502_op(IrOp op) {
         emit8(M6502_INX); emit8_8(0xC0, 0x00); /* CPY #0 */
         if (op == OP_LSHIFT) {
             /* Avoid ROL abs,X ($3E) due to a PC-advance bug in sim65 V2.18 */
-            emit8_8(M6502_BEQ, 0x0D);
+            u16 skip_br;
+            u16 loop_pc;
+            emit8(M6502_BEQ); skip_br = cb_pc(); emit8(0x00);
+            loop_pc = cb_pc();
             m6502_asl_stk(0);
             m6502_lda_stk(1);
             emit8(M6502_ROL_A);
             m6502_sta_stk(1);
             emit8(M6502_DEY);
-            emit8_8(M6502_BNE, 0xF3);
+            emit8_8(M6502_BNE, (u8)(loop_pc - (cb_pc() + 2)));
+            patch8(skip_br, (u8)(cb_pc() - (skip_br + 1)));
         } else if (op == OP_RSHIFT) {
-            emit8_8(M6502_BEQ, 0x09);
+            u16 skip_br;
+            u16 loop_pc;
+            emit8(M6502_BEQ); skip_br = cb_pc(); emit8(0x00);
+            loop_pc = cb_pc();
             m6502_lsr_stk(1);
             m6502_ror_stk(0);
             emit8(M6502_DEY);
-            emit8_8(M6502_BNE, 0xF7);
+            emit8_8(M6502_BNE, (u8)(loop_pc - (cb_pc() + 2)));
+            patch8(skip_br, (u8)(cb_pc() - (skip_br + 1)));
         } else {
-            emit8_8(M6502_BEQ, 0x0D);
+            u16 skip_br;
+            u16 loop_pc;
+            emit8(M6502_BEQ); skip_br = cb_pc(); emit8(0x00);
+            loop_pc = cb_pc();
             m6502_lda_stk(1);
             emit8(0x0A);              /* ASL A */
             m6502_ror_stk(1);
             m6502_ror_stk(0);
             emit8(M6502_DEY);
-            emit8_8(M6502_BNE, 0xF3);
+            emit8_8(M6502_BNE, (u8)(loop_pc - (cb_pc() + 2)));
+            patch8(skip_br, (u8)(cb_pc() - (skip_br + 1)));
         }
         break;
     case OP_EQ: case OP_AEQ:

@@ -248,6 +248,8 @@ extern const Platform plat_rv32_virt;
 extern const Platform plat_rv32_obj;
 
 void be_6502_set_zp(u8 zp);
+void be_6502_set_stack_zp(u8 base, u8 init_x);
+u8   be_6502_stack_zp_base(void);
 u16 be_6502_stack_data_off(void);
 void be_rv32_set_obj(int obj);
 

@@ -46,22 +46,30 @@ static void sim_end(int main_idx) {
     /* Patch the initial JMP 0x0000 at offset 0 (base + 1) to jump here */
     patch16(1, entry_addr);
 
-    /* CLD; LDX #$FF; TXS; LDX #$00 */
+    /* CLD; LDX #$FF; TXS; LDX #init_x */
     emit8(M6502_CLD);
     emit8_8(M6502_LDX_IMM, 0xFF);
     emit8(M6502_TXS);
-    emit8_8(M6502_LDX_IMM, 0x00);
+    emit8_8(M6502_LDX_IMM, be_6502_stack_zp_init_x());
 
     /* JSR main */
     emit8_16(M6502_JSR, sig->addr);
 
     if (sig->out_count == 1) {
-        u16 stk_off = be_6502_stack_data_off();
+        u8 zp_stk = be_6502_stack_zp_base();
         /* Pop 16-bit signed value from (stack_base,X) into $04/$05 */
-        emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), stk_off); emit16(0x0000);
-        emit8_8(M6502_STA_ZP, 0x04);
-        emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1)); emit16(0x0000);
-        emit8_8(M6502_STA_ZP, 0x05);
+        if (zp_stk != 0) {
+            emit8_8(0xB5, zp_stk); /* LDA zp,X */
+            emit8_8(M6502_STA_ZP, 0x04);
+            emit8_8(0xB5, (u8)(zp_stk + 1)); /* LDA zp+1,X */
+            emit8_8(M6502_STA_ZP, 0x05);
+        } else {
+            u16 stk_off = be_6502_stack_data_off();
+            emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), stk_off); emit16(0x0000);
+            emit8_8(M6502_STA_ZP, 0x04);
+            emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1)); emit16(0x0000);
+            emit8_8(M6502_STA_ZP, 0x05);
+        }
         emit8(M6502_INX); emit8(M6502_INX);
 
         /* If $05 < 0, print '-' and negate $04/$05 */

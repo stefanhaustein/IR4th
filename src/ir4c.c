@@ -13,7 +13,7 @@ static const Platform *const platforms[] = {
 };
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [--platform name] [--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] [--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {
@@ -65,6 +65,20 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--zp") == 0 && i + 1 < argc) {
             i++;
             be_6502_set_zp((u8)strtoul(argv[i], NULL, 0));
+        } else if (strcmp(argv[i], "--stack-zp") == 0 && i + 1 < argc) {
+            const char *arg;
+            char *colon;
+            u8 zp_base;
+            u8 zp_init = 0;
+            i++;
+            arg = argv[i];
+            zp_base = (u8)strtoul(arg, &colon, 0);
+            if (colon && *colon == ':') {
+                zp_init = (u8)strtoul(colon + 1, NULL, 0);
+            }
+            be_6502_set_stack_zp(zp_base, zp_init);
+        } else if (strcmp(argv[i], "--no-stack-zp") == 0) {
+            be_6502_set_stack_zp(0, 0);
         } else if (argv[i][0] == '-') {
             const Platform *matched = NULL;
             for (j = 0; platforms[j]; j++) {

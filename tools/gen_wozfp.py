@@ -9,7 +9,7 @@ import tempfile
 
 from rt_util import compute_relocs, extract_header_comments, write_rt_header
 
-WOZFP_ZP_BASE = 0x40
+WOZFP_ZP_BASE = 0x02
 
 WOZFP_JUMP_TABLE = """\
     JMP FADD

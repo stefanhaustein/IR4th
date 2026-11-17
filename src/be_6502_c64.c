@@ -17,6 +17,7 @@ static void c64_begin(u16 base) {
     u16 next_line;
 
     be_6502_set_ram_top(0xD000);
+    be_6502_set_default_stack_zp(0x20, 0x70);
 
     /* 10 SYS <addr> : 2-byte next_line + 2-byte line_num + 1-byte SYS(0x9E) + digits + NUL + 2-byte end */
     sprintf(digits, "%u", (unsigned)(base + 12));
@@ -72,20 +73,28 @@ static void c64_end(int main_idx) {
 
     patch16(c64_jmp_pc, entry_addr);
 
-    /* CLD; LDX #$00 (initialize IR4th data stack without clobbering hardware SP) */
+    /* CLD; LDX #init_x (initialize IR4th data stack without clobbering hardware SP) */
     emit8(M6502_CLD);
-    emit8_8(M6502_LDX_IMM, 0x00);
+    emit8_8(M6502_LDX_IMM, be_6502_stack_zp_init_x());
 
     /* JSR main */
     emit8_16(M6502_JSR, sig->addr);
 
     if (sig->out_count == 1) {
-        u16 stk_off = be_6502_stack_data_off();
+        u8 zp_stk = be_6502_stack_zp_base();
         /* Pop 16-bit signed value from (stack_base,X) into $FB/$FC */
-        emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), stk_off); emit16(0x0000);
-        emit8_8(M6502_STA_ZP, C64_TMP_LO);
-        emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1)); emit16(0x0000);
-        emit8_8(M6502_STA_ZP, C64_TMP_HI);
+        if (zp_stk != 0) {
+            emit8_8(0xB5, zp_stk); /* LDA zp,X */
+            emit8_8(M6502_STA_ZP, C64_TMP_LO);
+            emit8_8(0xB5, (u8)(zp_stk + 1)); /* LDA zp+1,X */
+            emit8_8(M6502_STA_ZP, C64_TMP_HI);
+        } else {
+            u16 stk_off = be_6502_stack_data_off();
+            emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), stk_off); emit16(0x0000);
+            emit8_8(M6502_STA_ZP, C64_TMP_LO);
+            emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1)); emit16(0x0000);
+            emit8_8(M6502_STA_ZP, C64_TMP_HI);
+        }
         emit8(M6502_INX); emit8(M6502_INX);
 
         /* If $FC < 0, print '-' and negate $FB/$FC */

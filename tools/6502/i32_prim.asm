@@ -1,21 +1,21 @@
 ; 6502 32-bit integer primitives for IR4th (converted via tools/asm2ir4.py).
-; Preserves X (IR4th data stack pointer). Uses ZP $40..$4E.
+; Preserves X (IR4th data stack pointer). Uses ZP $02..$10.
 
-A0 = $40
-A1 = $41
-A2 = $42
-A3 = $43
-B0 = $44
-B1 = $45
-B2 = $46
-B3 = $47
-R0 = $48
-R1 = $49
-R2 = $4A
-R3 = $4B
-T0 = $4C
-T1 = $4D
-T2 = $4E
+A0 = $02
+A1 = $03
+A2 = $04
+A3 = $05
+B0 = $06
+B1 = $07
+B2 = $08
+B3 = $09
+R0 = $0A
+R1 = $0B
+R2 = $0C
+R3 = $0D
+T0 = $0E
+T1 = $0F
+T2 = $10
 
 ; @code i32* ( a :i32 b :i32 -> :i32 )
     LDA STACK+0,X

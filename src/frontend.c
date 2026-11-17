@@ -1622,7 +1622,11 @@ static void emit_word(u8 fidx) {
             if (rel->kind == CODE_REL_SELF) {
                 patch16(pc, (u16)(sig->addr + rel->addend));
             } else if (rel->kind == CODE_REL_STACK) {
-                cb_add_data_reloc(pc, (u16)(be->stack_data_off() + rel->addend));
+                if (be == &be_6502 && be_6502_stack_zp_base() != 0) {
+                    patch16(pc, (u16)(be_6502_stack_zp_base() + rel->addend));
+                } else {
+                    cb_add_data_reloc(pc, (u16)(be->stack_data_off() + rel->addend));
+                }
             }
         }
         return;

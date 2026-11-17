@@ -69,5 +69,9 @@ enum {
 
 void be_6502_set_zp(u8 zp);
 void be_6502_set_ram_top(u16 top);
+void be_6502_set_stack_zp(u8 base, u8 init_x);
+void be_6502_set_default_stack_zp(u8 base, u8 init_x);
+u8   be_6502_stack_zp_base(void);
+u8   be_6502_stack_zp_init_x(void);
 
 #endif /* BE_6502_H */
