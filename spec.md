@@ -64,7 +64,7 @@ end
 ### 3.1 Accessing, Mutating & Addressing Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
 * **Write (`-> <ident>`):** Pops the top value from the stack (verifying its type matches `<ident>`'s declared type `T`) and stores it into `<ident>`.
-* **Address (`& <ident>`):** Pushes the memory address of parameter or local `<ident>` onto the stack with type `:a`.
+* **Address (`& <ident>`):** Pushes the memory address of parameter, local, typed global, or function `<ident>` onto the stack with type `:a` (functions referenced via `&` are retained by dead-code elimination).
 
 ### 3.2 Global Variables & Named Data Buffers (`var`)
 Top-level writable globals and fixed-size buffers can be declared outside word definitions:
@@ -229,6 +229,6 @@ Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) wide
 * **Conditional Branches (`<cond :i> if ... else ... then`):** Pops a `:i` flag. Both branches must leave the type stack with identical depth and types. If `else` is omitted, the true branch must leave the stack completely even (unchanged).
 * **Pre-Tested Loops (`begin <cond :i> while ... repeat`):** `while` pops a `:i` flag. The combined condition and loop body must leave the type stack completely even at `repeat`.
 * **Labels & Branches (`:: <name>`, `jmp <name>`, `<cond :i> jz <name>`):** Function-local labels and forward/backward branches. The type stack must be empty at `::`, at `jmp`, and after popping `:i` at `jz`; `::` cannot appear inside an open `if` or `begin` block.
-* **Calls & Early Return (`<word_name>`, `return`):** Validates caller stack against callee inputs and pushes outputs. `return` verifies the stack matches the word's declared output types after `--`.
+* **Calls & Early Return (`<word_name>`, `( <inputs> -> <outputs> )`, `return`):** Direct calls (`<word_name>`) validate the caller stack against callee inputs and push outputs. Indirect calls (`<args...> <fn :a> ( <inputs> -> <outputs> )`, where `<inputs>` and `<outputs>` are nameless type tokens) pop the `:a` target address and declared input types, call the address, and push the declared output types. `return` verifies the stack matches the word's declared output types after `->`.
 
 For complete runnable programs, see [examples/](examples/) and [tests/](tests/).
