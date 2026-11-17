@@ -15,16 +15,16 @@
 #define RV_LOAD_BASE 0x80000000UL
 
 #define RV_ZERO 0
-#define RV_RA   1
-#define RV_SP   2
-#define RV_T0   5
-#define RV_T1   6
-#define RV_T2   7
-#define RV_FP   8
-#define RV_DSP  9
-#define RV_A0   10
-#define RV_A1   11
-#define RV_DB   18
+#define RV_RA 1
+#define RV_SP 2
+#define RV_T0 5
+#define RV_T1 6
+#define RV_T2 7
+#define RV_FP 8
+#define RV_DSP 9
+#define RV_A0 10
+#define RV_A1 11
+#define RV_DB 18
 
 static u16 rv_fp_addr = 0;
 static int rv_obj_mode = 0;
@@ -36,15 +36,16 @@ void be_rv32_set_obj(int obj) {
 
 static u32 read32(u16 offset) {
     const u8 *d = cb_data();
-    return (u32)d[offset] | ((u32)d[offset + 1] << 8) |
-           ((u32)d[offset + 2] << 16) | ((u32)d[offset + 3] << 24);
+    return (u32)d[offset] | ((u32)d[offset + 1] << 8) | ((u32)d[offset + 2] << 16) |
+           ((u32)d[offset + 3] << 24);
 }
 
 static void ensure_rv32_fp(void) {
     u16 skip_pos;
     u16 base_pc;
     u16 i;
-    if (rv_fp_addr != 0) return;
+    if (rv_fp_addr != 0)
+        return;
 
     skip_pos = cb_pc();
     emit32(0); /* JAL x0, skip */
@@ -61,19 +62,19 @@ static void ensure_rv32_fp(void) {
     for (i = 0; i < (u16)BE_RV32_FP_RELOC_PAIR_CNT; i++) {
         u16 hi_off = be_rv32_fp_reloc_pairs[i * 3];
         u16 lo_off = be_rv32_fp_reloc_pairs[i * 3 + 1];
-        u16 tgt    = be_rv32_fp_reloc_pairs[i * 3 + 2];
-        u32 addr   = (u32)(RV_LOAD_BASE + rv_fp_addr + tgt);
-        u32 hi     = (addr + 0x800UL) & 0xFFFFF000UL;
-        u32 lo     = (addr - hi) & 0xFFFUL;
+        u16 tgt = be_rv32_fp_reloc_pairs[i * 3 + 2];
+        u32 addr = (u32)(RV_LOAD_BASE + rv_fp_addr + tgt);
+        u32 hi = (addr + 0x800UL) & 0xFFFFF000UL;
+        u32 lo = (addr - hi) & 0xFFFUL;
         u32 hi_ins = read32((u16)(base_pc + hi_off));
         u32 lo_ins = read32((u16)(base_pc + lo_off));
         patch32((u16)(base_pc + hi_off), (hi_ins & 0x00000FFFUL) | hi);
         patch32((u16)(base_pc + lo_off), (lo_ins & 0x000FFFFFUL) | (lo << 20));
     }
     patch32(skip_pos, ((((u32)((i32)cb_pc() - (i32)skip_pos) >> 20) & 1UL) << 31) |
-                      ((((u32)((i32)cb_pc() - (i32)skip_pos) >> 1) & 0x3FFUL) << 21) |
-                      ((((u32)((i32)cb_pc() - (i32)skip_pos) >> 11) & 1UL) << 20) |
-                      ((((u32)((i32)cb_pc() - (i32)skip_pos) >> 12) & 0xFFUL) << 12) | 0x6FUL);
+                          ((((u32)((i32)cb_pc() - (i32)skip_pos) >> 1) & 0x3FFUL) << 21) |
+                          ((((u32)((i32)cb_pc() - (i32)skip_pos) >> 11) & 1UL) << 20) |
+                          ((((u32)((i32)cb_pc() - (i32)skip_pos) >> 12) & 0xFFUL) << 12) | 0x6FUL);
 }
 
 u32 enc_r(u32 f7, u32 rs2, u32 rs1, u32 f3, u32 rd, u32 op) {
@@ -86,31 +87,27 @@ u32 enc_i(i32 imm, u32 rs1, u32 f3, u32 rd, u32 op) {
 
 u32 enc_s(i32 imm, u32 rs2, u32 rs1, u32 f3) {
     u32 u = (u32)imm;
-    return (((u >> 5) & 0x7FUL) << 25) | (rs2 << 20) | (rs1 << 15) |
-           (f3 << 12) | ((u & 0x1FUL) << 7) | 0x23UL;
+    return (((u >> 5) & 0x7FUL) << 25) | (rs2 << 20) | (rs1 << 15) | (f3 << 12) |
+           ((u & 0x1FUL) << 7) | 0x23UL;
 }
 
 u32 enc_b(i32 imm, u32 rs2, u32 rs1, u32 f3) {
     u32 u = (u32)imm;
-    return (((u >> 12) & 1UL) << 31) | (((u >> 5) & 0x3FUL) << 25) |
-           (rs2 << 20) | (rs1 << 15) | (f3 << 12) |
-           (((u >> 1) & 0xFUL) << 8) | (((u >> 11) & 1UL) << 7) | 0x63UL;
+    return (((u >> 12) & 1UL) << 31) | (((u >> 5) & 0x3FUL) << 25) | (rs2 << 20) | (rs1 << 15) |
+           (f3 << 12) | (((u >> 1) & 0xFUL) << 8) | (((u >> 11) & 1UL) << 7) | 0x63UL;
 }
 
-u32 enc_u(u32 imm20, u32 rd, u32 op) {
-    return (imm20 & 0xFFFFF000UL) | (rd << 7) | op;
-}
+u32 enc_u(u32 imm20, u32 rd, u32 op) { return (imm20 & 0xFFFFF000UL) | (rd << 7) | op; }
 
 u32 enc_j(i32 imm, u32 rd) {
     u32 u = (u32)imm;
-    return (((u >> 20) & 1UL) << 31) | (((u >> 1) & 0x3FFUL) << 21) |
-           (((u >> 11) & 1UL) << 20) | (((u >> 12) & 0xFFUL) << 12) |
-           (rd << 7) | 0x6FUL;
+    return (((u >> 20) & 1UL) << 31) | (((u >> 1) & 0x3FFUL) << 21) | (((u >> 11) & 1UL) << 20) |
+           (((u >> 12) & 0xFFUL) << 12) | (rd << 7) | 0x6FUL;
 }
 
 static void rv_addi(u32 rd, u32 rs1, i32 imm) { emit32(enc_i(imm, rs1, 0, rd, 0x13UL)); }
-static void rv_lw(u32 rd, i32 off, u32 rs1)   { emit32(enc_i(off, rs1, 2, rd, 0x03UL)); }
-static void rv_sw(u32 rs2, i32 off, u32 rs1)  { emit32(enc_s(off, rs2, rs1, 2)); }
+static void rv_lw(u32 rd, i32 off, u32 rs1) { emit32(enc_i(off, rs1, 2, rd, 0x03UL)); }
+static void rv_sw(u32 rs2, i32 off, u32 rs1) { emit32(enc_s(off, rs2, rs1, 2)); }
 
 static void rv_li(u32 rd, u32 val) {
     i32 sval = (i32)val;
@@ -120,7 +117,8 @@ static void rv_li(u32 rd, u32 val) {
         u32 hi = (val + 0x800UL) & 0xFFFFF000UL;
         i32 lo = (i32)(val - hi);
         emit32(enc_u(hi, rd, 0x37UL)); /* LUI */
-        if (lo != 0) rv_addi(rd, rd, lo);
+        if (lo != 0)
+            rv_addi(rd, rd, lo);
     }
 }
 
@@ -139,8 +137,7 @@ static u16 rv_cur_addr(void) { return cb_cur_addr(); }
 
 static i32 rv_local_off[MAX_LOCALS];
 
-static void rv_fn_begin(const char *name, u8 param_cnt,
-                        const LocalVar *locals, u8 total_locals,
+static void rv_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals,
                         u8 is_recursive) {
     u8 i;
     i32 cur_off = 0;
@@ -202,9 +199,9 @@ static void rv_call(u16 target_addr) {
 
 static void rv_emit_extern_call(const char *name) {
     cb_add_extern_reloc(cb_pc(), name);
-    emit32(enc_u(0, RV_T0, 0x37UL));       /* LUI t0, 0 */
-    rv_addi(RV_T0, RV_T0, 0);               /* ADDI t0, t0, 0 */
-    emit32(enc_i(0, RV_T0, 0, RV_RA, 0x67UL));  /* JALR ra, 0(t0) */
+    emit32(enc_u(0, RV_T0, 0x37UL));           /* LUI t0, 0 */
+    rv_addi(RV_T0, RV_T0, 0);                  /* ADDI t0, t0, 0 */
+    emit32(enc_i(0, RV_T0, 0, RV_RA, 0x67UL)); /* JALR ra, 0(t0) */
 }
 
 static void rv_call_extern(const FuncSig *sig) {
@@ -219,7 +216,7 @@ static void rv_call_extern(const FuncSig *sig) {
 
     if (sig->has_addr) {
         rv_li(RV_T0, (u32)sig->addr);
-        emit32(enc_i(0, RV_T0, 0, RV_RA, 0x67UL));  /* JALR ra, 0(t0) */
+        emit32(enc_i(0, RV_T0, 0, RV_RA, 0x67UL)); /* JALR ra, 0(t0) */
     } else {
         rv_emit_extern_call(sig->name);
     }
@@ -229,8 +226,14 @@ static void rv_call_extern(const FuncSig *sig) {
     }
 }
 
-static void rv_push_w(i32 val) { rv_li(RV_T0, (u32)val); push_reg(RV_T0); }
-static void rv_push_a(u32 val) { rv_li(RV_T0, val); push_reg(RV_T0); }
+static void rv_push_w(i32 val) {
+    rv_li(RV_T0, (u32)val);
+    push_reg(RV_T0);
+}
+static void rv_push_a(u32 val) {
+    rv_li(RV_T0, val);
+    push_reg(RV_T0);
+}
 static void rv_push_f(double val) {
     float f = (float)val;
     u32 bits;
@@ -302,22 +305,49 @@ static void rv_int_alu(IrOp op) {
 
     switch (op) {
     case OP_ADD:
-    case OP_AADD:    emit32(enc_r(0x00, RV_T1, RV_T0, 0, RV_T0, 0x33UL)); break; /* ADD */
+    case OP_AADD:
+        emit32(enc_r(0x00, RV_T1, RV_T0, 0, RV_T0, 0x33UL));
+        break; /* ADD */
     case OP_SUB:
     case OP_ASUB:
-    case OP_ADIFF:   emit32(enc_r(0x20, RV_T1, RV_T0, 0, RV_T0, 0x33UL)); break; /* SUB */
-    case OP_MUL:     emit32(enc_r(0x01, RV_T1, RV_T0, 0, RV_T0, 0x33UL)); break; /* MUL */
-    case OP_DIV:     emit32(enc_r(0x01, RV_T1, RV_T0, 4, RV_T0, 0x33UL)); break; /* DIV */
-    case OP_UDIV:    emit32(enc_r(0x01, RV_T1, RV_T0, 5, RV_T0, 0x33UL)); break; /* DIVU */
-    case OP_MOD:     emit32(enc_r(0x01, RV_T1, RV_T0, 6, RV_T0, 0x33UL)); break; /* REM */
-    case OP_UMOD:    emit32(enc_r(0x01, RV_T1, RV_T0, 7, RV_T0, 0x33UL)); break; /* REMU */
-    case OP_AND:     emit32(enc_r(0x00, RV_T1, RV_T0, 7, RV_T0, 0x33UL)); break; /* AND */
-    case OP_OR:      emit32(enc_r(0x00, RV_T1, RV_T0, 6, RV_T0, 0x33UL)); break; /* OR */
-    case OP_XOR:     emit32(enc_r(0x00, RV_T1, RV_T0, 4, RV_T0, 0x33UL)); break; /* XOR */
-    case OP_LSHIFT:  emit32(enc_r(0x00, RV_T1, RV_T0, 1, RV_T0, 0x33UL)); break; /* SLL */
-    case OP_RSHIFT:  emit32(enc_r(0x00, RV_T1, RV_T0, 5, RV_T0, 0x33UL)); break; /* SRL */
-    case OP_ARSHIFT: emit32(enc_r(0x20, RV_T1, RV_T0, 5, RV_T0, 0x33UL)); break; /* SRA */
-    default:         ir4_die("unimplemented RV32 ALU op");
+    case OP_ADIFF:
+        emit32(enc_r(0x20, RV_T1, RV_T0, 0, RV_T0, 0x33UL));
+        break; /* SUB */
+    case OP_MUL:
+        emit32(enc_r(0x01, RV_T1, RV_T0, 0, RV_T0, 0x33UL));
+        break; /* MUL */
+    case OP_DIV:
+        emit32(enc_r(0x01, RV_T1, RV_T0, 4, RV_T0, 0x33UL));
+        break; /* DIV */
+    case OP_UDIV:
+        emit32(enc_r(0x01, RV_T1, RV_T0, 5, RV_T0, 0x33UL));
+        break; /* DIVU */
+    case OP_MOD:
+        emit32(enc_r(0x01, RV_T1, RV_T0, 6, RV_T0, 0x33UL));
+        break; /* REM */
+    case OP_UMOD:
+        emit32(enc_r(0x01, RV_T1, RV_T0, 7, RV_T0, 0x33UL));
+        break; /* REMU */
+    case OP_AND:
+        emit32(enc_r(0x00, RV_T1, RV_T0, 7, RV_T0, 0x33UL));
+        break; /* AND */
+    case OP_OR:
+        emit32(enc_r(0x00, RV_T1, RV_T0, 6, RV_T0, 0x33UL));
+        break; /* OR */
+    case OP_XOR:
+        emit32(enc_r(0x00, RV_T1, RV_T0, 4, RV_T0, 0x33UL));
+        break; /* XOR */
+    case OP_LSHIFT:
+        emit32(enc_r(0x00, RV_T1, RV_T0, 1, RV_T0, 0x33UL));
+        break; /* SLL */
+    case OP_RSHIFT:
+        emit32(enc_r(0x00, RV_T1, RV_T0, 5, RV_T0, 0x33UL));
+        break; /* SRL */
+    case OP_ARSHIFT:
+        emit32(enc_r(0x20, RV_T1, RV_T0, 5, RV_T0, 0x33UL));
+        break; /* SRA */
+    default:
+        ir4_die("unimplemented RV32 ALU op");
     }
 
     push_reg(RV_T0);
@@ -335,7 +365,7 @@ static void rv_int_cmp(IrOp op) {
         break;
     case OP_NE:
     case OP_ANE:
-        emit32(enc_r(0x00, RV_T1, RV_T0, 4, RV_T0, 0x33UL)); /* XOR */
+        emit32(enc_r(0x00, RV_T1, RV_T0, 4, RV_T0, 0x33UL));   /* XOR */
         emit32(enc_r(0x00, RV_T0, RV_ZERO, 3, RV_T0, 0x33UL)); /* SLTU t0, x0, t0 */
         break;
     case OP_LT:
@@ -382,33 +412,62 @@ static int rv_mem_imm(IrOp op, i32 off) {
     int is_store = 0;
     int swapped = 0;
 
-    if (off < -2048 || off > 2047) return 0;
+    if (off < -2048 || off > 2047)
+        return 0;
     switch (op) {
-    case OP_I8FETCH:  funct3 = 0; break;
-    case OP_U8FETCH:  funct3 = 4; break;
-    case OP_SI8STORE: swapped = 1; /* fall through */
-    case OP_I8STORE:  funct3 = 0; is_store = 1; break;
-    case OP_I16FETCH: funct3 = 1; break;
-    case OP_U16FETCH: funct3 = 5; break;
-    case OP_SI16STORE: swapped = 1; /* fall through */
-    case OP_I16STORE: funct3 = 1; is_store = 1; break;
+    case OP_I8FETCH:
+        funct3 = 0;
+        break;
+    case OP_U8FETCH:
+        funct3 = 4;
+        break;
+    case OP_SI8STORE:
+        swapped = 1; /* fall through */
+    case OP_I8STORE:
+        funct3 = 0;
+        is_store = 1;
+        break;
+    case OP_I16FETCH:
+        funct3 = 1;
+        break;
+    case OP_U16FETCH:
+        funct3 = 5;
+        break;
+    case OP_SI16STORE:
+        swapped = 1; /* fall through */
+    case OP_I16STORE:
+        funct3 = 1;
+        is_store = 1;
+        break;
     case OP_FETCH:
     case OP_AFETCH:
     case OP_FFETCH:
-    case OP_I32FETCH: funct3 = 2; break;
+    case OP_I32FETCH:
+        funct3 = 2;
+        break;
     case OP_SSTORE:
     case OP_SASTORE:
-    case OP_SFSTORE:  swapped = 1; /* fall through */
+    case OP_SFSTORE:
+        swapped = 1; /* fall through */
     case OP_STORE:
     case OP_ASTORE:
     case OP_FSTORE:
-    case OP_I32STORE: funct3 = 2; is_store = 1; break;
-    default: return 0;
+    case OP_I32STORE:
+        funct3 = 2;
+        is_store = 1;
+        break;
+    default:
+        return 0;
     }
 
     if (is_store) {
-        if (swapped) { pop_reg(RV_T1); pop_reg(RV_T0); }
-        else         { pop_reg(RV_T0); pop_reg(RV_T1); }
+        if (swapped) {
+            pop_reg(RV_T1);
+            pop_reg(RV_T0);
+        } else {
+            pop_reg(RV_T0);
+            pop_reg(RV_T1);
+        }
         emit32(enc_s(off, RV_T1, RV_T0, funct3));
     } else {
         pop_reg(RV_T0);
@@ -420,41 +479,76 @@ static int rv_mem_imm(IrOp op, i32 off) {
 
 static IrOp rv_norm32(IrOp op) {
     switch (op) {
-    case OP_ADD32:  return OP_ADD;
-    case OP_SUB32:  return OP_SUB;
-    case OP_MUL32:  return OP_MUL;
-    case OP_DIV32:  return OP_DIV;
-    case OP_MOD32:  return OP_MOD;
-    case OP_UDIV32: return OP_UDIV;
-    case OP_UMOD32: return OP_UMOD;
-    case OP_AND32:  return OP_AND;
-    case OP_OR32:   return OP_OR;
-    case OP_XOR32:  return OP_XOR;
-    case OP_SHL32:  return OP_LSHIFT;
-    case OP_ASHR32: return OP_ARSHIFT;
-    case OP_RSHR32: return OP_RSHIFT;
-    case OP_EQ32:   return OP_EQ;
-    case OP_NE32:   return OP_NE;
-    case OP_LT32:   return OP_LT;
-    case OP_GT32:   return OP_GT;
-    case OP_LE32:   return OP_LE;
-    case OP_GE32:   return OP_GE;
-    case OP_ULT32:  return OP_ULT;
-    case OP_UGT32:  return OP_UGT;
-    case OP_ULE32:  return OP_ULE;
-    case OP_UGE32:  return OP_UGE;
-    default:        return op;
+    case OP_ADD32:
+        return OP_ADD;
+    case OP_SUB32:
+        return OP_SUB;
+    case OP_MUL32:
+        return OP_MUL;
+    case OP_DIV32:
+        return OP_DIV;
+    case OP_MOD32:
+        return OP_MOD;
+    case OP_UDIV32:
+        return OP_UDIV;
+    case OP_UMOD32:
+        return OP_UMOD;
+    case OP_AND32:
+        return OP_AND;
+    case OP_OR32:
+        return OP_OR;
+    case OP_XOR32:
+        return OP_XOR;
+    case OP_SHL32:
+        return OP_LSHIFT;
+    case OP_ASHR32:
+        return OP_ARSHIFT;
+    case OP_RSHR32:
+        return OP_RSHIFT;
+    case OP_EQ32:
+        return OP_EQ;
+    case OP_NE32:
+        return OP_NE;
+    case OP_LT32:
+        return OP_LT;
+    case OP_GT32:
+        return OP_GT;
+    case OP_LE32:
+        return OP_LE;
+    case OP_GE32:
+        return OP_GE;
+    case OP_ULT32:
+        return OP_ULT;
+    case OP_UGT32:
+        return OP_UGT;
+    case OP_ULE32:
+        return OP_ULE;
+    case OP_UGE32:
+        return OP_UGE;
+    default:
+        return op;
     }
 }
 
 static void rv_op(IrOp op) {
     op = rv_norm32(op);
     switch (op) {
-    case OP_ADD: case OP_AADD:
-    case OP_SUB: case OP_ASUB: case OP_ADIFF:
-    case OP_MUL: case OP_DIV: case OP_UDIV: case OP_MOD: case OP_UMOD:
-    case OP_AND: case OP_OR: case OP_XOR:
-    case OP_LSHIFT: case OP_RSHIFT: case OP_ARSHIFT:
+    case OP_ADD:
+    case OP_AADD:
+    case OP_SUB:
+    case OP_ASUB:
+    case OP_ADIFF:
+    case OP_MUL:
+    case OP_DIV:
+    case OP_UDIV:
+    case OP_MOD:
+    case OP_UMOD:
+    case OP_AND:
+    case OP_OR:
+    case OP_XOR:
+    case OP_LSHIFT:
+    case OP_RSHIFT:
+    case OP_ARSHIFT:
         rv_int_alu(op);
         break;
     case OP_INVERT:
@@ -463,10 +557,20 @@ static void rv_op(IrOp op) {
         emit32(enc_i(-1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, -1 */
         push_reg(RV_T0);
         break;
-    case OP_EQ: case OP_AEQ:
-    case OP_NE: case OP_ANE:
-    case OP_LT: case OP_GE: case OP_GT: case OP_LE:
-    case OP_ULT: case OP_ALT: case OP_UGE: case OP_UGT: case OP_AGT: case OP_ULE:
+    case OP_EQ:
+    case OP_AEQ:
+    case OP_NE:
+    case OP_ANE:
+    case OP_LT:
+    case OP_GE:
+    case OP_GT:
+    case OP_LE:
+    case OP_ULT:
+    case OP_ALT:
+    case OP_UGE:
+    case OP_UGT:
+    case OP_AGT:
+    case OP_ULE:
         rv_int_cmp(op);
         break;
     case OP_I8FETCH:
@@ -491,20 +595,20 @@ static void rv_op(IrOp op) {
         rv_mem_imm(op, 0);
         break;
     case OP_BCOPY:
-        pop_reg(RV_T2); /* len */
-        pop_reg(RV_T1); /* src */
-        pop_reg(RV_T0); /* dst */
-        emit32(enc_b(24, RV_ZERO, RV_T2, 0));    /* BEQ t2, x0, +24 */
-        emit32(enc_i(0, RV_T1, 4, RV_A0, 0x03UL)); /* LBU a0, 0(t1) */
-        emit32(enc_s(0, RV_A0, RV_T0, 0));       /* SB a0, 0(t0) */
-        emit32(enc_i(1, RV_T1, 0, RV_T1, 0x13UL)); /* ADDI t1, t1, 1 */
-        emit32(enc_i(1, RV_T0, 0, RV_T0, 0x13UL)); /* ADDI t0, t0, 1 */
+        pop_reg(RV_T2);                             /* len */
+        pop_reg(RV_T1);                             /* src */
+        pop_reg(RV_T0);                             /* dst */
+        emit32(enc_b(24, RV_ZERO, RV_T2, 0));       /* BEQ t2, x0, +24 */
+        emit32(enc_i(0, RV_T1, 4, RV_A0, 0x03UL));  /* LBU a0, 0(t1) */
+        emit32(enc_s(0, RV_A0, RV_T0, 0));          /* SB a0, 0(t0) */
+        emit32(enc_i(1, RV_T1, 0, RV_T1, 0x13UL));  /* ADDI t1, t1, 1 */
+        emit32(enc_i(1, RV_T0, 0, RV_T0, 0x13UL));  /* ADDI t0, t0, 1 */
         emit32(enc_i(-1, RV_T2, 0, RV_T2, 0x13UL)); /* ADDI t2, t2, -1 */
-        emit32(enc_b(-20, RV_ZERO, RV_T2, 1));   /* BNE t2, x0, -20 */
+        emit32(enc_b(-20, RV_ZERO, RV_T2, 1));      /* BNE t2, x0, -20 */
         break;
     case OP_FNEG:
         pop_reg(RV_T0);
-        emit32(enc_u(0x80000000UL, RV_T1, 0x37UL));       /* LUI t1, 0x80000 */
+        emit32(enc_u(0x80000000UL, RV_T1, 0x37UL));          /* LUI t1, 0x80000 */
         emit32(enc_r(0x00, RV_T1, RV_T0, 4, RV_T0, 0x33UL)); /* XOR t0, t0, t1 */
         push_reg(RV_T0);
         break;
@@ -515,14 +619,16 @@ static void rv_op(IrOp op) {
         pop_reg(RV_A1);
         pop_reg(RV_A0);
         if (rv_obj_mode) {
-            const char *fn = (op == OP_FADD) ? "__addsf3" :
-                             (op == OP_FSUB) ? "__subsf3" :
-                             (op == OP_FMUL) ? "__mulsf3" : "__divsf3";
+            const char *fn = (op == OP_FADD)   ? "__addsf3"
+                             : (op == OP_FSUB) ? "__subsf3"
+                             : (op == OP_FMUL) ? "__mulsf3"
+                                               : "__divsf3";
             rv_emit_extern_call(fn);
         } else {
-            u16 entry = (op == OP_FADD) ? RT_FP_ADD :
-                        (op == OP_FSUB) ? RT_FP_SUB :
-                        (op == OP_FMUL) ? RT_FP_MUL : RT_FP_DIV;
+            u16 entry = (op == OP_FADD)   ? RT_FP_ADD
+                        : (op == OP_FSUB) ? RT_FP_SUB
+                        : (op == OP_FMUL) ? RT_FP_MUL
+                                          : RT_FP_DIV;
             ensure_rv32_fp();
             emit32(enc_j((i32)(rv_fp_addr + entry) - (i32)cb_cur_addr(), RV_RA));
         }
@@ -536,16 +642,17 @@ static void rv_op(IrOp op) {
         pop_reg(RV_A1);
         pop_reg(RV_A0);
         if (rv_obj_mode) {
-            const char *fn = (op == OP_FEQ) ? "__eqsf2" :
-                             (op == OP_FNE) ? "__nesf2" :
-                             (op == OP_FLT) ? "__ltsf2" : "__gtsf2";
+            const char *fn = (op == OP_FEQ)   ? "__eqsf2"
+                             : (op == OP_FNE) ? "__nesf2"
+                             : (op == OP_FLT) ? "__ltsf2"
+                                              : "__gtsf2";
             rv_emit_extern_call(fn);
         } else {
             ensure_rv32_fp();
             emit32(enc_j((i32)(rv_fp_addr + RT_FP_CMP) - (i32)cb_cur_addr(), RV_RA));
         }
         if (op == OP_FEQ) {
-            emit32(enc_i(1, RV_A0, 3, RV_T0, 0x13UL));            /* SLTIU t0, a0, 1 */
+            emit32(enc_i(1, RV_A0, 3, RV_T0, 0x13UL)); /* SLTIU t0, a0, 1 */
         } else if (op == OP_FNE) {
             emit32(enc_r(0x00, RV_A0, RV_ZERO, 3, RV_T0, 0x33UL)); /* SLTU t0, x0, a0 */
         } else if (op == OP_FLT) {
@@ -553,7 +660,7 @@ static void rv_op(IrOp op) {
         } else {
             emit32(enc_r(0x00, RV_A0, RV_ZERO, 2, RV_T0, 0x33UL)); /* SLT t0, x0, a0 */
         }
-        emit32(enc_r(0x20, RV_T0, RV_ZERO, 0, RV_T0, 0x33UL));     /* SUB t0, x0, t0 */
+        emit32(enc_r(0x20, RV_T0, RV_ZERO, 0, RV_T0, 0x33UL)); /* SUB t0, x0, t0 */
         push_reg(RV_T0);
         break;
     case OP_W2F:
@@ -601,7 +708,7 @@ static u16 rv_emit_br_fwd(BranchCond cond) {
         emit32(enc_b(8, RV_ZERO, RV_T0, 1)); /* BNE t0, x0, +8 */
     }
     pos = cb_pc();
-    emit32(enc_j(0, RV_ZERO));               /* JAL x0, rel21 */
+    emit32(enc_j(0, RV_ZERO)); /* JAL x0, rel21 */
     return pos;
 }
 
@@ -629,8 +736,10 @@ static void rv_patch_fwd(u16 patch_offset) {
 }
 
 static int rv_add_imm(i32 imm) {
-    if (imm == 0) return 1;
-    if (imm < -2048 || imm > 2047) return 0;
+    if (imm == 0)
+        return 1;
+    if (imm < -2048 || imm > 2047)
+        return 0;
     rv_lw(RV_T0, 0, RV_DSP);
     rv_addi(RV_T0, RV_T0, imm);
     rv_sw(RV_T0, 0, RV_DSP);
@@ -638,17 +747,21 @@ static int rv_add_imm(i32 imm) {
 }
 
 static int rv_cmp_imm(IrOp op, i32 imm) {
-    if (imm < -2048 || imm > 2047) return 0;
-    if ((op == OP_ULT || op == OP_UGE) && imm < 0) return 0;
+    if (imm < -2048 || imm > 2047)
+        return 0;
+    if ((op == OP_ULT || op == OP_UGE) && imm < 0)
+        return 0;
 
     switch (op) {
     case OP_EQ:
     case OP_NE:
-        if (imm == -2048) return 0;
+        if (imm == -2048)
+            return 0;
         rv_lw(RV_T0, 0, RV_DSP);
-        if (imm != 0) rv_addi(RV_T0, RV_T0, -imm);
+        if (imm != 0)
+            rv_addi(RV_T0, RV_T0, -imm);
         if (op == OP_EQ) {
-            emit32(enc_i(1, RV_T0, 3, RV_T0, 0x13UL));            /* SLTIU t0, t0, 1 */
+            emit32(enc_i(1, RV_T0, 3, RV_T0, 0x13UL)); /* SLTIU t0, t0, 1 */
         } else {
             emit32(enc_r(0x00, RV_T0, RV_ZERO, 3, RV_T0, 0x33UL)); /* SLTU t0, x0, t0 */
         }
@@ -657,20 +770,24 @@ static int rv_cmp_imm(IrOp op, i32 imm) {
     case OP_GE:
         rv_lw(RV_T0, 0, RV_DSP);
         emit32(enc_i(imm, RV_T0, 2, RV_T0, 0x13UL)); /* SLTI t0, t0, imm */
-        if (op == OP_GE) emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
+        if (op == OP_GE)
+            emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
         break;
     case OP_ULT:
     case OP_UGE:
         rv_lw(RV_T0, 0, RV_DSP);
         emit32(enc_i(imm, RV_T0, 3, RV_T0, 0x13UL)); /* SLTIU t0, t0, imm */
-        if (op == OP_UGE) emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
+        if (op == OP_UGE)
+            emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
         break;
     case OP_LE:
     case OP_GT:
-        if (imm == 2047) return 0;
+        if (imm == 2047)
+            return 0;
         rv_lw(RV_T0, 0, RV_DSP);
         emit32(enc_i(imm + 1, RV_T0, 2, RV_T0, 0x13UL)); /* SLTI t0, t0, imm+1 */
-        if (op == OP_GT) emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
+        if (op == OP_GT)
+            emit32(enc_i(1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, 1 */
         break;
     default:
         return 0;
@@ -682,14 +799,22 @@ static int rv_cmp_imm(IrOp op, i32 imm) {
 
 static int rv_shift_imm(IrOp op, u8 count) {
     u32 c = (u32)(count & 31);
-    if (c == 0) return 1;
+    if (c == 0)
+        return 1;
     op = rv_norm32(op);
     rv_lw(RV_T0, 0, RV_DSP);
     switch (op) {
-    case OP_LSHIFT:  emit32(enc_i(c, RV_T0, 1, RV_T0, 0x13UL)); break;         /* SLLI */
-    case OP_RSHIFT:  emit32(enc_i(c, RV_T0, 5, RV_T0, 0x13UL)); break;         /* SRLI */
-    case OP_ARSHIFT: emit32(enc_i(0x400 | c, RV_T0, 5, RV_T0, 0x13UL)); break; /* SRAI */
-    default: return 0;
+    case OP_LSHIFT:
+        emit32(enc_i(c, RV_T0, 1, RV_T0, 0x13UL));
+        break; /* SLLI */
+    case OP_RSHIFT:
+        emit32(enc_i(c, RV_T0, 5, RV_T0, 0x13UL));
+        break; /* SRLI */
+    case OP_ARSHIFT:
+        emit32(enc_i(0x400 | c, RV_T0, 5, RV_T0, 0x13UL));
+        break; /* SRAI */
+    default:
+        return 0;
     }
     rv_sw(RV_T0, 0, RV_DSP);
     return 1;
@@ -724,34 +849,34 @@ static void rv_icall(void) {
     emit32(enc_i(0, RV_T0, 0, RV_RA, 0x67UL)); /* JALR ra, t0, 0 */
 }
 
-const Backend be_rv32 = {
-    "rv32",
-    4, 4, 4,
-    rv_cur_addr,
-    rv_fn_begin,
-    rv_fn_end,
-    rv_call,
-    rv_call_extern,
-    rv_push_w,
-    rv_push_a,
-    rv_push_f,
-    rv_push_w,
-    rv_push_data,
-    rv_local_op,
-    rv_stack_op,
-    rv_op,
-    rv_add_imm,
-    rv_cmp_imm,
-    rv_shift_imm,
-    rv_mem_imm,
-    NULL,
-    NULL,
-    rv_emit_br_fwd,
-    rv_emit_br_back,
-    rv_patch_fwd,
-    rv_patch_call,
-    rv_push_fn,
-    rv_patch_fn,
-    rv_icall,
-    NULL
-};
+const Backend be_rv32 = {"rv32",
+                         4,
+                         4,
+                         4,
+                         rv_cur_addr,
+                         rv_fn_begin,
+                         rv_fn_end,
+                         rv_call,
+                         rv_call_extern,
+                         rv_push_w,
+                         rv_push_a,
+                         rv_push_f,
+                         rv_push_w,
+                         rv_push_data,
+                         rv_local_op,
+                         rv_stack_op,
+                         rv_op,
+                         rv_add_imm,
+                         rv_cmp_imm,
+                         rv_shift_imm,
+                         rv_mem_imm,
+                         NULL,
+                         NULL,
+                         rv_emit_br_fwd,
+                         rv_emit_br_back,
+                         rv_patch_fwd,
+                         rv_patch_call,
+                         rv_push_fn,
+                         rv_patch_fn,
+                         rv_icall,
+                         NULL};

@@ -3,10 +3,10 @@
 #include "frontend.h"
 
 #if defined(__APPLE__) && defined(__aarch64__)
-#include <sys/mman.h>
-#include <pthread.h>
-#include <libkern/OSCacheControl.h>
 #include <dlfcn.h>
+#include <libkern/OSCacheControl.h>
+#include <pthread.h>
+#include <sys/mman.h>
 
 /* Tiny ARM64 C-to-IR4th wrapper emitted at the end of code_buf:
  *   STP X29, X30, [SP, #-16]!
@@ -35,24 +35,32 @@ static void arm64_run_jit(u8 main_idx) {
     }
 
     /* Emit C-ABI trampoline calling IR4th 'main' and popping result into X0 */
-    emit16(0x7BFD); emit16(0xA9BF); /* STP X29, X30, [SP, #-16]! */
-    emit16(0x0FFC); emit16(0xF81F); /* STR X28, [SP, #-16]! */
-    emit16(0x03FC); emit16(0xAA00); /* MOV X28, X0 */
+    emit16(0x7BFD);
+    emit16(0xA9BF); /* STP X29, X30, [SP, #-16]! */
+    emit16(0x0FFC);
+    emit16(0xF81F); /* STR X28, [SP, #-16]! */
+    emit16(0x03FC);
+    emit16(0xAA00); /* MOV X28, X0 */
     diff = (i32)main_addr - (i32)cb_cur_addr();
     imm26 = ((u32)(diff >> 2)) & 0x03FFFFFFUL;
     emit16((u16)((0x94000000UL | imm26) & 0xFFFFU));
     emit16((u16)(((0x94000000UL | imm26) >> 16) & 0xFFFFU));
     if (sig->out_count == 1) {
-        emit16(0x07E0); emit16(0xF841); /* LDR X0, [SP], #16 */
+        emit16(0x07E0);
+        emit16(0xF841); /* LDR X0, [SP], #16 */
     } else {
-        emit16(0x0000); emit16(0xD280); /* MOV X0, #0 */
+        emit16(0x0000);
+        emit16(0xD280); /* MOV X0, #0 */
     }
-    emit16(0x07FC); emit16(0xF841); /* LDR X28, [SP], #16 */
-    emit16(0x7BFD); emit16(0xA8C1); /* LDP X29, X30, [SP], #16 */
-    emit16(0x03C0); emit16(0xD65F); /* RET */
+    emit16(0x07FC);
+    emit16(0xF841); /* LDR X28, [SP], #16 */
+    emit16(0x7BFD);
+    emit16(0xA8C1); /* LDP X29, X30, [SP], #16 */
+    emit16(0x03C0);
+    emit16(0xD65F); /* RET */
 
-    mem = mmap(NULL, MAX_CODE, PROT_READ | PROT_WRITE | PROT_EXEC,
-               MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    mem = mmap(NULL, MAX_CODE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT,
+               -1, 0);
     if (mem == MAP_FAILED) {
         perror("mmap MAP_JIT");
         exit(1);
@@ -95,9 +103,9 @@ static void arm64_run_jit(u8 main_idx) {
                 exit(1);
             }
             addr = (unsigned long)sym;
-            patch32(off,      (u32)(0xD2800009UL | (((addr >>  0) & 0xFFFFUL) << 5)));
-            patch32(off + 4,  (u32)(0xF2A00009UL | (((addr >> 16) & 0xFFFFUL) << 5)));
-            patch32(off + 8,  (u32)(0xF2C00009UL | (((addr >> 32) & 0xFFFFUL) << 5)));
+            patch32(off, (u32)(0xD2800009UL | (((addr >> 0) & 0xFFFFUL) << 5)));
+            patch32(off + 4, (u32)(0xF2A00009UL | (((addr >> 16) & 0xFFFFUL) << 5)));
+            patch32(off + 8, (u32)(0xF2C00009UL | (((addr >> 32) & 0xFFFFUL) << 5)));
             patch32(off + 12, (u32)(0xF2E00009UL | (((addr >> 48) & 0xFFFFUL) << 5)));
         }
     }
@@ -122,7 +130,5 @@ static void arm64_run_jit(u8 main_idx) {
 }
 #endif
 
-const Platform plat_arm64_jit = {
-    "--run", &be_arm64, 0x0000, NULL, 1,
-    NULL, NULL, NULL, arm64_run_jit
-};
+const Platform plat_arm64_jit = {"--run", &be_arm64, 0x0000, NULL,         1,
+                                 NULL,    NULL,      NULL,   arm64_run_jit};

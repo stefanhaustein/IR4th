@@ -42,8 +42,9 @@ void cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset);
 void cb_patch_data_relocs(u16 data_base);
 
 void cb_add_data_init_reloc(u16 patch_data_off, u16 target_val, u8 addr_bytes, u8 is_code);
-u16  cb_data_init_reloc_count(void);
-void cb_get_data_init_reloc(u16 idx, u16 *patch_data_off, u16 *target_val, u8 *addr_bytes, u8 *is_code);
+u16 cb_data_init_reloc_count(void);
+void cb_get_data_init_reloc(u16 idx, u16 *patch_data_off, u16 *target_val, u8 *addr_bytes,
+                            u8 *is_code);
 void cb_patch_data_init_reloc(u16 idx, u16 code_addr);
 void cb_patch_data_init_relocs_base(u32 code_base, u32 data_base);
 

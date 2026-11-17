@@ -59,8 +59,12 @@ static void cpm_end(int main_idx) {
         emit16(0x0000);
 
         /* Print CR LF */
-        emit8_8(Z80_LD_C_N, 2); emit8_8(Z80_LD_E_N, '\r'); emit8_16(Z80_CALL, CPM_BDOS);
-        emit8_8(Z80_LD_C_N, 2); emit8_8(Z80_LD_E_N, '\n'); emit8_16(Z80_CALL, CPM_BDOS);
+        emit8_8(Z80_LD_C_N, 2);
+        emit8_8(Z80_LD_E_N, '\r');
+        emit8_16(Z80_CALL, CPM_BDOS);
+        emit8_8(Z80_LD_C_N, 2);
+        emit8_8(Z80_LD_E_N, '\n');
+        emit8_16(Z80_CALL, CPM_BDOS);
     }
 
     /* BDOS function 0: system reset / exit */
@@ -103,7 +107,4 @@ static void cpm_end(int main_idx) {
     }
 }
 
-const Platform plat_z80_cpm = {
-    "--cpm", &be_z80, 0x0100, "cpm", 1,
-    cpm_begin, cpm_end, NULL, NULL
-};
+const Platform plat_z80_cpm = {"--cpm", &be_z80, 0x0100, "cpm", 1, cpm_begin, cpm_end, NULL, NULL};

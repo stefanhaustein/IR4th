@@ -7,59 +7,41 @@
 #ifndef IR4_H
 #define IR4_H
 
+#include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-#include <limits.h>
 
-typedef unsigned char  u8;
-typedef signed char    i8;
+typedef unsigned char u8;
+typedef signed char i8;
 typedef unsigned short u16;
-typedef signed short   i16;
+typedef signed short i16;
 #if UINT_MAX == 0xFFFFFFFFUL
-typedef unsigned int   u32;
-typedef signed int     i32;
+typedef unsigned int u32;
+typedef signed int i32;
 #else
-typedef unsigned long  u32;
-typedef signed long    i32;
+typedef unsigned long u32;
+typedef signed long i32;
 #endif
 
-#define MAX_TOK    64
+#define MAX_TOK 64
 #define MAX_LOCALS 64
-#define MAX_CODE   65535
-#define MAX_DATA   49152
+#define MAX_CODE 65535
+#define MAX_DATA 49152
 #define MAX_RELOCS 16384
 
 /* Stack types (v0.3) */
-typedef enum {
-    TY_NONE = 0,
-    TY_W,
-    TY_A,
-    TY_F,
-    TY_I32
-} StackType;
+typedef enum { TY_NONE = 0, TY_W, TY_A, TY_F, TY_I32 } StackType;
 
 /* Stack operations */
-typedef enum {
-    OP_DUP = 0,
-    OP_DROP,
-    OP_SWAP,
-    OP_OVER
-} StackOp;
+typedef enum { OP_DUP = 0, OP_DROP, OP_SWAP, OP_OVER } StackOp;
 
 /* Local variable operations */
-typedef enum {
-    LOCAL_GET = 0,
-    LOCAL_SET,
-    LOCAL_ADDR
-} LocalOp;
+typedef enum { LOCAL_GET = 0, LOCAL_SET, LOCAL_ADDR } LocalOp;
 
 /* Branch conditions */
-typedef enum {
-    BR_JMP = 0,
-    BR_JZ
-} BranchCond;
+typedef enum { BR_JMP = 0, BR_JZ } BranchCond;
 
 /* Unified IR operations (ALU, comparison, memory, conversion) */
 typedef enum {
@@ -163,26 +145,26 @@ typedef enum {
 
 typedef struct {
     char name[MAX_TOK];
-    u8   type;
-    u8   slot;
-    u16  size;
+    u8 type;
+    u8 slot;
+    u16 size;
 } LocalVar;
 
 typedef struct {
     char name[MAX_TOK];
-    u16  addr;
-    u8   is_extern;
-    u8   is_defined;
-    u8   is_default;
-    u8   has_addr;
-    u8   is_recursive;
-    u16  req_group;
-    u8   in_types[8];
+    u16 addr;
+    u8 is_extern;
+    u8 is_defined;
+    u8 is_default;
+    u8 has_addr;
+    u8 is_recursive;
+    u16 req_group;
+    u8 in_types[8];
     char in_regs[8][MAX_TOK];
-    u8   in_count;
-    u8   out_types[4];
+    u8 in_count;
+    u8 out_types[4];
     char out_reg[MAX_TOK];
-    u8   out_count;
+    u8 out_count;
 } FuncSig;
 
 /* Backend code-generation interface implemented by each target (be_*.c). */
@@ -192,8 +174,9 @@ typedef struct {
     u8 addr_bytes;
     u8 float_bytes;
 
-    u16  (*cur_addr)(void);
-    void (*fn_begin)(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals, u8 is_recursive);
+    u16 (*cur_addr)(void);
+    void (*fn_begin)(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals,
+                     u8 is_recursive);
     void (*fn_end)(const FuncSig *sig, const LocalVar *locals, u8 total_locals);
     void (*call)(u16 target_addr);
     void (*call_extern)(const FuncSig *sig);
@@ -207,21 +190,21 @@ typedef struct {
 
     void (*stack_op)(StackOp op, StackType t1, StackType t2);
     void (*op)(IrOp op);
-    int  (*add_imm)(i32 imm);
-    int  (*cmp_imm)(IrOp op, i32 imm);
-    int  (*shift_imm)(IrOp op, u8 count);
-    int  (*mem_imm)(IrOp op, i32 off);
-    int  (*data_mem)(IrOp op, u16 data_offset);
-    int  (*local_mem)(u8 slot, i32 off, IrOp op, u16 stack_bytes);
+    int (*add_imm)(i32 imm);
+    int (*cmp_imm)(IrOp op, i32 imm);
+    int (*shift_imm)(IrOp op, u8 count);
+    int (*mem_imm)(IrOp op, i32 off);
+    int (*data_mem)(IrOp op, u16 data_offset);
+    int (*local_mem)(u8 slot, i32 off, IrOp op, u16 stack_bytes);
 
-    u16  (*emit_br_fwd)(BranchCond cond);
+    u16 (*emit_br_fwd)(BranchCond cond);
     void (*emit_br_back)(BranchCond cond, u16 target_addr);
     void (*patch_fwd)(u16 patch_offset);
     void (*patch_call)(u16 call_pc, u16 call_addr, u16 target_addr);
-    u16  (*push_fn)(u16 target_addr);
+    u16 (*push_fn)(u16 target_addr);
     void (*patch_fn)(u16 patch_pc, u16 patch_addr, u16 target_addr);
     void (*icall)(void);
-    u16  (*stack_data_off)(void);
+    u16 (*stack_data_off)(void);
 } Backend;
 
 /* Error reporting (implemented in frontend.c) */
@@ -254,7 +237,7 @@ extern const Platform plat_rv32_obj;
 
 void be_6502_set_zp(u8 zp);
 void be_6502_set_stack_zp(u8 base, u8 init_x);
-u8   be_6502_stack_zp_base(void);
+u8 be_6502_stack_zp_base(void);
 u16 be_6502_stack_data_off(void);
 void be_rv32_set_obj(int obj);
 

@@ -3,17 +3,13 @@
 #include "frontend.h"
 
 static const Platform *const platforms[] = {
-    &plat_z80_cpm,
-    &plat_6502_sim,
-    &plat_6502_c64,
-    &plat_arm64_jit,
-    &plat_rv32_virt,
-    &plat_rv32_obj,
-    NULL
-};
+    &plat_z80_cpm, &plat_6502_sim, &plat_6502_c64, &plat_arm64_jit, &plat_rv32_virt, &plat_rv32_obj,
+    NULL};
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] [--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [-I dir] "
+                    "[--platform name] [--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] "
+                    "[--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {
@@ -30,7 +26,8 @@ int main(int argc, char **argv) {
     FILE *in_fp;
     FILE *out_fp;
 
-    if (argc > 0 && argv[0]) ir4_set_exe_path(argv[0]);
+    if (argc > 0 && argv[0])
+        ir4_set_exe_path(argv[0]);
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
@@ -38,16 +35,20 @@ int main(int argc, char **argv) {
             target_set = 1;
             if (strcmp(argv[i], "z80") == 0) {
                 be = &be_z80;
-                if (!base_set) base = 0x0100;
+                if (!base_set)
+                    base = 0x0100;
             } else if (strcmp(argv[i], "6502") == 0) {
                 be = &be_6502;
-                if (!base_set) base = 0x0801;
+                if (!base_set)
+                    base = 0x0801;
             } else if (strcmp(argv[i], "arm64") == 0) {
                 be = &be_arm64;
-                if (!base_set) base = 0x0000;
+                if (!base_set)
+                    base = 0x0000;
             } else if (strcmp(argv[i], "rv32") == 0) {
                 be = &be_rv32;
-                if (!base_set) base = 0x0000;
+                if (!base_set)
+                    base = 0x0000;
             } else {
                 fprintf(stderr, "Unknown target: %s\n", argv[i]);
                 return 1;
@@ -174,8 +175,8 @@ int main(int argc, char **argv) {
     }
     fclose(out_fp);
 
-    printf("Compiled %s -> %s (target: %s, base: 0x%04X, size: %u bytes)\n",
-           in_path, out_path, be->name, base, cb_pc());
+    printf("Compiled %s -> %s (target: %s, base: 0x%04X, size: %u bytes)\n", in_path, out_path,
+           be->name, base, cb_pc());
 
     if (plat && plat->run) {
         int main_idx = ir4_find_func("main");

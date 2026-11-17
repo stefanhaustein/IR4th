@@ -1,31 +1,28 @@
-#include "codebuf.h"
 #include "frontend.h"
+#include "codebuf.h"
 
 #define MAX_INCLUDE_DEPTH 16
-#define MAX_INCLUDES      64
-#define MAX_PATH         256
-#define MAX_IR          8192
-#define MAX_SYMS          255
-#define MAX_STACK         32
-#define MAX_BLOCKS        16
+#define MAX_INCLUDES 64
+#define MAX_PATH 256
+#define MAX_IR 8192
+#define MAX_SYMS 255
+#define MAX_STACK 32
+#define MAX_BLOCKS 16
 
-typedef enum {
-    BLOCK_IF = 1,
-    BLOCK_BEGIN = 2
-} BlockKind;
+typedef enum { BLOCK_IF = 1, BLOCK_BEGIN = 2 } BlockKind;
 
 typedef struct {
     BlockKind kind;
     u16 patch_else;
     u16 patch_end;
     u16 loop_addr;
-    u8  saved_sp;
-    u8  saved_stack[MAX_STACK];
-    u8  else_sp;
-    u8  else_stack[MAX_STACK];
-    u8  has_else;
-    u8  saved_unreach;
-    u8  if_unreach;
+    u8 saved_sp;
+    u8 saved_stack[MAX_STACK];
+    u8 else_sp;
+    u8 else_stack[MAX_STACK];
+    u8 has_else;
+    u8 saved_unreach;
+    u8 if_unreach;
 } BlockInfo;
 
 typedef enum {
@@ -50,100 +47,110 @@ typedef enum {
 typedef struct {
     IrKind kind;
     union {
-        i32    w;
-        u32    a;
+        i32 w;
+        u32 a;
         double f;
-        u16    offset;
-        struct { LocalOp op; u8 slot; StackType type; u16 stack_bytes; } loc;
-        struct { StackOp op; StackType t1; StackType t2; } stk;
-        IrOp   op;
-        u8     func_idx;
-        struct { BranchCond cond; u16 target; } br;
+        u16 offset;
+        struct {
+            LocalOp op;
+            u8 slot;
+            StackType type;
+            u16 stack_bytes;
+        } loc;
+        struct {
+            StackOp op;
+            StackType t1;
+            StackType t2;
+        } stk;
+        IrOp op;
+        u8 func_idx;
+        struct {
+            BranchCond cond;
+            u16 target;
+        } br;
     } u;
 } IrInstr;
 
 #define MAX_CODE_RELOCS 512
 
-enum {
-    CODE_REL_SELF  = 1,
-    CODE_REL_STACK = 2
-};
+enum { CODE_REL_SELF = 1, CODE_REL_STACK = 2 };
 
 typedef struct {
     u16 ir_off;
     u16 addend;
-    u8  kind;
+    u8 kind;
 } CodeReloc;
 
 typedef struct {
-    u16      ir_start;
-    u16      ir_len;
-    u16      reloc_start;
-    u16      reloc_cnt;
-    u8       param_cnt;
-    u8       local_count;
+    u16 ir_start;
+    u16 ir_len;
+    u16 reloc_start;
+    u16 reloc_cnt;
+    u8 param_cnt;
+    u8 local_count;
     LocalVar locals[MAX_LOCALS];
-    u8       reachable;
-    u8       is_code;
+    u8 reachable;
+    u8 is_code;
 } WordIR;
 
-static IrInstr   ir_buf[MAX_IR];
-static u16       ir_count = 0;
-static u16       fold_fence = 0;
-static WordIR    words[MAX_SYMS];
-static u8        raw_code_buf[MAX_CODE];
-static u16       raw_code_len = 0;
+static IrInstr ir_buf[MAX_IR];
+static u16 ir_count = 0;
+static u16 fold_fence = 0;
+static WordIR words[MAX_SYMS];
+static u8 raw_code_buf[MAX_CODE];
+static u16 raw_code_len = 0;
 static CodeReloc code_relocs[MAX_CODE_RELOCS];
-static u16       code_reloc_count = 0;
+static u16 code_reloc_count = 0;
 
 typedef struct {
     FILE *fp;
-    char  path[MAX_PATH];
-    u16   line_num;
-    u16   req_group;
+    char path[MAX_PATH];
+    u16 line_num;
+    u16 req_group;
 } SrcFile;
 
-static SrcFile        src_stack[MAX_INCLUDE_DEPTH];
-static u8             src_depth = 0;
-static u16            next_req_group = 1;
+static SrcFile src_stack[MAX_INCLUDE_DEPTH];
+static u8 src_depth = 0;
+static u16 next_req_group = 1;
 #define MAX_LIB_ROOTS 16
-static const char    *extra_lib_roots[MAX_LIB_ROOTS];
-static int            extra_lib_root_count = 0;
+static const char *extra_lib_roots[MAX_LIB_ROOTS];
+static int extra_lib_root_count = 0;
 
 void ir4_add_lib_root(const char *path) {
-    if (!path || path[0] == '\0') return;
+    if (!path || path[0] == '\0')
+        return;
     if (extra_lib_root_count >= MAX_LIB_ROOTS) {
         ir4_die("too many -I library roots");
     }
     extra_lib_roots[extra_lib_root_count++] = path;
 }
-static char           seen_files[MAX_INCLUDES][MAX_PATH];
-static u8             seen_count = 0;
+static char seen_files[MAX_INCLUDES][MAX_PATH];
+static u8 seen_count = 0;
 static const Backend *be;
-static const char    *platform_name = NULL;
+static const char *platform_name = NULL;
 
-static FuncSig   funcs[MAX_SYMS];
-static u8        func_count = 0;
+static FuncSig funcs[MAX_SYMS];
+static u8 func_count = 0;
 
 typedef struct {
     char name[MAX_TOK];
-    u16  offset;
-    u8   type; /* TY_NONE for :bytes / data buffers; TY_W/TY_A/TY_F for typed globals */
+    u16 offset;
+    u8 type; /* TY_NONE for :bytes / data buffers; TY_W/TY_A/TY_F for typed globals */
 } BufferSym;
 
 static BufferSym buffers[MAX_SYMS];
-static u8        buffer_count = 0;
+static u8 buffer_count = 0;
 
-static LocalVar  locals[MAX_LOCALS];
-static u8        local_count = 0;
-static u8        cur_outs[4];
-static u8        cur_out_count = 0;
+static LocalVar locals[MAX_LOCALS];
+static u8 local_count = 0;
+static u8 cur_outs[4];
+static u8 cur_out_count = 0;
 
-static u8        tstack[MAX_STACK];
-static u8        tsp = 0;
+static u8 tstack[MAX_STACK];
+static u8 tsp = 0;
 
 static BlockInfo blocks[MAX_BLOCKS];
-static u8        bsp = 0;
+static u8 bsp = 0;
 
 void ir4_die(const char *msg) {
     if (src_depth > 0) {
@@ -156,18 +163,26 @@ void ir4_die(const char *msg) {
 }
 
 static const char *type_name(u8 t) {
-    if (t == TY_W)   return ":i";
-    if (t == TY_A)   return ":a";
-    if (t == TY_F)   return ":f";
-    if (t == TY_I32) return ":i32";
+    if (t == TY_W)
+        return ":i";
+    if (t == TY_A)
+        return ":a";
+    if (t == TY_F)
+        return ":f";
+    if (t == TY_I32)
+        return ":i32";
     return "?";
 }
 
 static u8 parse_type_tok(const char *tok) {
-    if (strcmp(tok, ":i") == 0)   return TY_W;
-    if (strcmp(tok, ":a") == 0)   return TY_A;
-    if (strcmp(tok, ":f") == 0)   return TY_F;
-    if (strcmp(tok, ":i32") == 0) return TY_I32;
+    if (strcmp(tok, ":i") == 0)
+        return TY_W;
+    if (strcmp(tok, ":a") == 0)
+        return TY_A;
+    if (strcmp(tok, ":f") == 0)
+        return TY_F;
+    if (strcmp(tok, ":i32") == 0)
+        return TY_I32;
     return TY_NONE;
 }
 
@@ -175,7 +190,8 @@ static int skip_ws_and_comments(void) {
     for (;;) {
         SrcFile *cur;
         int c;
-        if (src_depth == 0) return EOF;
+        if (src_depth == 0)
+            return EOF;
         cur = &src_stack[src_depth - 1];
         c = fgetc(cur->fp);
         if (c == EOF) {
@@ -186,16 +202,23 @@ static int skip_ws_and_comments(void) {
             }
             return EOF;
         }
-        if (c == '\n') { cur->line_num++; continue; }
-        if (isspace((unsigned char)c)) continue;
+        if (c == '\n') {
+            cur->line_num++;
+            continue;
+        }
+        if (isspace((unsigned char)c))
+            continue;
         if (c == '/') {
             int c2 = fgetc(cur->fp);
             if (c2 == '/') {
-                while ((c = fgetc(cur->fp)) != EOF && c != '\n') ;
-                if (c == '\n') cur->line_num++;
+                while ((c = fgetc(cur->fp)) != EOF && c != '\n')
+                    ;
+                if (c == '\n')
+                    cur->line_num++;
                 continue;
             }
-            if (c2 != EOF) ungetc(c2, cur->fp);
+            if (c2 != EOF)
+                ungetc(c2, cur->fp);
         }
         return c;
     }
@@ -206,27 +229,34 @@ static void parse_line_directive(SrcFile *cur, int last_c) {
     u32 new_line = 0;
     int has_digits = 0;
 
-    if (c == '\n' || c == EOF) ir4_die("expected line number after '#line'");
-    while (c == ' ' || c == '\t') c = fgetc(cur->fp);
+    if (c == '\n' || c == EOF)
+        ir4_die("expected line number after '#line'");
+    while (c == ' ' || c == '\t')
+        c = fgetc(cur->fp);
     while (c >= '0' && c <= '9') {
         new_line = new_line * 10 + (u32)(c - '0');
         has_digits = 1;
         c = fgetc(cur->fp);
     }
-    if (!has_digits || new_line == 0) ir4_die("invalid line number in '#line'");
-    while (c == ' ' || c == '\t') c = fgetc(cur->fp);
+    if (!has_digits || new_line == 0)
+        ir4_die("invalid line number in '#line'");
+    while (c == ' ' || c == '\t')
+        c = fgetc(cur->fp);
     if (c == '"') {
         size_t plen = 0;
         c = fgetc(cur->fp);
         while (c != EOF && c != '\n' && c != '"') {
-            if (plen < sizeof(cur->path) - 1) cur->path[plen++] = (char)c;
+            if (plen < sizeof(cur->path) - 1)
+                cur->path[plen++] = (char)c;
             c = fgetc(cur->fp);
         }
-        if (c != '"') ir4_die("unterminated filename in '#line'");
+        if (c != '"')
+            ir4_die("unterminated filename in '#line'");
         cur->path[plen] = '\0';
         c = fgetc(cur->fp);
     }
-    while (c != EOF && c != '\n') c = fgetc(cur->fp);
+    while (c != EOF && c != '\n')
+        c = fgetc(cur->fp);
     cur->line_num = (u16)new_line;
 }
 
@@ -235,12 +265,14 @@ static int next_tok(char *buf) {
         int c = skip_ws_and_comments();
         u8 len = 0;
 
-        if (c == EOF) return 0;
+        if (c == EOF)
+            return 0;
 
         {
             SrcFile *cur = &src_stack[src_depth - 1];
             while (c != EOF && !isspace((unsigned char)c)) {
-                if (len >= MAX_TOK - 1) ir4_die("token too long");
+                if (len >= MAX_TOK - 1)
+                    ir4_die("token too long");
                 buf[len++] = (char)c;
                 c = fgetc(cur->fp);
             }
@@ -249,7 +281,8 @@ static int next_tok(char *buf) {
                 parse_line_directive(cur, c);
                 continue;
             }
-            if (c == '\n') cur->line_num++;
+            if (c == '\n')
+                cur->line_num++;
         }
         return 1;
     }
@@ -300,11 +333,14 @@ void ir4_set_exe_path(const char *exe_path) {
     const char *p;
     size_t len;
     exe_dir[0] = '\0';
-    if (!exe_path) return;
+    if (!exe_path)
+        return;
     for (p = exe_path; *p; p++) {
-        if (*p == '/' || *p == '\\') sep = p;
+        if (*p == '/' || *p == '\\')
+            sep = p;
     }
-    if (!sep) return;
+    if (!sep)
+        return;
     len = (size_t)(sep - exe_path);
     if (len == 0) {
         strcpy(exe_dir, "/");
@@ -364,7 +400,8 @@ static void push_require_ex(const char *name, int lib_only) {
             FILE *fp;
             resolve_path(src_stack[src_depth - 1].path, cands[c], path, sizeof(path));
             fp = try_open_require(path, &seen);
-            if (seen) seen_cnt++;
+            if (seen)
+                seen_cnt++;
             else if (fp) {
                 found_fps[found_cnt] = fp;
                 strcpy(found_paths[found_cnt], path);
@@ -397,10 +434,12 @@ static void push_require_ex(const char *name, int lib_only) {
                 char path[MAX_PATH];
                 int seen = 0;
                 FILE *fp;
-                if (strlen(roots[r]) + 1 + strlen(cands[c]) >= sizeof(path)) continue;
+                if (strlen(roots[r]) + 1 + strlen(cands[c]) >= sizeof(path))
+                    continue;
                 sprintf(path, "%s/%s", roots[r], cands[c]);
                 fp = try_open_require(path, &seen);
-                if (seen) seen_cnt++;
+                if (seen)
+                    seen_cnt++;
                 else if (fp) {
                     found_fps[found_cnt] = fp;
                     strcpy(found_paths[found_cnt], path);
@@ -419,12 +458,13 @@ static void push_require_ex(const char *name, int lib_only) {
         }
         return;
     }
-    if (seen_cnt > 0) return;
+    if (seen_cnt > 0)
+        return;
 
     {
         const SrcFile *cur = &src_stack[src_depth - 1];
-        fprintf(stderr, "ir4c error (%s:%u): cannot open required file '%s'\n",
-                cur->path, cur->line_num, name);
+        fprintf(stderr, "ir4c error (%s:%u): cannot open required file '%s'\n", cur->path,
+                cur->line_num, name);
         exit(1);
     }
 }
@@ -434,20 +474,21 @@ static void read_require_path(char *out, size_t out_sz) {
     SrcFile *cur = &src_stack[src_depth - 1];
     size_t len = 0;
 
-    if (c != '"') ir4_die("expected quoted filename after 'require'");
+    if (c != '"')
+        ir4_die("expected quoted filename after 'require'");
     c = fgetc(cur->fp);
     while (c != EOF && c != '\n' && c != '"') {
-        if (len + 1 >= out_sz) ir4_die("required file path too long");
+        if (len + 1 >= out_sz)
+            ir4_die("required file path too long");
         out[len++] = (char)c;
         c = fgetc(cur->fp);
     }
-    if (c != '"') ir4_die("unterminated filename in 'require'");
+    if (c != '"')
+        ir4_die("unterminated filename in 'require'");
     out[len] = '\0';
 }
 
-static void push_require(const char *name) {
-    push_require_ex(name, 0);
-}
+static void push_require(const char *name) { push_require_ex(name, 0); }
 
 static int parse_int(const char *s, i32 *val) {
     char *endp;
@@ -457,10 +498,13 @@ static int parse_int(const char *s, i32 *val) {
     if (*p == '$') {
         base = 16;
         p++;
-        if (*p == '\0') return 0;
+        if (*p == '\0')
+            return 0;
     } else {
-        if (*p == '-' || *p == '+') p++;
-        if (!isdigit((unsigned char)*p)) return 0;
+        if (*p == '-' || *p == '+')
+            p++;
+        if (!isdigit((unsigned char)*p))
+            return 0;
         p = s;
     }
 
@@ -472,10 +516,14 @@ static int parse_float(const char *s, double *val) {
     char *endp;
     const char *p = s;
 
-    if (*p == '-' || *p == '+') p++;
-    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) return 0;
-    if (!isdigit((unsigned char)*p) && *p != '.') return 0;
-    if (*p == '.' && !isdigit((unsigned char)p[1])) return 0;
+    if (*p == '-' || *p == '+')
+        p++;
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
+        return 0;
+    if (!isdigit((unsigned char)*p) && *p != '.')
+        return 0;
+    if (*p == '.' && !isdigit((unsigned char)p[1]))
+        return 0;
     if (strchr(p, '.') == NULL && strchr(p, 'e') == NULL && strchr(p, 'E') == NULL) {
         return 0;
     }
@@ -488,21 +536,27 @@ static u16 tstack_bytes(void) {
     u16 bytes = 0;
     u8 i;
     for (i = 0; i < tsp; i++) {
-        if (tstack[i] == TY_F)        bytes += be->float_bytes;
-        else if (tstack[i] == TY_A)   bytes += be->addr_bytes;
-        else if (tstack[i] == TY_I32) bytes += 4;
-        else                          bytes += be->word_bytes;
+        if (tstack[i] == TY_F)
+            bytes += be->float_bytes;
+        else if (tstack[i] == TY_A)
+            bytes += be->addr_bytes;
+        else if (tstack[i] == TY_I32)
+            bytes += 4;
+        else
+            bytes += be->word_bytes;
     }
     return bytes;
 }
 
 static void tpush(u8 t) {
-    if (tsp >= MAX_STACK) ir4_die("type stack overflow");
+    if (tsp >= MAX_STACK)
+        ir4_die("type stack overflow");
     tstack[tsp++] = t;
 }
 
 static u8 tpop(void) {
-    if (tsp == 0) ir4_die("type stack underflow");
+    if (tsp == 0)
+        ir4_die("type stack underflow");
     return tstack[--tsp];
 }
 
@@ -510,24 +564,27 @@ static void tpop_expect(u8 expected) {
     u8 got = tpop();
     if (got != expected) {
         const SrcFile *cur = &src_stack[src_depth - 1];
-        fprintf(stderr, "ir4c error (%s:%u): expected %s, got %s\n",
-                cur->path, cur->line_num, type_name(expected), type_name(got));
+        fprintf(stderr, "ir4c error (%s:%u): expected %s, got %s\n", cur->path, cur->line_num,
+                type_name(expected), type_name(got));
         exit(1);
     }
 }
 
 static void check_return_stack(void) {
     u8 i;
-    if (tsp != cur_out_count) ir4_die("return stack depth mismatch");
+    if (tsp != cur_out_count)
+        ir4_die("return stack depth mismatch");
     for (i = 0; i < cur_out_count; i++) {
-        if (tstack[i] != cur_outs[i]) ir4_die("return stack type mismatch");
+        if (tstack[i] != cur_outs[i])
+            ir4_die("return stack type mismatch");
     }
 }
 
 static int find_local(const char *name) {
     u8 i;
     for (i = 0; i < local_count; i++) {
-        if (strcmp(locals[i].name, name) == 0) return (int)i;
+        if (strcmp(locals[i].name, name) == 0)
+            return (int)i;
     }
     return -1;
 }
@@ -535,7 +592,8 @@ static int find_local(const char *name) {
 int ir4_find_func(const char *name) {
     u8 i;
     for (i = 0; i < func_count; i++) {
-        if (strcmp(funcs[i].name, name) == 0) return (int)i;
+        if (strcmp(funcs[i].name, name) == 0)
+            return (int)i;
     }
     return -1;
 }
@@ -543,18 +601,21 @@ int ir4_find_func(const char *name) {
 static int find_buffer(const char *name) {
     u8 i;
     for (i = 0; i < buffer_count; i++) {
-        if (strcmp(buffers[i].name, name) == 0) return (int)i;
+        if (strcmp(buffers[i].name, name) == 0)
+            return (int)i;
     }
     return -1;
 }
 
 u16 ir4_func_addr(u8 idx) {
-    if (idx >= func_count) ir4_die("function index out of bounds");
+    if (idx >= func_count)
+        ir4_die("function index out of bounds");
     return funcs[idx].addr;
 }
 
 const FuncSig *ir4_func_sig(u8 idx) {
-    if (idx >= func_count) ir4_die("function index out of bounds");
+    if (idx >= func_count)
+        ir4_die("function index out of bounds");
     return &funcs[idx];
 }
 
@@ -566,107 +627,105 @@ typedef struct {
     u8 out;
 } BuiltinDef;
 
-static const BuiltinDef builtins[] = {
-    /* Native word (:i) arithmetic & bitwise */
-    { "+",         OP_ADD,      TY_W,   TY_W,    TY_W },
-    { "-",         OP_SUB,      TY_W,   TY_W,    TY_W },
-    { "*",         OP_MUL,      TY_W,   TY_W,    TY_W },
-    { "/",         OP_DIV,      TY_W,   TY_W,    TY_W },
-    { "mod",       OP_MOD,      TY_W,   TY_W,    TY_W },
-    { "u/",        OP_UDIV,     TY_W,   TY_W,    TY_W },
-    { "umod",      OP_UMOD,     TY_W,   TY_W,    TY_W },
-    { "and",       OP_AND,      TY_W,   TY_W,    TY_W },
-    { "or",        OP_OR,       TY_W,   TY_W,    TY_W },
-    { "xor",       OP_XOR,      TY_W,   TY_W,    TY_W },
-    { "invert",    OP_INVERT,   TY_W,   TY_NONE, TY_W },
-    { "<<",        OP_LSHIFT,   TY_W,   TY_W,    TY_W },
-    { ">>",        OP_ARSHIFT,  TY_W,   TY_W,    TY_W },
-    { "u>>",       OP_RSHIFT,   TY_W,   TY_W,    TY_W },
+static const BuiltinDef builtins[] = {/* Native word (:i) arithmetic & bitwise */
+                                      {"+", OP_ADD, TY_W, TY_W, TY_W},
+                                      {"-", OP_SUB, TY_W, TY_W, TY_W},
+                                      {"*", OP_MUL, TY_W, TY_W, TY_W},
+                                      {"/", OP_DIV, TY_W, TY_W, TY_W},
+                                      {"mod", OP_MOD, TY_W, TY_W, TY_W},
+                                      {"u/", OP_UDIV, TY_W, TY_W, TY_W},
+                                      {"umod", OP_UMOD, TY_W, TY_W, TY_W},
+                                      {"and", OP_AND, TY_W, TY_W, TY_W},
+                                      {"or", OP_OR, TY_W, TY_W, TY_W},
+                                      {"xor", OP_XOR, TY_W, TY_W, TY_W},
+                                      {"invert", OP_INVERT, TY_W, TY_NONE, TY_W},
+                                      {"<<", OP_LSHIFT, TY_W, TY_W, TY_W},
+                                      {">>", OP_ARSHIFT, TY_W, TY_W, TY_W},
+                                      {"u>>", OP_RSHIFT, TY_W, TY_W, TY_W},
 
-    /* Address (:a) arithmetic & comparisons (unsigned implied) */
-    { "a+",        OP_AADD,     TY_W,   TY_A,    TY_A },
-    { "a-",        OP_ASUB,     TY_W,   TY_A,    TY_A },
-    { "adiff",     OP_ADIFF,    TY_A,   TY_A,    TY_W },
-    { "a==",       OP_AEQ,      TY_A,   TY_A,    TY_W },
-    { "a!=",       OP_ANE,      TY_A,   TY_A,    TY_W },
-    { "a<",        OP_ALT,      TY_A,   TY_A,    TY_W },
-    { "a>",        OP_AGT,      TY_A,   TY_A,    TY_W },
+                                      /* Address (:a) arithmetic & comparisons (unsigned implied) */
+                                      {"a+", OP_AADD, TY_W, TY_A, TY_A},
+                                      {"a-", OP_ASUB, TY_W, TY_A, TY_A},
+                                      {"adiff", OP_ADIFF, TY_A, TY_A, TY_W},
+                                      {"a==", OP_AEQ, TY_A, TY_A, TY_W},
+                                      {"a!=", OP_ANE, TY_A, TY_A, TY_W},
+                                      {"a<", OP_ALT, TY_A, TY_A, TY_W},
+                                      {"a>", OP_AGT, TY_A, TY_A, TY_W},
 
-    /* Floating-point (:f) arithmetic & comparisons */
-    { "f+",        OP_FADD,     TY_F,   TY_F,    TY_F },
-    { "f-",        OP_FSUB,     TY_F,   TY_F,    TY_F },
-    { "f*",        OP_FMUL,     TY_F,   TY_F,    TY_F },
-    { "f/",        OP_FDIV,     TY_F,   TY_F,    TY_F },
-    { "fnegate",   OP_FNEG,     TY_F,   TY_NONE, TY_F },
-    { "f==",       OP_FEQ,      TY_F,   TY_F,    TY_W },
-    { "f!=",       OP_FNE,      TY_F,   TY_F,    TY_W },
-    { "f<",        OP_FLT,      TY_F,   TY_F,    TY_W },
-    { "f>",        OP_FGT,      TY_F,   TY_F,    TY_W },
+                                      /* Floating-point (:f) arithmetic & comparisons */
+                                      {"f+", OP_FADD, TY_F, TY_F, TY_F},
+                                      {"f-", OP_FSUB, TY_F, TY_F, TY_F},
+                                      {"f*", OP_FMUL, TY_F, TY_F, TY_F},
+                                      {"f/", OP_FDIV, TY_F, TY_F, TY_F},
+                                      {"fnegate", OP_FNEG, TY_F, TY_NONE, TY_F},
+                                      {"f==", OP_FEQ, TY_F, TY_F, TY_W},
+                                      {"f!=", OP_FNE, TY_F, TY_F, TY_W},
+                                      {"f<", OP_FLT, TY_F, TY_F, TY_W},
+                                      {"f>", OP_FGT, TY_F, TY_F, TY_W},
 
-    /* 32-bit integer (:i32) arithmetic, bitwise & comparisons */
-    { "i32+",      OP_ADD32,    TY_I32, TY_I32,  TY_I32 },
-    { "i32-",      OP_SUB32,    TY_I32, TY_I32,  TY_I32 },
-    { "i32*",      OP_MUL32,    TY_I32, TY_I32,  TY_I32 },
-    { "i32/",      OP_DIV32,    TY_I32, TY_I32,  TY_I32 },
-    { "i32mod",    OP_MOD32,    TY_I32, TY_I32,  TY_I32 },
-    { "u32/",      OP_UDIV32,   TY_I32, TY_I32,  TY_I32 },
-    { "u32mod",    OP_UMOD32,   TY_I32, TY_I32,  TY_I32 },
-    { "i32and",    OP_AND32,    TY_I32, TY_I32,  TY_I32 },
-    { "i32or",     OP_OR32,     TY_I32, TY_I32,  TY_I32 },
-    { "i32xor",    OP_XOR32,    TY_I32, TY_I32,  TY_I32 },
-    { "i32invert", OP_INV32,    TY_I32, TY_NONE, TY_I32 },
-    { "i32<<",     OP_SHL32,    TY_W,   TY_I32,  TY_I32 },
-    { "i32>>",     OP_ASHR32,   TY_W,   TY_I32,  TY_I32 },
-    { "u32>>",     OP_RSHR32,   TY_W,   TY_I32,  TY_I32 },
-    { "i32==",     OP_EQ32,     TY_I32, TY_I32,  TY_W },
-    { "i32!=",     OP_NE32,     TY_I32, TY_I32,  TY_W },
-    { "i32<",      OP_LT32,     TY_I32, TY_I32,  TY_W },
-    { "i32>",      OP_GT32,     TY_I32, TY_I32,  TY_W },
-    { "i32<=",     OP_LE32,     TY_I32, TY_I32,  TY_W },
-    { "i32>=",     OP_GE32,     TY_I32, TY_I32,  TY_W },
-    { "u32<",      OP_ULT32,    TY_I32, TY_I32,  TY_W },
-    { "u32>",      OP_UGT32,    TY_I32, TY_I32,  TY_W },
-    { "u32<=",     OP_ULE32,    TY_I32, TY_I32,  TY_W },
-    { "u32>=",     OP_UGE32,    TY_I32, TY_I32,  TY_W },
+                                      /* 32-bit integer (:i32) arithmetic, bitwise & comparisons */
+                                      {"i32+", OP_ADD32, TY_I32, TY_I32, TY_I32},
+                                      {"i32-", OP_SUB32, TY_I32, TY_I32, TY_I32},
+                                      {"i32*", OP_MUL32, TY_I32, TY_I32, TY_I32},
+                                      {"i32/", OP_DIV32, TY_I32, TY_I32, TY_I32},
+                                      {"i32mod", OP_MOD32, TY_I32, TY_I32, TY_I32},
+                                      {"u32/", OP_UDIV32, TY_I32, TY_I32, TY_I32},
+                                      {"u32mod", OP_UMOD32, TY_I32, TY_I32, TY_I32},
+                                      {"i32and", OP_AND32, TY_I32, TY_I32, TY_I32},
+                                      {"i32or", OP_OR32, TY_I32, TY_I32, TY_I32},
+                                      {"i32xor", OP_XOR32, TY_I32, TY_I32, TY_I32},
+                                      {"i32invert", OP_INV32, TY_I32, TY_NONE, TY_I32},
+                                      {"i32<<", OP_SHL32, TY_W, TY_I32, TY_I32},
+                                      {"i32>>", OP_ASHR32, TY_W, TY_I32, TY_I32},
+                                      {"u32>>", OP_RSHR32, TY_W, TY_I32, TY_I32},
+                                      {"i32==", OP_EQ32, TY_I32, TY_I32, TY_W},
+                                      {"i32!=", OP_NE32, TY_I32, TY_I32, TY_W},
+                                      {"i32<", OP_LT32, TY_I32, TY_I32, TY_W},
+                                      {"i32>", OP_GT32, TY_I32, TY_I32, TY_W},
+                                      {"i32<=", OP_LE32, TY_I32, TY_I32, TY_W},
+                                      {"i32>=", OP_GE32, TY_I32, TY_I32, TY_W},
+                                      {"u32<", OP_ULT32, TY_I32, TY_I32, TY_W},
+                                      {"u32>", OP_UGT32, TY_I32, TY_I32, TY_W},
+                                      {"u32<=", OP_ULE32, TY_I32, TY_I32, TY_W},
+                                      {"u32>=", OP_UGE32, TY_I32, TY_I32, TY_W},
 
-    /* Native word (:i) comparisons */
-    { "==",        OP_EQ,       TY_W,   TY_W,    TY_W },
-    { "!=",        OP_NE,       TY_W,   TY_W,    TY_W },
-    { "<",         OP_LT,       TY_W,   TY_W,    TY_W },
-    { ">",         OP_GT,       TY_W,   TY_W,    TY_W },
-    { "<=",        OP_LE,       TY_W,   TY_W,    TY_W },
-    { ">=",        OP_GE,       TY_W,   TY_W,    TY_W },
-    { "u<",        OP_ULT,      TY_W,   TY_W,    TY_W },
-    { "u>",        OP_UGT,      TY_W,   TY_W,    TY_W },
-    { "u<=",       OP_ULE,      TY_W,   TY_W,    TY_W },
-    { "u>=",       OP_UGE,      TY_W,   TY_W,    TY_W },
+                                      /* Native word (:i) comparisons */
+                                      {"==", OP_EQ, TY_W, TY_W, TY_W},
+                                      {"!=", OP_NE, TY_W, TY_W, TY_W},
+                                      {"<", OP_LT, TY_W, TY_W, TY_W},
+                                      {">", OP_GT, TY_W, TY_W, TY_W},
+                                      {"<=", OP_LE, TY_W, TY_W, TY_W},
+                                      {">=", OP_GE, TY_W, TY_W, TY_W},
+                                      {"u<", OP_ULT, TY_W, TY_W, TY_W},
+                                      {"u>", OP_UGT, TY_W, TY_W, TY_W},
+                                      {"u<=", OP_ULE, TY_W, TY_W, TY_W},
+                                      {"u>=", OP_UGE, TY_W, TY_W, TY_W},
 
-    /* Memory load/store */
-    { "i8@",       OP_I8FETCH,  TY_A,   TY_NONE, TY_W },
-    { "u8@",       OP_U8FETCH,  TY_A,   TY_NONE, TY_W },
-    { "i8!",       OP_I8STORE,  TY_A,   TY_W,    TY_NONE },
-    { "i16@",      OP_I16FETCH, TY_A,   TY_NONE, TY_W },
-    { "u16@",      OP_U16FETCH, TY_A,   TY_NONE, TY_W },
-    { "i16!",      OP_I16STORE, TY_A,   TY_W,    TY_NONE },
-    { "@",         OP_FETCH,    TY_A,   TY_NONE, TY_W },
-    { "!",         OP_STORE,    TY_A,   TY_W,    TY_NONE },
-    { "a@",        OP_AFETCH,   TY_A,   TY_NONE, TY_A },
-    { "a!",        OP_ASTORE,   TY_A,   TY_A,    TY_NONE },
-    { "f@",        OP_FFETCH,   TY_A,   TY_NONE, TY_F },
-    { "f!",        OP_FSTORE,   TY_A,   TY_F,    TY_NONE },
-    { "i32@",      OP_I32FETCH, TY_A,   TY_NONE, TY_I32 },
-    { "i32!",      OP_I32STORE, TY_A,   TY_I32,  TY_NONE },
+                                      /* Memory load/store */
+                                      {"i8@", OP_I8FETCH, TY_A, TY_NONE, TY_W},
+                                      {"u8@", OP_U8FETCH, TY_A, TY_NONE, TY_W},
+                                      {"i8!", OP_I8STORE, TY_A, TY_W, TY_NONE},
+                                      {"i16@", OP_I16FETCH, TY_A, TY_NONE, TY_W},
+                                      {"u16@", OP_U16FETCH, TY_A, TY_NONE, TY_W},
+                                      {"i16!", OP_I16STORE, TY_A, TY_W, TY_NONE},
+                                      {"@", OP_FETCH, TY_A, TY_NONE, TY_W},
+                                      {"!", OP_STORE, TY_A, TY_W, TY_NONE},
+                                      {"a@", OP_AFETCH, TY_A, TY_NONE, TY_A},
+                                      {"a!", OP_ASTORE, TY_A, TY_A, TY_NONE},
+                                      {"f@", OP_FFETCH, TY_A, TY_NONE, TY_F},
+                                      {"f!", OP_FSTORE, TY_A, TY_F, TY_NONE},
+                                      {"i32@", OP_I32FETCH, TY_A, TY_NONE, TY_I32},
+                                      {"i32!", OP_I32STORE, TY_A, TY_I32, TY_NONE},
 
-    /* Type conversions */
-    { "sext",      OP_SEXT,     TY_W,   TY_NONE, TY_W },
-    { "i>a",       OP_W2A,      TY_W,   TY_NONE, TY_A },
-    { "a>i",       OP_A2W,      TY_A,   TY_NONE, TY_W },
-    { "i>f",       OP_W2F,      TY_W,   TY_NONE, TY_F },
-    { "f>i",       OP_F2W,      TY_F,   TY_NONE, TY_W },
-    { "i>i32",     OP_W2I32,    TY_W,   TY_NONE, TY_I32 },
-    { "i>u32",     OP_U2I32,    TY_W,   TY_NONE, TY_I32 },
-    { "i32>i",     OP_I322W,    TY_I32, TY_NONE, TY_W }
-};
+                                      /* Type conversions */
+                                      {"sext", OP_SEXT, TY_W, TY_NONE, TY_W},
+                                      {"i>a", OP_W2A, TY_W, TY_NONE, TY_A},
+                                      {"a>i", OP_A2W, TY_A, TY_NONE, TY_W},
+                                      {"i>f", OP_W2F, TY_W, TY_NONE, TY_F},
+                                      {"f>i", OP_F2W, TY_F, TY_NONE, TY_W},
+                                      {"i>i32", OP_W2I32, TY_W, TY_NONE, TY_I32},
+                                      {"i>u32", OP_U2I32, TY_W, TY_NONE, TY_I32},
+                                      {"i32>i", OP_I322W, TY_I32, TY_NONE, TY_W}};
 
 static IrInstr *emit_ir(IrKind kind, WordIR *w) {
     IrInstr *ins;
@@ -687,19 +746,44 @@ static int try_fold_const_w(IrOp op, i32 a, i32 b, i32 *out) {
         u16 ua = (u16)sa;
         u16 ub = (u16)sb;
         switch (op) {
-        case OP_ADD: *out = (i32)(i16)(ua + ub); return 1;
-        case OP_SUB: *out = (i32)(i16)(ua - ub); return 1;
-        case OP_EQ:  *out = (sa == sb) ? -1 : 0; return 1;
-        case OP_NE:  *out = (sa != sb) ? -1 : 0; return 1;
-        case OP_LT:  *out = (sa <  sb) ? -1 : 0; return 1;
-        case OP_GT:  *out = (sa >  sb) ? -1 : 0; return 1;
-        case OP_LE:  *out = (sa <= sb) ? -1 : 0; return 1;
-        case OP_GE:  *out = (sa >= sb) ? -1 : 0; return 1;
-        case OP_ULT: *out = (ua <  ub) ? -1 : 0; return 1;
-        case OP_UGT: *out = (ua >  ub) ? -1 : 0; return 1;
-        case OP_ULE: *out = (ua <= ub) ? -1 : 0; return 1;
-        case OP_UGE: *out = (ua >= ub) ? -1 : 0; return 1;
-        default: return 0;
+        case OP_ADD:
+            *out = (i32)(i16)(ua + ub);
+            return 1;
+        case OP_SUB:
+            *out = (i32)(i16)(ua - ub);
+            return 1;
+        case OP_EQ:
+            *out = (sa == sb) ? -1 : 0;
+            return 1;
+        case OP_NE:
+            *out = (sa != sb) ? -1 : 0;
+            return 1;
+        case OP_LT:
+            *out = (sa < sb) ? -1 : 0;
+            return 1;
+        case OP_GT:
+            *out = (sa > sb) ? -1 : 0;
+            return 1;
+        case OP_LE:
+            *out = (sa <= sb) ? -1 : 0;
+            return 1;
+        case OP_GE:
+            *out = (sa >= sb) ? -1 : 0;
+            return 1;
+        case OP_ULT:
+            *out = (ua < ub) ? -1 : 0;
+            return 1;
+        case OP_UGT:
+            *out = (ua > ub) ? -1 : 0;
+            return 1;
+        case OP_ULE:
+            *out = (ua <= ub) ? -1 : 0;
+            return 1;
+        case OP_UGE:
+            *out = (ua >= ub) ? -1 : 0;
+            return 1;
+        default:
+            return 0;
         }
     }
     if (be->word_bytes == 8) {
@@ -707,36 +791,66 @@ static int try_fold_const_w(IrOp op, i32 a, i32 b, i32 *out) {
             (a < -0x3FFFFFFF || a > 0x3FFFFFFF || b < -0x3FFFFFFF || b > 0x3FFFFFFF)) {
             return 0;
         }
-        if ((op == OP_ULT || op == OP_UGT || op == OP_ULE || op == OP_UGE) &&
-            (a < 0 || b < 0)) {
+        if ((op == OP_ULT || op == OP_UGT || op == OP_ULE || op == OP_UGE) && (a < 0 || b < 0)) {
             return 0;
         }
     }
     switch (op) {
-    case OP_ADD: *out = (i32)((u32)a + (u32)b); return 1;
-    case OP_SUB: *out = (i32)((u32)a - (u32)b); return 1;
-    case OP_EQ:  *out = (a == b) ? -1 : 0; return 1;
-    case OP_NE:  *out = (a != b) ? -1 : 0; return 1;
-    case OP_LT:  *out = (a <  b) ? -1 : 0; return 1;
-    case OP_GT:  *out = (a >  b) ? -1 : 0; return 1;
-    case OP_LE:  *out = (a <= b) ? -1 : 0; return 1;
-    case OP_GE:  *out = (a >= b) ? -1 : 0; return 1;
-    case OP_ULT: *out = ((u32)a <  (u32)b) ? -1 : 0; return 1;
-    case OP_UGT: *out = ((u32)a >  (u32)b) ? -1 : 0; return 1;
-    case OP_ULE: *out = ((u32)a <= (u32)b) ? -1 : 0; return 1;
-    case OP_UGE: *out = ((u32)a >= (u32)b) ? -1 : 0; return 1;
-    default: return 0;
+    case OP_ADD:
+        *out = (i32)((u32)a + (u32)b);
+        return 1;
+    case OP_SUB:
+        *out = (i32)((u32)a - (u32)b);
+        return 1;
+    case OP_EQ:
+        *out = (a == b) ? -1 : 0;
+        return 1;
+    case OP_NE:
+        *out = (a != b) ? -1 : 0;
+        return 1;
+    case OP_LT:
+        *out = (a < b) ? -1 : 0;
+        return 1;
+    case OP_GT:
+        *out = (a > b) ? -1 : 0;
+        return 1;
+    case OP_LE:
+        *out = (a <= b) ? -1 : 0;
+        return 1;
+    case OP_GE:
+        *out = (a >= b) ? -1 : 0;
+        return 1;
+    case OP_ULT:
+        *out = ((u32)a < (u32)b) ? -1 : 0;
+        return 1;
+    case OP_UGT:
+        *out = ((u32)a > (u32)b) ? -1 : 0;
+        return 1;
+    case OP_ULE:
+        *out = ((u32)a <= (u32)b) ? -1 : 0;
+        return 1;
+    case OP_UGE:
+        *out = ((u32)a >= (u32)b) ? -1 : 0;
+        return 1;
+    default:
+        return 0;
     }
 }
 
 static IrOp swapped_store_op(IrOp op) {
     switch (op) {
-    case OP_I8STORE:  return OP_SI8STORE;
-    case OP_I16STORE: return OP_SI16STORE;
-    case OP_STORE:    return OP_SSTORE;
-    case OP_ASTORE:   return OP_SASTORE;
-    case OP_FSTORE:   return OP_SFSTORE;
-    default:          return op;
+    case OP_I8STORE:
+        return OP_SI8STORE;
+    case OP_I16STORE:
+        return OP_SI16STORE;
+    case OP_STORE:
+        return OP_SSTORE;
+    case OP_ASTORE:
+        return OP_SASTORE;
+    case OP_FSTORE:
+        return OP_SFSTORE;
+    default:
+        return op;
     }
 }
 
@@ -747,27 +861,44 @@ static int handle_builtin(const char *tok, WordIR *w) {
 
     /* Stack manipulation (polymorphic) */
     if (strcmp(tok, "dup") == 0) {
-        a = tpop(); tpush(a); tpush(a);
+        a = tpop();
+        tpush(a);
+        tpush(a);
         ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_DUP; ins->u.stk.t1 = (StackType)a; ins->u.stk.t2 = TY_NONE;
+        ins->u.stk.op = OP_DUP;
+        ins->u.stk.t1 = (StackType)a;
+        ins->u.stk.t2 = TY_NONE;
         return 1;
     }
     if (strcmp(tok, "drop") == 0) {
         a = tpop();
         ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_DROP; ins->u.stk.t1 = (StackType)a; ins->u.stk.t2 = TY_NONE;
+        ins->u.stk.op = OP_DROP;
+        ins->u.stk.t1 = (StackType)a;
+        ins->u.stk.t2 = TY_NONE;
         return 1;
     }
     if (strcmp(tok, "swap") == 0) {
-        b = tpop(); a = tpop(); tpush(b); tpush(a);
+        b = tpop();
+        a = tpop();
+        tpush(b);
+        tpush(a);
         ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_SWAP; ins->u.stk.t1 = (StackType)b; ins->u.stk.t2 = (StackType)a;
+        ins->u.stk.op = OP_SWAP;
+        ins->u.stk.t1 = (StackType)b;
+        ins->u.stk.t2 = (StackType)a;
         return 1;
     }
     if (strcmp(tok, "over") == 0) {
-        b = tpop(); a = tpop(); tpush(a); tpush(b); tpush(a);
+        b = tpop();
+        a = tpop();
+        tpush(a);
+        tpush(b);
+        tpush(a);
         ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_OVER; ins->u.stk.t1 = (StackType)b; ins->u.stk.t2 = (StackType)a;
+        ins->u.stk.op = OP_OVER;
+        ins->u.stk.t1 = (StackType)b;
+        ins->u.stk.t2 = (StackType)a;
         return 1;
     }
 
@@ -775,7 +906,8 @@ static int handle_builtin(const char *tok, WordIR *w) {
         int matched_name = 0;
         for (i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {
             int need;
-            if (strcmp(tok, builtins[i].name) != 0) continue;
+            if (strcmp(tok, builtins[i].name) != 0)
+                continue;
             if (be->word_bytes == 2 &&
                 (builtins[i].op == OP_MUL32 || builtins[i].op == OP_DIV32 ||
                  builtins[i].op == OP_MOD32 || builtins[i].op == OP_UDIV32 ||
@@ -785,13 +917,18 @@ static int handle_builtin(const char *tok, WordIR *w) {
             }
             matched_name = 1;
             need = (builtins[i].in2 != TY_NONE) ? 2 : 1;
-            if (tsp < need) continue;
-            if (tstack[tsp - 1] != builtins[i].in1) continue;
-            if (builtins[i].in2 != TY_NONE && tstack[tsp - 2] != builtins[i].in2) continue;
+            if (tsp < need)
+                continue;
+            if (tstack[tsp - 1] != builtins[i].in1)
+                continue;
+            if (builtins[i].in2 != TY_NONE && tstack[tsp - 2] != builtins[i].in2)
+                continue;
 
             tsp -= need;
-            if (builtins[i].out != TY_NONE) tpush(builtins[i].out);
-            if ((builtins[i].op == OP_W2A || builtins[i].op == OP_W2I32 || builtins[i].op == OP_U2I32) &&
+            if (builtins[i].out != TY_NONE)
+                tpush(builtins[i].out);
+            if ((builtins[i].op == OP_W2A || builtins[i].op == OP_W2I32 ||
+                 builtins[i].op == OP_U2I32) &&
                 w->ir_len >= fold_fence + 1) {
                 IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
                 if (p1->kind == IR_PUSH_W) {
@@ -829,16 +966,14 @@ static int handle_builtin(const char *tok, WordIR *w) {
             }
             if (w->ir_len >= fold_fence + 1) {
                 IrOp rop = builtins[i].op;
-                if (rop == OP_MUL || rop == OP_UDIV || rop == OP_UMOD ||
-                    rop == OP_MUL32 || rop == OP_UDIV32 || rop == OP_UMOD32) {
+                if (rop == OP_MUL || rop == OP_UDIV || rop == OP_UMOD || rop == OP_MUL32 ||
+                    rop == OP_UDIV32 || rop == OP_UMOD32) {
                     IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
                     u8 is32 = (rop == OP_MUL32 || rop == OP_UDIV32 || rop == OP_UMOD32);
-                    if ((!is32 && p1->kind == IR_PUSH_W) ||
-                        (is32 && p1->kind == IR_PUSH_I32)) {
-                        u32 v = (!is32 && be->word_bytes == 2)
-                              ? (u32)(u16)p1->u.w : (u32)p1->u.w;
-                        if (v == 1 && (rop == OP_MUL || rop == OP_UDIV ||
-                                       rop == OP_MUL32 || rop == OP_UDIV32)) {
+                    if ((!is32 && p1->kind == IR_PUSH_W) || (is32 && p1->kind == IR_PUSH_I32)) {
+                        u32 v = (!is32 && be->word_bytes == 2) ? (u32)(u16)p1->u.w : (u32)p1->u.w;
+                        if (v == 1 && (rop == OP_MUL || rop == OP_UDIV || rop == OP_MUL32 ||
+                                       rop == OP_UDIV32)) {
                             w->ir_len--;
                             ir_count--;
                             return 1;
@@ -846,7 +981,8 @@ static int handle_builtin(const char *tok, WordIR *w) {
                         if (v >= 2 && (v & (v - 1)) == 0 &&
                             (is32 || be->word_bytes == 2 || p1->u.w > 0)) {
                             u8 sh = 0;
-                            while ((v >> sh) > 1) sh++;
+                            while ((v >> sh) > 1)
+                                sh++;
                             if (rop == OP_UMOD || rop == OP_UMOD32) {
                                 p1->u.w = (i32)(v - 1);
                                 ins = emit_ir(IR_ALU_OP, w);
@@ -856,10 +992,10 @@ static int handle_builtin(const char *tok, WordIR *w) {
                             p1->kind = IR_PUSH_W;
                             p1->u.w = (i32)sh;
                             ins = emit_ir(IR_ALU_OP, w);
-                            ins->u.op = (rop == OP_MUL)   ? OP_LSHIFT
-                                      : (rop == OP_UDIV)  ? OP_RSHIFT
-                                      : (rop == OP_MUL32) ? OP_SHL32
-                                                          : OP_RSHR32;
+                            ins->u.op = (rop == OP_MUL)     ? OP_LSHIFT
+                                        : (rop == OP_UDIV)  ? OP_RSHIFT
+                                        : (rop == OP_MUL32) ? OP_SHL32
+                                                            : OP_RSHR32;
                             return 1;
                         }
                     }
@@ -880,9 +1016,9 @@ static int handle_builtin(const char *tok, WordIR *w) {
 }
 
 typedef struct {
-    u8   src_slot;
-    u8   dst_slot;
-    u16  size;
+    u8 src_slot;
+    u8 dst_slot;
+    u16 size;
     char name[MAX_TOK];
 } BytesParamCopy;
 
@@ -892,11 +1028,14 @@ static u8 cur_bytes_cnt_slot = 0;
 
 static void flush_bytes_params(u8 *params_flushed) {
     u8 k;
-    if (*params_flushed) return;
+    if (*params_flushed)
+        return;
     *params_flushed = 1;
-    if (cur_bytes_copy_count == 0) return;
+    if (cur_bytes_copy_count == 0)
+        return;
     for (k = 0; k < cur_bytes_copy_count; k++) {
-        if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
+        if (local_count >= MAX_LOCALS)
+            ir4_die("too many parameters/locals");
         memcpy(locals[local_count].name, cur_bytes_copies[k].name,
                strlen(cur_bytes_copies[k].name) + 1);
         locals[local_count].type = TY_A;
@@ -914,21 +1053,26 @@ static void parse_icall_sig(FuncSig *sig) {
     while (next_tok(tok)) {
         u8 ty;
         if (strcmp(tok, ")") == 0) {
-            if (in_outs && sig->out_count == 0) ir4_die("expected return type after '->'");
+            if (in_outs && sig->out_count == 0)
+                ir4_die("expected return type after '->'");
             return;
         }
         if (strcmp(tok, "->") == 0) {
-            if (in_outs) ir4_die("duplicate '->' in signature");
+            if (in_outs)
+                ir4_die("duplicate '->' in signature");
             in_outs = 1;
             continue;
         }
         ty = parse_type_tok(tok);
-        if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f, :i32) in indirect call signature");
+        if (ty == TY_NONE)
+            ir4_die("expected type token (:i, :a, :f, :i32) in indirect call signature");
         if (in_outs) {
-            if (sig->out_count >= 4) ir4_die("too many return types");
+            if (sig->out_count >= 4)
+                ir4_die("too many return types");
             sig->out_types[sig->out_count++] = ty;
         } else {
-            if (sig->in_count >= 8) ir4_die("too many input types");
+            if (sig->in_count >= 8)
+                ir4_die("too many input types");
             sig->in_types[sig->in_count++] = ty;
         }
     }
@@ -952,12 +1096,15 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
         char ty_tok[MAX_TOK];
         if (strcmp(tok, ")") == 0) {
             flush_bytes_params(&params_flushed);
-            if (in_outs && sig->out_count == 0) ir4_die("expected return type after '->'");
-            if (param_cnt_out) *param_cnt_out = param_cnt;
+            if (in_outs && sig->out_count == 0)
+                ir4_die("expected return type after '->'");
+            if (param_cnt_out)
+                *param_cnt_out = param_cnt;
             return;
         }
         if (strcmp(tok, "->") == 0) {
-            if (in_outs) ir4_die("duplicate '->' in signature");
+            if (in_outs)
+                ir4_die("duplicate '->' in signature");
             flush_bytes_params(&params_flushed);
             in_outs = 1;
             continue;
@@ -969,28 +1116,35 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
                 if (!allow_bytes && cur_out_count == 0 && sig->out_reg[0] == '\0') {
                     size_t len = strlen(tok);
                     memcpy(sig->out_reg, tok, len + 1);
-                    if (!next_tok(tok)) ir4_die("expected type token (:i, :a, :f) after extern register");
+                    if (!next_tok(tok))
+                        ir4_die("expected type token (:i, :a, :f) after extern register");
                     ty = parse_type_tok(tok);
                 }
-                if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
+                if (ty == TY_NONE)
+                    ir4_die("expected type token (:i, :a, :f) in signature");
             }
-            if (cur_out_count >= 4) ir4_die("too many return types");
+            if (cur_out_count >= 4)
+                ir4_die("too many return types");
             sig->out_types[sig->out_count++] = ty;
             cur_outs[cur_out_count++] = ty;
         } else {
-            if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
+            if (local_count >= MAX_LOCALS)
+                ir4_die("too many parameters/locals");
             if (parse_type_tok(tok) != TY_NONE) {
                 ir4_die("expected identifier before type in signature");
             }
             memcpy(locals[local_count].name, tok, strlen(tok) + 1);
-            if (!next_tok(ty_tok)) ir4_die("expected type token (:i, :a, :f) after identifier in signature");
+            if (!next_tok(ty_tok))
+                ir4_die("expected type token (:i, :a, :f) after identifier in signature");
             if (strcmp(ty_tok, ":bytes") == 0) {
                 i32 sz = 0;
                 if (!next_tok(ty_tok) || !parse_int(ty_tok, &sz) || sz <= 0 || sz > MAX_DATA) {
                     ir4_die("invalid byte count after ':bytes'");
                 }
-                if (!allow_bytes) ir4_die("':bytes' not allowed in extern signature");
-                if (sig->in_count >= 8) ir4_die("too many parameters");
+                if (!allow_bytes)
+                    ir4_die("':bytes' not allowed in extern signature");
+                if (sig->in_count >= 8)
+                    ir4_die("too many parameters");
                 cur_bytes_copies[cur_bytes_copy_count].src_slot = local_count;
                 cur_bytes_copies[cur_bytes_copy_count].size = (u16)sz;
                 memcpy(cur_bytes_copies[cur_bytes_copy_count].name, tok, strlen(tok) + 1);
@@ -1006,11 +1160,13 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
                 continue;
             }
             ty = parse_type_tok(ty_tok);
-            if (ty == TY_NONE) ir4_die("expected type token (:i, :a, :f) in signature");
+            if (ty == TY_NONE)
+                ir4_die("expected type token (:i, :a, :f) in signature");
             locals[local_count].type = ty;
             locals[local_count].slot = local_count;
             locals[local_count].size = 0;
-            if (sig->in_count >= 8) ir4_die("too many parameters");
+            if (sig->in_count >= 8)
+                ir4_die("too many parameters");
             sig->in_types[sig->in_count] = ty;
             memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
                    strlen(locals[local_count].name) + 1);
@@ -1034,12 +1190,16 @@ static void emit_bytes_param_copies(WordIR *w) {
         u16 sz = cur_bytes_copies[k].size;
 
         ins = emit_ir(IR_LOCAL_OP, w);
-        ins->u.loc.op = LOCAL_ADDR; ins->u.loc.slot = dst;
-        ins->u.loc.type = TY_A; ins->u.loc.stack_bytes = 0;
+        ins->u.loc.op = LOCAL_ADDR;
+        ins->u.loc.slot = dst;
+        ins->u.loc.type = TY_A;
+        ins->u.loc.stack_bytes = 0;
 
         ins = emit_ir(IR_LOCAL_OP, w);
-        ins->u.loc.op = LOCAL_GET; ins->u.loc.slot = src;
-        ins->u.loc.type = TY_A; ins->u.loc.stack_bytes = be->addr_bytes;
+        ins->u.loc.op = LOCAL_GET;
+        ins->u.loc.slot = src;
+        ins->u.loc.type = TY_A;
+        ins->u.loc.stack_bytes = be->addr_bytes;
 
         ins = emit_ir(IR_PUSH_W, w);
         ins->u.w = (i32)sz;
@@ -1051,8 +1211,7 @@ static void emit_bytes_param_copies(WordIR *w) {
 }
 
 static int sigs_match(const FuncSig *a, const FuncSig *b) {
-    return a->in_count == b->in_count &&
-           a->out_count == b->out_count &&
+    return a->in_count == b->in_count && a->out_count == b->out_count &&
            memcmp(a->in_types, b->in_types, a->in_count) == 0 &&
            memcmp(a->out_types, b->out_types, a->out_count) == 0;
 }
@@ -1070,8 +1229,10 @@ static void compile_word(int is_default) {
     u8 param_cnt = 0;
     u16 cur_grp = src_stack[src_depth - 1].req_group;
 
-    if (!next_tok(name)) ir4_die("expected word name after 'fn'");
-    if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after word name");
+    if (!next_tok(name))
+        ir4_die("expected word name after 'fn'");
+    if (!next_tok(tok) || strcmp(tok, "(") != 0)
+        ir4_die("expected '(' after word name");
 
     existing = ir4_find_func(name);
     if (existing >= 0) {
@@ -1098,8 +1259,8 @@ static void compile_word(int is_default) {
         parse_sig_body(&fn_sig, &param_cnt, 1);
         if (!sigs_match(&fn_sig, &funcs[fidx])) {
             ir4_die(funcs[fidx].is_defined
-                    ? "override signature does not match 'default' declaration"
-                    : "function signature does not match 'fwd' declaration");
+                        ? "override signature does not match 'default' declaration"
+                        : "function signature does not match 'fwd' declaration");
         }
         if (is_default && funcs[fidx].is_defined) {
             /* Already overridden by a more-specific file in this require group. */
@@ -1116,7 +1277,8 @@ static void compile_word(int is_default) {
             memset(w, 0, sizeof(WordIR));
         }
     } else {
-        if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+        if (func_count >= MAX_SYMS)
+            ir4_die("too many word definitions");
         fidx = func_count++;
         sig = &funcs[fidx];
         w = &words[fidx];
@@ -1143,7 +1305,8 @@ static u8 init_funcs[MAX_SYMS];
 static u8 init_count = 0;
 
 static void raw_emit_u8(WordIR *w, u8 b) {
-    if (raw_code_len >= MAX_CODE) ir4_die("code buffer overflow");
+    if (raw_code_len >= MAX_CODE)
+        ir4_die("code buffer overflow");
     raw_code_buf[raw_code_len++] = b;
     w->ir_len++;
 }
@@ -1161,16 +1324,17 @@ static void compile_code(void) {
     int existing;
     u16 cur_grp = src_stack[src_depth - 1].req_group;
 
-    if (!next_tok(name)) ir4_die("expected word name after 'code'");
+    if (!next_tok(name))
+        ir4_die("expected word name after 'code'");
     existing = ir4_find_func(name);
     if (existing >= 0) {
         FuncSig code_sig;
         if (!funcs[existing].is_defined || funcs[existing].is_extern ||
-            !funcs[existing].is_default || cur_grp == 0 ||
-            funcs[existing].req_group != cur_grp) {
+            !funcs[existing].is_default || cur_grp == 0 || funcs[existing].req_group != cur_grp) {
             ir4_die("duplicate function definition");
         }
-        if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after 'code' name");
+        if (!next_tok(tok) || strcmp(tok, "(") != 0)
+            ir4_die("expected '(' after 'code' name");
         fidx = (u8)existing;
         memset(&code_sig, 0, sizeof(FuncSig));
         memcpy(code_sig.name, name, strlen(name) + 1);
@@ -1186,8 +1350,10 @@ static void compile_code(void) {
         w = &words[fidx];
         memset(w, 0, sizeof(WordIR));
     } else {
-        if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after 'code' name");
-        if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+        if (!next_tok(tok) || strcmp(tok, "(") != 0)
+            ir4_die("expected '(' after 'code' name");
+        if (func_count >= MAX_SYMS)
+            ir4_die("too many word definitions");
 
         fidx = func_count++;
         sig = &funcs[fidx];
@@ -1208,24 +1374,30 @@ static void compile_code(void) {
 
     while (next_tok(tok)) {
         if (strcmp(tok, "end") == 0) {
-            if (has_pending) ir4_die("missing width (:i8, :i16, :i32) in 'code'");
+            if (has_pending)
+                ir4_die("missing width (:i8, :i16, :i32) in 'code'");
             return;
         } else if (strcmp(tok, ":i8") == 0) {
-            if (!has_pending) ir4_die("expected integer before ':i8'");
-            if (pending < -128 || pending > 255) ir4_die(":i8 value out of range");
+            if (!has_pending)
+                ir4_die("expected integer before ':i8'");
+            if (pending < -128 || pending > 255)
+                ir4_die(":i8 value out of range");
             raw_emit_u8(w, (u8)(pending & 0xFF));
             has_pending = 0;
         } else if (strcmp(tok, ":i16") == 0) {
             u16 v;
-            if (!has_pending) ir4_die("expected integer before ':i16'");
-            if (pending < -32768 || pending > 65535) ir4_die(":i16 value out of range");
+            if (!has_pending)
+                ir4_die("expected integer before ':i16'");
+            if (pending < -32768 || pending > 65535)
+                ir4_die(":i16 value out of range");
             v = (u16)(pending & 0xFFFF);
             raw_emit_u8(w, (u8)(v & 0xFF));
             raw_emit_u8(w, (u8)((v >> 8) & 0xFF));
             has_pending = 0;
         } else if (strcmp(tok, ":i32") == 0) {
             u32 v;
-            if (!has_pending) ir4_die("expected integer before ':i32'");
+            if (!has_pending)
+                ir4_die("expected integer before ':i32'");
             v = (u32)pending;
             raw_emit_u8(w, (u8)(v & 0xFF));
             raw_emit_u8(w, (u8)((v >> 8) & 0xFF));
@@ -1234,9 +1406,12 @@ static void compile_code(void) {
             has_pending = 0;
         } else if (strcmp(tok, ":ar") == 0 || strcmp(tok, ":as") == 0) {
             CodeReloc *rel;
-            if (!has_pending) ir4_die("expected offset before ':ar' or ':as'");
-            if (pending < 0 || pending > 0xFFFF) ir4_die("relocation offset out of range");
-            if (code_reloc_count >= MAX_CODE_RELOCS) ir4_die("too many code relocations");
+            if (!has_pending)
+                ir4_die("expected offset before ':ar' or ':as'");
+            if (pending < 0 || pending > 0xFFFF)
+                ir4_die("relocation offset out of range");
+            if (code_reloc_count >= MAX_CODE_RELOCS)
+                ir4_die("too many code relocations");
             rel = &code_relocs[code_reloc_count++];
             rel->ir_off = w->ir_len;
             rel->addend = (u16)pending;
@@ -1249,7 +1424,8 @@ static void compile_code(void) {
             raw_emit_u8(w, 0x00);
             has_pending = 0;
         } else if (parse_int(tok, &num_val)) {
-            if (has_pending) ir4_die("missing width (:i8, :i16, :i32) before literal in 'code'");
+            if (has_pending)
+                ir4_die("missing width (:i8, :i16, :i32) before literal in 'code'");
             pending = num_val;
             has_pending = 1;
         } else {
@@ -1264,7 +1440,8 @@ static void compile_init(void) {
     WordIR *w;
     u8 fidx;
 
-    if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+    if (func_count >= MAX_SYMS)
+        ir4_die("too many word definitions");
     fidx = func_count++;
     sig = &funcs[fidx];
     w = &words[fidx];
@@ -1281,13 +1458,13 @@ static void compile_init(void) {
     compile_body(w);
 }
 
-#define MAX_LABELS     64
+#define MAX_LABELS 64
 #define MAX_LABEL_REFS 256
 
 typedef struct {
     char name[MAX_TOK];
-    u16  target_ir;
-    u8   defined;
+    u16 target_ir;
+    u8 defined;
 } LabelInfo;
 
 typedef struct {
@@ -1296,47 +1473,59 @@ typedef struct {
 } LabelRef;
 
 static IrOp global_fetch_op(u8 ty) {
-    if (ty == TY_A)   return OP_AFETCH;
-    if (ty == TY_F)   return OP_FFETCH;
-    if (ty == TY_I32) return OP_I32FETCH;
+    if (ty == TY_A)
+        return OP_AFETCH;
+    if (ty == TY_F)
+        return OP_FFETCH;
+    if (ty == TY_I32)
+        return OP_I32FETCH;
     return OP_FETCH;
 }
 
 static IrOp global_store_op(u8 ty) {
-    if (ty == TY_A)   return OP_ASTORE;
-    if (ty == TY_F)   return OP_FSTORE;
-    if (ty == TY_I32) return OP_I32STORE;
+    if (ty == TY_A)
+        return OP_ASTORE;
+    if (ty == TY_F)
+        return OP_FSTORE;
+    if (ty == TY_I32)
+        return OP_I32STORE;
     return OP_STORE;
 }
 
 static u16 global_type_bytes(u8 ty) {
-    if (ty == TY_A)   return be->addr_bytes;
-    if (ty == TY_F)   return be->float_bytes;
-    if (ty == TY_I32) return 4;
+    if (ty == TY_A)
+        return be->addr_bytes;
+    if (ty == TY_F)
+        return be->float_bytes;
+    if (ty == TY_I32)
+        return 4;
     return be->word_bytes;
 }
 
 static int find_or_add_label(LabelInfo *labels, u16 *label_count, const char *name) {
     u16 i;
     for (i = 0; i < *label_count; i++) {
-        if (strcmp(labels[i].name, name) == 0) return (int)i;
+        if (strcmp(labels[i].name, name) == 0)
+            return (int)i;
     }
-    if (*label_count >= MAX_LABELS) ir4_die("too many labels in function");
+    if (*label_count >= MAX_LABELS)
+        ir4_die("too many labels in function");
     strcpy(labels[*label_count].name, name);
     labels[*label_count].target_ir = 0;
     labels[*label_count].defined = 0;
     return (int)(*label_count)++;
 }
 
-static void emit_label_br(WordIR *w, LabelInfo *labels, LabelRef *refs,
-                          u16 *ref_count, u16 lidx, BranchCond cond) {
+static void emit_label_br(WordIR *w, LabelInfo *labels, LabelRef *refs, u16 *ref_count, u16 lidx,
+                          BranchCond cond) {
     IrInstr *ins;
     if (labels[lidx].defined) {
         ins = emit_ir(IR_BR_BACK, w);
         ins->u.br.cond = cond;
         ins->u.br.target = labels[lidx].target_ir;
     } else {
-        if (*ref_count >= MAX_LABEL_REFS) ir4_die("too many label references");
+        if (*ref_count >= MAX_LABEL_REFS)
+            ir4_die("too many label references");
         refs[*ref_count].ir_idx = w->ir_len;
         refs[*ref_count].label_idx = lidx;
         (*ref_count)++;
@@ -1352,7 +1541,7 @@ static void compile_body(WordIR *w) {
     u8 unreachable = 0;
     i32 num_val;
     LabelInfo labels[MAX_LABELS];
-    LabelRef  label_refs[MAX_LABEL_REFS];
+    LabelRef label_refs[MAX_LABEL_REFS];
     u16 label_count = 0;
     u16 label_ref_count = 0;
 
@@ -1366,10 +1555,12 @@ static void compile_body(WordIR *w) {
 
         if (strcmp(tok, "end") == 0) {
             u16 r;
-            if (bsp != 0) ir4_die("unclosed control block at 'end'");
+            if (bsp != 0)
+                ir4_die("unclosed control block at 'end'");
             for (r = 0; r < label_ref_count; r++) {
                 u16 lidx = label_refs[r].label_idx;
-                if (!labels[lidx].defined) ir4_die("undefined label");
+                if (!labels[lidx].defined)
+                    ir4_die("undefined label");
                 ir_buf[w->ir_start + label_refs[r].ir_idx].u.br.target = labels[lidx].target_ir;
             }
             if (!unreachable) {
@@ -1386,11 +1577,16 @@ static void compile_body(WordIR *w) {
         if (strcmp(tok, "var") == 0) {
             char vname[MAX_TOK], vtype[MAX_TOK];
             u8 ty;
-            if (!next_tok(vname)) ir4_die("expected local variable name after 'var'");
-            if (parse_type_tok(vname) != TY_NONE) ir4_die("expected identifier after 'var'");
-            if (find_local(vname) >= 0) ir4_die("duplicate local variable name");
-            if (local_count >= MAX_LOCALS) ir4_die("too many parameters/locals");
-            if (!next_tok(vtype)) ir4_die("expected type after local 'var' name");
+            if (!next_tok(vname))
+                ir4_die("expected local variable name after 'var'");
+            if (parse_type_tok(vname) != TY_NONE)
+                ir4_die("expected identifier after 'var'");
+            if (find_local(vname) >= 0)
+                ir4_die("duplicate local variable name");
+            if (local_count >= MAX_LOCALS)
+                ir4_die("too many parameters/locals");
+            if (!next_tok(vtype))
+                ir4_die("expected type after local 'var' name");
             memcpy(locals[local_count].name, vname, strlen(vname) + 1);
             locals[local_count].slot = local_count;
             if (strcmp(vtype, ":bytes") == 0) {
@@ -1402,7 +1598,8 @@ static void compile_body(WordIR *w) {
                 locals[local_count].size = (u16)sz;
             } else {
                 ty = parse_type_tok(vtype);
-                if (ty == TY_NONE) ir4_die("expected type token (:i, :i32, :a, :f, :bytes) after 'var'");
+                if (ty == TY_NONE)
+                    ir4_die("expected type token (:i, :i32, :a, :f, :bytes) after 'var'");
                 locals[local_count].type = ty;
                 locals[local_count].size = 0;
             }
@@ -1438,10 +1635,12 @@ static void compile_body(WordIR *w) {
 
         /* Address of local or typed global: & <ident> */
         if (strcmp(tok, "&") == 0) {
-            if (!next_tok(tok)) ir4_die("expected identifier after '&'");
+            if (!next_tok(tok))
+                ir4_die("expected identifier after '&'");
             idx = find_local(tok);
             if (idx >= 0) {
-                if (locals[idx].size > 0) ir4_die("':bytes' local is already an address");
+                if (locals[idx].size > 0)
+                    ir4_die("':bytes' local is already an address");
                 ins = emit_ir(IR_LOCAL_OP, w);
                 ins->u.loc.op = LOCAL_ADDR;
                 ins->u.loc.slot = locals[idx].slot;
@@ -1452,7 +1651,8 @@ static void compile_body(WordIR *w) {
             }
             idx = find_buffer(tok);
             if (idx >= 0) {
-                if (buffers[idx].type == TY_NONE) ir4_die("':bytes' or 'data' symbol is already an address");
+                if (buffers[idx].type == TY_NONE)
+                    ir4_die("':bytes' or 'data' symbol is already an address");
                 ins = emit_ir(IR_PUSH_DATA, w);
                 ins->u.offset = buffers[idx].offset;
                 tpush(TY_A);
@@ -1460,7 +1660,8 @@ static void compile_body(WordIR *w) {
             }
             idx = ir4_find_func(tok);
             if (idx >= 0) {
-                if (funcs[idx].is_extern) ir4_die("cannot take address of 'extern' function");
+                if (funcs[idx].is_extern)
+                    ir4_die("cannot take address of 'extern' function");
                 ins = emit_ir(IR_PUSH_FN, w);
                 ins->u.func_idx = (u8)idx;
                 tpush(TY_A);
@@ -1487,10 +1688,12 @@ static void compile_body(WordIR *w) {
 
         /* Local or typed global assignment: -> <ident> */
         if (strcmp(tok, "->") == 0) {
-            if (!next_tok(tok)) ir4_die("expected identifier after '->'");
+            if (!next_tok(tok))
+                ir4_die("expected identifier after '->'");
             idx = find_local(tok);
             if (idx >= 0) {
-                if (locals[idx].size > 0) ir4_die("cannot assign to ':bytes' local");
+                if (locals[idx].size > 0)
+                    ir4_die("cannot assign to ':bytes' local");
                 tpop_expect(locals[idx].type);
                 ins = emit_ir(IR_LOCAL_OP, w);
                 ins->u.loc.op = LOCAL_SET;
@@ -1500,8 +1703,10 @@ static void compile_body(WordIR *w) {
                 continue;
             }
             idx = find_buffer(tok);
-            if (idx < 0) ir4_die("unknown variable in '->'");
-            if (buffers[idx].type == TY_NONE) ir4_die("cannot assign to ':bytes' or 'data' symbol");
+            if (idx < 0)
+                ir4_die("unknown variable in '->'");
+            if (buffers[idx].type == TY_NONE)
+                ir4_die("cannot assign to ':bytes' or 'data' symbol");
             tpop_expect(buffers[idx].type);
             ins = emit_ir(IR_PUSH_DATA, w);
             ins->u.offset = buffers[idx].offset;
@@ -1513,7 +1718,8 @@ static void compile_body(WordIR *w) {
         /* Control flow */
         if (strcmp(tok, "if") == 0) {
             BlockInfo *b;
-            if (bsp >= MAX_BLOCKS) ir4_die("block nesting overflow");
+            if (bsp >= MAX_BLOCKS)
+                ir4_die("block nesting overflow");
             tpop_expect(TY_W);
             b = &blocks[bsp++];
             b->kind = BLOCK_IF;
@@ -1529,7 +1735,8 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "else") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_IF) ir4_die("'else' without 'if'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_IF)
+                ir4_die("'else' without 'if'");
             b = &blocks[bsp - 1];
             b->has_else = 1;
             b->if_unreach = unreachable;
@@ -1547,7 +1754,8 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "then") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_IF) ir4_die("'then' without 'if'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_IF)
+                ir4_die("'then' without 'if'");
             b = &blocks[--bsp];
             if (!b->has_else) {
                 if (!unreachable) {
@@ -1558,7 +1766,7 @@ static void compile_body(WordIR *w) {
                 memcpy(tstack, b->saved_stack, tsp);
                 unreachable = b->saved_unreach;
                 ir_buf[w->ir_start + b->patch_else].u.br.target = w->ir_len;
-            fold_fence = w->ir_len;
+                fold_fence = w->ir_len;
             } else {
                 if (!b->if_unreach && !unreachable) {
                     if (tsp != b->else_sp || memcmp(tstack, b->else_stack, tsp) != 0)
@@ -1569,14 +1777,15 @@ static void compile_body(WordIR *w) {
                     unreachable = 0;
                 }
                 ir_buf[w->ir_start + b->patch_end].u.br.target = w->ir_len;
-            fold_fence = w->ir_len;
+                fold_fence = w->ir_len;
             }
             fold_fence = w->ir_len;
             continue;
         }
         if (strcmp(tok, "begin") == 0) {
             BlockInfo *b;
-            if (bsp >= MAX_BLOCKS) ir4_die("block nesting overflow");
+            if (bsp >= MAX_BLOCKS)
+                ir4_die("block nesting overflow");
             b = &blocks[bsp++];
             b->kind = BLOCK_BEGIN;
             b->loop_addr = w->ir_len;
@@ -1587,7 +1796,8 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "while") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN) ir4_die("'while' without 'begin'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN)
+                ir4_die("'while' without 'begin'");
             b = &blocks[bsp - 1];
             tpop_expect(TY_W);
             b->patch_end = w->ir_len;
@@ -1597,7 +1807,8 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "repeat") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN) ir4_die("'repeat' without 'begin'");
+            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN)
+                ir4_die("'repeat' without 'begin'");
             b = &blocks[--bsp];
             if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
                 ir4_die("loop body must leave stack even at 'repeat'");
@@ -1610,13 +1821,17 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "::") == 0) {
             int lidx;
-            if (bsp != 0) ir4_die("'::' inside control block");
-            if (!next_tok(tok)) ir4_die("expected label name after '::'");
-            if (!unreachable && tsp != 0) ir4_die("stack must be empty at '::'");
+            if (bsp != 0)
+                ir4_die("'::' inside control block");
+            if (!next_tok(tok))
+                ir4_die("expected label name after '::'");
+            if (!unreachable && tsp != 0)
+                ir4_die("stack must be empty at '::'");
             tsp = 0;
             unreachable = 0;
             lidx = find_or_add_label(labels, &label_count, tok);
-            if (labels[lidx].defined) ir4_die("duplicate label");
+            if (labels[lidx].defined)
+                ir4_die("duplicate label");
             labels[lidx].defined = 1;
             labels[lidx].target_ir = w->ir_len;
             fold_fence = w->ir_len;
@@ -1624,8 +1839,10 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "jmp") == 0) {
             int lidx;
-            if (!next_tok(tok)) ir4_die("expected label name after 'jmp'");
-            if (!unreachable && tsp != 0) ir4_die("stack must be empty at 'jmp'");
+            if (!next_tok(tok))
+                ir4_die("expected label name after 'jmp'");
+            if (!unreachable && tsp != 0)
+                ir4_die("stack must be empty at 'jmp'");
             lidx = find_or_add_label(labels, &label_count, tok);
             if (!unreachable) {
                 emit_label_br(w, labels, label_refs, &label_ref_count, (u16)lidx, BR_JMP);
@@ -1635,9 +1852,11 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "jz") == 0) {
             int lidx;
-            if (!next_tok(tok)) ir4_die("expected label name after 'jz'");
+            if (!next_tok(tok))
+                ir4_die("expected label name after 'jz'");
             tpop_expect(TY_W);
-            if (!unreachable && tsp != 0) ir4_die("stack must be empty after condition at 'jz'");
+            if (!unreachable && tsp != 0)
+                ir4_die("stack must be empty after condition at 'jz'");
             lidx = find_or_add_label(labels, &label_count, tok);
             if (!unreachable) {
                 emit_label_br(w, labels, label_refs, &label_ref_count, (u16)lidx, BR_JZ);
@@ -1646,7 +1865,8 @@ static void compile_body(WordIR *w) {
         }
 
         /* Core built-in word */
-        if (handle_builtin(tok, w)) continue;
+        if (handle_builtin(tok, w))
+            continue;
 
         /* Built-in heap start address (:a) */
         if (strcmp(tok, "__heap_start") == 0) {
@@ -1706,8 +1926,8 @@ static void compile_body(WordIR *w) {
 
         {
             const SrcFile *cur = &src_stack[src_depth - 1];
-            fprintf(stderr, "ir4c error (%s:%u): unknown word '%s'\n",
-                    cur->path, cur->line_num, tok);
+            fprintf(stderr, "ir4c error (%s:%u): unknown word '%s'\n", cur->path, cur->line_num,
+                    tok);
         }
         exit(1);
     }
@@ -1718,15 +1938,18 @@ static void compile_body(WordIR *w) {
 static u8 can_reach_func(u8 cur, u8 target, u8 *visited) {
     WordIR *w = &words[cur];
     u16 i;
-    if (funcs[cur].is_extern || w->is_code) return 0;
+    if (funcs[cur].is_extern || w->is_code)
+        return 0;
     for (i = 0; i < w->ir_len; i++) {
         const IrInstr *ins = &ir_buf[w->ir_start + i];
         if (ins->kind == IR_CALL) {
             u8 callee = ins->u.func_idx;
-            if (callee == target) return 1;
+            if (callee == target)
+                return 1;
             if (!visited[callee]) {
                 visited[callee] = 1;
-                if (can_reach_func(callee, target, visited)) return 1;
+                if (can_reach_func(callee, target, visited))
+                    return 1;
             }
         }
     }
@@ -1736,11 +1959,15 @@ static u8 can_reach_func(u8 cur, u8 target, u8 *visited) {
 static void mark_reachable(u8 fidx) {
     WordIR *w = &words[fidx];
     u16 i;
-    if (funcs[fidx].is_extern) return;
-    if (!funcs[fidx].is_defined) ir4_die("called 'fwd' function was never defined");
-    if (w->reachable) return;
+    if (funcs[fidx].is_extern)
+        return;
+    if (!funcs[fidx].is_defined)
+        ir4_die("called 'fwd' function was never defined");
+    if (w->reachable)
+        return;
     w->reachable = 1;
-    if (w->is_code) return;
+    if (w->is_code)
+        return;
     for (i = 0; i < w->ir_len; i++) {
         const IrInstr *ins = &ir_buf[w->ir_start + i];
         if (ins->kind == IR_CALL) {
@@ -1760,13 +1987,13 @@ typedef struct {
 typedef struct {
     u16 call_pc;
     u16 call_addr;
-    u8  func_idx;
-    u8  is_fn_ptr;
+    u8 func_idx;
+    u8 is_fn_ptr;
 } FwdCall;
 
 static FwdCall fwd_calls[MAX_FWD_CALLS];
-static u16     fwd_call_count = 0;
-static u16     heap_start_off = 0;
+static u16 fwd_call_count = 0;
+static u16 heap_start_off = 0;
 
 static void emit_word(u8 fidx) {
     static u16 ir_addr[MAX_IR];
@@ -1799,7 +2026,8 @@ static void emit_word(u8 fidx) {
         return;
     }
 
-    if (w->ir_len >= MAX_IR) ir4_die("word IR length overflow");
+    if (w->ir_len >= MAX_IR)
+        ir4_die("word IR length overflow");
     sig->addr = be->cur_addr();
     sig->has_addr = 1;
     be->fn_begin(sig->name, w->param_cnt, w->locals, w->local_count, sig->is_recursive);
@@ -1810,7 +2038,8 @@ static void emit_word(u8 fidx) {
                 be->patch_fwd(pending[p].patch_offset);
             }
         }
-        if (i == w->ir_len) break;
+        if (i == w->ir_len)
+            break;
         ir_addr[i] = be->cur_addr();
         {
             const IrInstr *ins = &ir_buf[w->ir_start + i];
@@ -1819,15 +2048,13 @@ static void emit_word(u8 fidx) {
                 be->fn_end(sig, w->locals, w->local_count);
                 break;
             case IR_PUSH_W:
-                if (i + 2 < w->ir_len &&
-                    ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
+                if (i + 2 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
                     ir_buf[w->ir_start + i + 2].kind == IR_ALU_OP) {
                     IrOp aop = ir_buf[w->ir_start + i + 1].u.op;
                     IrOp mop = ir_buf[w->ir_start + i + 2].u.op;
-                    if ((aop == OP_AADD || aop == OP_ASUB) &&
-                        mop >= OP_I8FETCH && mop <= OP_FSTORE && be->mem_imm) {
-                        i32 off = (aop == OP_ASUB)
-                                  ? (i32)(0UL - (u32)ins->u.w) : ins->u.w;
+                    if ((aop == OP_AADD || aop == OP_ASUB) && mop >= OP_I8FETCH &&
+                        mop <= OP_FSTORE && be->mem_imm) {
+                        i32 off = (aop == OP_ASUB) ? (i32)(0UL - (u32)ins->u.w) : ins->u.w;
                         if (be->mem_imm(mop, off)) {
                             i += 2;
                             break;
@@ -1838,8 +2065,7 @@ static void emit_word(u8 fidx) {
                     IrOp aop = ir_buf[w->ir_start + i + 1].u.op;
                     i32 imm = ins->u.w;
                     if (aop == OP_ADD || aop == OP_SUB || aop == OP_AADD || aop == OP_ASUB) {
-                        i32 delta = (aop == OP_SUB || aop == OP_ASUB)
-                                    ? (i32)(0UL - (u32)imm) : imm;
+                        i32 delta = (aop == OP_SUB || aop == OP_ASUB) ? (i32)(0UL - (u32)imm) : imm;
                         if (be->add_imm && be->add_imm(delta)) {
                             i++;
                             break;
@@ -1852,9 +2078,10 @@ static void emit_word(u8 fidx) {
                     } else if (aop == OP_LSHIFT || aop == OP_RSHIFT || aop == OP_ARSHIFT ||
                                aop == OP_SHL32 || aop == OP_RSHR32 || aop == OP_ASHR32) {
                         u8 max_sh = (aop >= OP_SHL32 || be->word_bytes == 4) ? 31
-                                  : (be->word_bytes == 8) ? 63 : 15;
-                        if (imm >= 0 && imm <= (i32)max_sh &&
-                            be->shift_imm && be->shift_imm(aop, (u8)imm)) {
+                                    : (be->word_bytes == 8)                  ? 63
+                                                                             : 15;
+                        if (imm >= 0 && imm <= (i32)max_sh && be->shift_imm &&
+                            be->shift_imm(aop, (u8)imm)) {
                             i++;
                             break;
                         }
@@ -1872,10 +2099,8 @@ static void emit_word(u8 fidx) {
                 be->push_i32(ins->u.w);
                 break;
             case IR_PUSH_DATA:
-                if (i + 1 < w->ir_len &&
-                    ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
-                    be->data_mem &&
-                    be->data_mem(ir_buf[w->ir_start + i + 1].u.op, ins->u.offset)) {
+                if (i + 1 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
+                    be->data_mem && be->data_mem(ir_buf[w->ir_start + i + 1].u.op, ins->u.offset)) {
                     i++;
                     break;
                 }
@@ -1886,14 +2111,13 @@ static void emit_word(u8 fidx) {
                 break;
             case IR_LOCAL_OP:
                 if (ins->u.loc.op == LOCAL_ADDR && be->local_mem) {
-                    if (i + 3 < w->ir_len &&
-                        ir_buf[w->ir_start + i + 1].kind == IR_PUSH_W &&
+                    if (i + 3 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_PUSH_W &&
                         ir_buf[w->ir_start + i + 2].kind == IR_ALU_OP &&
                         ir_buf[w->ir_start + i + 3].kind == IR_ALU_OP) {
                         IrOp aop = ir_buf[w->ir_start + i + 2].u.op;
                         IrOp mop = ir_buf[w->ir_start + i + 3].u.op;
-                        if ((aop == OP_AADD || aop == OP_ASUB) &&
-                            mop >= OP_I8FETCH && mop <= OP_FSTORE) {
+                        if ((aop == OP_AADD || aop == OP_ASUB) && mop >= OP_I8FETCH &&
+                            mop <= OP_FSTORE) {
                             i32 imm = ir_buf[w->ir_start + i + 1].u.w;
                             i32 off = (aop == OP_ASUB) ? (i32)(0UL - (u32)imm) : imm;
                             if (be->local_mem(ins->u.loc.slot, off, mop, ins->u.loc.stack_bytes)) {
@@ -1901,8 +2125,7 @@ static void emit_word(u8 fidx) {
                                 break;
                             }
                         }
-                    } else if (i + 1 < w->ir_len &&
-                               ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP) {
+                    } else if (i + 1 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP) {
                         IrOp mop = ir_buf[w->ir_start + i + 1].u.op;
                         if (mop >= OP_I8FETCH && mop <= OP_FSTORE &&
                             be->local_mem(ins->u.loc.slot, 0, mop, ins->u.loc.stack_bytes)) {
@@ -1911,8 +2134,8 @@ static void emit_word(u8 fidx) {
                         }
                     }
                 }
-                be->local_op(ins->u.loc.op, ins->u.loc.slot,
-                             ins->u.loc.type, ins->u.loc.stack_bytes);
+                be->local_op(ins->u.loc.op, ins->u.loc.slot, ins->u.loc.type,
+                             ins->u.loc.stack_bytes);
                 break;
             case IR_STACK_OP:
                 be->stack_op(ins->u.stk.op, ins->u.stk.t1, ins->u.stk.t2);
@@ -1926,7 +2149,8 @@ static void emit_word(u8 fidx) {
                 u16 call_pc = cb_pc();
                 be->call(funcs[target].addr);
                 if (!funcs[target].has_addr) {
-                    if (fwd_call_count >= MAX_FWD_CALLS) ir4_die("too many forward calls");
+                    if (fwd_call_count >= MAX_FWD_CALLS)
+                        ir4_die("too many forward calls");
                     fwd_calls[fwd_call_count].call_pc = call_pc;
                     fwd_calls[fwd_call_count].call_addr = call_addr;
                     fwd_calls[fwd_call_count].func_idx = target;
@@ -1940,7 +2164,8 @@ static void emit_word(u8 fidx) {
                 u16 fn_addr = be->cur_addr();
                 u16 fn_pc = be->push_fn(funcs[target].addr);
                 if (!funcs[target].has_addr) {
-                    if (fwd_call_count >= MAX_FWD_CALLS) ir4_die("too many forward calls");
+                    if (fwd_call_count >= MAX_FWD_CALLS)
+                        ir4_die("too many forward calls");
                     fwd_calls[fwd_call_count].call_pc = fn_pc;
                     fwd_calls[fwd_call_count].call_addr = fn_addr;
                     fwd_calls[fwd_call_count].func_idx = target;
@@ -1956,7 +2181,8 @@ static void emit_word(u8 fidx) {
                 be->call_extern(&funcs[ins->u.func_idx]);
                 break;
             case IR_BR_FWD:
-                if (pend_cnt >= MAX_BLOCKS * 4) ir4_die("too many pending branches");
+                if (pend_cnt >= MAX_BLOCKS * 4)
+                    ir4_die("too many pending branches");
                 pending[pend_cnt].patch_offset = be->emit_br_fwd(ins->u.br.cond);
                 pending[pend_cnt].target_ir = ins->u.br.target;
                 pend_cnt++;
@@ -1980,19 +2206,35 @@ static void emit_vals_string(void) {
     SrcFile *cur = &src_stack[src_depth - 1];
     for (;;) {
         int c = fgetc(cur->fp);
-        if (c == EOF || c == '\n') ir4_die("unterminated string literal in 'data'");
-        if (c == '"') return;
+        if (c == EOF || c == '\n')
+            ir4_die("unterminated string literal in 'data'");
+        if (c == '"')
+            return;
         if (c == '\\') {
             c = fgetc(cur->fp);
-            if (c == EOF || c == '\n') ir4_die("unterminated escape in string literal");
+            if (c == EOF || c == '\n')
+                ir4_die("unterminated escape in string literal");
             switch (c) {
-            case 'n':  c = '\n'; break;
-            case 'r':  c = '\r'; break;
-            case 't':  c = '\t'; break;
-            case '0':  c = '\0'; break;
-            case '\\': c = '\\'; break;
-            case '"':  c = '"';  break;
-            default: ir4_die("unknown escape sequence in string literal");
+            case 'n':
+                c = '\n';
+                break;
+            case 'r':
+                c = '\r';
+                break;
+            case 't':
+                c = '\t';
+                break;
+            case '0':
+                c = '\0';
+                break;
+            case '\\':
+                c = '\\';
+                break;
+            case '"':
+                c = '"';
+                break;
+            default:
+                ir4_die("unknown escape sequence in string literal");
             }
         }
         cb_emit_data_u8((u8)c);
@@ -2006,7 +2248,8 @@ static void compile_data(void) {
     int has_pending = 0;
     int ch;
 
-    if (buffer_count >= MAX_SYMS) ir4_die("too many buffers");
+    if (buffer_count >= MAX_SYMS)
+        ir4_die("too many buffers");
     if (!next_tok(buffers[buffer_count].name)) {
         ir4_die("expected name after 'data'");
     }
@@ -2027,9 +2270,11 @@ static void compile_data(void) {
             continue;
         }
         ungetc(ch, src_stack[src_depth - 1].fp);
-        if (!next_tok(tok)) break;
+        if (!next_tok(tok))
+            break;
         if (strcmp(tok, "end") == 0) {
-            if (has_pending) flush_vals_word(pending);
+            if (has_pending)
+                flush_vals_word(pending);
             return;
         } else if (strcmp(tok, "align") == 0) {
             if (has_pending) {
@@ -2044,7 +2289,8 @@ static void compile_data(void) {
                 flush_vals_word(pending);
                 has_pending = 0;
             }
-            if (!next_tok(tok)) ir4_die("expected identifier after '&' in 'data'");
+            if (!next_tok(tok))
+                ir4_die("expected identifier after '&' in 'data'");
             patch_off = cb_data_size();
             idx = find_buffer(tok);
             if (idx >= 0) {
@@ -2052,32 +2298,41 @@ static void compile_data(void) {
                 cb_add_data_init_reloc(patch_off, buffers[idx].offset, be->addr_bytes, 0);
             } else {
                 idx = ir4_find_func(tok);
-                if (idx < 0) ir4_die("unknown variable or function in '&' inside 'data'");
-                if (funcs[idx].is_extern) ir4_die("cannot take address of 'extern' function in 'data'");
+                if (idx < 0)
+                    ir4_die("unknown variable or function in '&' inside 'data'");
+                if (funcs[idx].is_extern)
+                    ir4_die("cannot take address of 'extern' function in 'data'");
                 cb_emit_data_word(0, be->addr_bytes);
                 cb_add_data_init_reloc(patch_off, (u16)idx, be->addr_bytes, 1);
             }
         } else if (strcmp(tok, ":i8") == 0) {
-            if (!has_pending) ir4_die("expected integer before ':i8'");
-            if (pending < -128 || pending > 255) ir4_die(":i8 value out of range");
+            if (!has_pending)
+                ir4_die("expected integer before ':i8'");
+            if (pending < -128 || pending > 255)
+                ir4_die(":i8 value out of range");
             cb_emit_data_u8((u8)(pending & 0xFF));
             has_pending = 0;
         } else if (strcmp(tok, ":i16") == 0) {
-            if (!has_pending) ir4_die("expected integer before ':i16'");
-            if (pending < -32768 || pending > 65535) ir4_die(":i16 value out of range");
+            if (!has_pending)
+                ir4_die("expected integer before ':i16'");
+            if (pending < -32768 || pending > 65535)
+                ir4_die(":i16 value out of range");
             cb_emit_data_u16((u16)(pending & 0xFFFF));
             has_pending = 0;
         } else if (strcmp(tok, ":i32") == 0) {
-            if (!has_pending) ir4_die("expected integer before ':i32'");
+            if (!has_pending)
+                ir4_die("expected integer before ':i32'");
             cb_emit_data_u16((u16)((u32)pending & 0xFFFFU));
             cb_emit_data_u16((u16)(((u32)pending >> 16) & 0xFFFFU));
             has_pending = 0;
         } else if (strcmp(tok, ":i") == 0) {
-            if (!has_pending) ir4_die("expected integer before ':i'");
+            if (!has_pending)
+                ir4_die("expected integer before ':i'");
             flush_vals_word(pending);
             has_pending = 0;
         } else if (parse_int(tok, &num_val)) {
-            if (has_pending) flush_vals_word(pending);
+            if (has_pending)
+                flush_vals_word(pending);
             pending = num_val;
             has_pending = 1;
         } else {
@@ -2094,7 +2349,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     const char *root_path = (path != NULL) ? path : "<stdin>";
     size_t plen = strlen(root_path);
 
-    if (plen >= MAX_PATH) ir4_die("input file path too long");
+    if (plen >= MAX_PATH)
+        ir4_die("input file path too long");
     src_depth = 1;
     src_stack[0].fp = in;
     memcpy(src_stack[0].path, root_path, plen + 1);
@@ -2134,27 +2390,35 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
         } else if (strcmp(tok, "fwd") == 0) {
             FuncSig *sig;
             char name[MAX_TOK];
-            if (!next_tok(name)) ir4_die("expected word name after 'fwd'");
-            if (ir4_find_func(name) >= 0) ir4_die("duplicate 'fwd' declaration");
-            if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+            if (!next_tok(name))
+                ir4_die("expected word name after 'fwd'");
+            if (ir4_find_func(name) >= 0)
+                ir4_die("duplicate 'fwd' declaration");
+            if (func_count >= MAX_SYMS)
+                ir4_die("too many word definitions");
             sig = &funcs[func_count++];
             memset(sig, 0, sizeof(FuncSig));
             memcpy(sig->name, name, strlen(name) + 1);
-            if (!next_tok(tok) || strcmp(tok, "(") != 0) ir4_die("expected '(' after 'fwd' name");
+            if (!next_tok(tok) || strcmp(tok, "(") != 0)
+                ir4_die("expected '(' after 'fwd' name");
             parse_sig_body(sig, NULL, 0);
         } else if (strcmp(tok, "extern") == 0) {
             FuncSig *sig;
-            if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+            if (func_count >= MAX_SYMS)
+                ir4_die("too many word definitions");
             sig = &funcs[func_count++];
             memset(sig, 0, sizeof(FuncSig));
             sig->is_extern = 1;
             sig->is_defined = 1;
-            if (!next_tok(sig->name)) ir4_die("expected word name after 'extern'");
-            if (!next_tok(tok)) ir4_die("expected address or '(' after extern name");
+            if (!next_tok(sig->name))
+                ir4_die("expected word name after 'extern'");
+            if (!next_tok(tok))
+                ir4_die("expected address or '(' after extern name");
             if (strcmp(tok, "(") == 0) {
                 sig->has_addr = 0;
             } else if (parse_int(tok, &num_val)) {
-                if (num_val < 0 || num_val > 0xFFFF) ir4_die("invalid extern address");
+                if (num_val < 0 || num_val > 0xFFFF)
+                    ir4_die("invalid extern address");
                 sig->addr = (u16)num_val;
                 sig->has_addr = 1;
                 if (!next_tok(tok) || strcmp(tok, "(") != 0) {
@@ -2164,7 +2428,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 ir4_die("expected address or '(' after extern name");
             }
             parse_sig_body(sig, NULL, 0);
-            if (sig->out_count > 1) ir4_die("extern supports at most 1 return value");
+            if (sig->out_count > 1)
+                ir4_die("extern supports at most 1 return value");
         } else if (strcmp(tok, "require") == 0) {
             char req_path[MAX_PATH];
             read_require_path(req_path, sizeof(req_path));
@@ -2173,7 +2438,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             compile_data();
         } else if (strcmp(tok, "var") == 0) {
             u8 ty;
-            if (buffer_count >= MAX_SYMS) ir4_die("too many buffers");
+            if (buffer_count >= MAX_SYMS)
+                ir4_die("too many buffers");
             if (!next_tok(buffers[buffer_count].name)) {
                 ir4_die("expected var name after 'var'");
             }
@@ -2184,7 +2450,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 ir4_die("expected type (:i, :a, :f) or ':bytes' after var name");
             }
             if (strcmp(tok, ":bytes") == 0) {
-                if (!next_tok(tok) || !parse_int(tok, &num_val) || num_val <= 0 || num_val > MAX_DATA) {
+                if (!next_tok(tok) || !parse_int(tok, &num_val) || num_val <= 0 ||
+                    num_val > MAX_DATA) {
                     ir4_die("invalid byte count after ':bytes'");
                 }
                 buffers[buffer_count].offset = cb_alloc_data((u16)num_val, be->word_bytes);
@@ -2215,7 +2482,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             WordIR *ww;
             IrInstr *ins;
             u8 k;
-            if (func_count >= MAX_SYMS) ir4_die("too many word definitions");
+            if (func_count >= MAX_SYMS)
+                ir4_die("too many word definitions");
             strcpy(funcs[main_idx].name, "__main_body");
             wrap_idx = func_count++;
             wsig = &funcs[wrap_idx];
@@ -2243,11 +2511,13 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 u16 po, tv;
                 u8 ab, is_c;
                 cb_get_data_init_reloc(di, &po, &tv, &ab, &is_c);
-                if (is_c) mark_reachable((u8)tv);
+                if (is_c)
+                    mark_reachable((u8)tv);
             }
         } else {
             for (f = 0; f < func_count; f++) {
-                if (!funcs[f].is_extern && funcs[f].is_defined) words[f].reachable = 1;
+                if (!funcs[f].is_extern && funcs[f].is_defined)
+                    words[f].reachable = 1;
             }
         }
         for (f = 0; f < func_count; f++) {
@@ -2258,7 +2528,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             }
         }
 
-        if (be == &be_6502) (void)be_6502_stack_data_off();
+        if (be == &be_6502)
+            (void)be_6502_stack_data_off();
         heap_start_off = cb_alloc_data(0, be->word_bytes);
 
         /* Pass 2: Emit reachable words and patch forward calls */

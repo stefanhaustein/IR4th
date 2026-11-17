@@ -19,14 +19,17 @@ static void c64_begin(u16 base) {
     be_6502_set_ram_top(0xD000);
     be_6502_set_default_stack_zp(0x20, 0x70);
 
-    /* 10 SYS <addr> : 2-byte next_line + 2-byte line_num + 1-byte SYS(0x9E) + digits + NUL + 2-byte end */
+    /* 10 SYS <addr> : 2-byte next_line + 2-byte line_num + 1-byte SYS(0x9E) + digits + NUL + 2-byte
+     * end */
     sprintf(digits, "%u", (unsigned)(base + 12));
-    while (digits[len]) len++;
+    while (digits[len])
+        len++;
     if (len != 4) {
         /* Adjust for 3- or 5-digit addresses */
         sprintf(digits, "%u", (unsigned)(base + 8 + len));
         len = 0;
-        while (digits[len]) len++;
+        while (digits[len])
+            len++;
     }
     stub_end = (u16)(base + 8 + len);
     next_line = (u16)(base + 6 + len);
@@ -34,7 +37,8 @@ static void c64_begin(u16 base) {
     emit16(next_line);
     emit16(10);
     emit8(0x9E); /* BASIC SYS token */
-    for (i = 0; i < len; i++) emit8((u8)digits[i]);
+    for (i = 0; i < len; i++)
+        emit8((u8)digits[i]);
     emit8(0x00);
     emit16(0x0000);
     (void)stub_end;
@@ -51,7 +55,8 @@ static void c64_begin(u16 base) {
 static int c64_write(FILE *fp, u16 base) {
     u8 hdr[2];
     put_le16(hdr, base);
-    if (fwrite(hdr, 1, sizeof(hdr), fp) != sizeof(hdr)) return 0;
+    if (fwrite(hdr, 1, sizeof(hdr), fp) != sizeof(hdr))
+        return 0;
     return cb_write_raw(fp, 1);
 }
 
@@ -90,19 +95,26 @@ static void c64_end(int main_idx) {
             emit8_8(M6502_STA_ZP, C64_TMP_HI);
         } else {
             u16 stk_off = be_6502_stack_data_off();
-            emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), stk_off); emit16(0x0000);
+            emit8(M6502_LDA_ABSX);
+            cb_add_data_reloc(cb_pc(), stk_off);
+            emit16(0x0000);
             emit8_8(M6502_STA_ZP, C64_TMP_LO);
-            emit8(M6502_LDA_ABSX); cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1)); emit16(0x0000);
+            emit8(M6502_LDA_ABSX);
+            cb_add_data_reloc(cb_pc(), (u16)(stk_off + 1));
+            emit16(0x0000);
             emit8_8(M6502_STA_ZP, C64_TMP_HI);
         }
-        emit8(M6502_INX); emit8(M6502_INX);
+        emit8(M6502_INX);
+        emit8(M6502_INX);
 
         /* If $FC < 0, print '-' and negate $FB/$FC */
         emit8_8(M6502_LDA_ZP, C64_TMP_HI);
         emit8_8(M6502_BPL, 18);
 
         emit8_8(M6502_LDA_IMM, '-');
-        emit8(M6502_JSR); putchar_call1 = cb_pc(); emit16(0x0000);
+        emit8(M6502_JSR);
+        putchar_call1 = cb_pc();
+        emit16(0x0000);
         emit8(M6502_SEC);
         emit8_8(M6502_LDA_IMM, 0x00);
         emit8_8(M6502_SBC_ZP, C64_TMP_LO);
@@ -112,11 +124,15 @@ static void c64_end(int main_idx) {
         emit8_8(M6502_STA_ZP, C64_TMP_HI);
 
         /* JSR print_u16 */
-        emit8(M6502_JSR); print_call1 = cb_pc(); emit16(0x0000);
+        emit8(M6502_JSR);
+        print_call1 = cb_pc();
+        emit16(0x0000);
 
         /* Print PETSCII CR (13) */
         emit8_8(M6502_LDA_IMM, 13);
-        emit8(M6502_JSR); putchar_call2 = cb_pc(); emit16(0x0000);
+        emit8(M6502_JSR);
+        putchar_call2 = cb_pc();
+        emit16(0x0000);
     }
 
     /* Restore BASIC ROM before returning to READY. */
@@ -147,13 +163,17 @@ static void c64_end(int main_idx) {
         emit8_8(M6502_LDA_ZP, C64_TMP_LO);
         emit8_8(M6502_ORA_ZP, C64_TMP_HI);
         emit8_8(M6502_BEQ, 3);
-        emit8(M6502_JSR); print_call2 = cb_pc(); emit16(0x0000);
+        emit8(M6502_JSR);
+        print_call2 = cb_pc();
+        emit16(0x0000);
         patch16(print_call2, print_u16_addr);
 
         emit8(M6502_PLA);
         emit8(M6502_CLC);
         emit8_8(M6502_ADC_IMM, '0');
-        emit8(M6502_JSR); putchar_call3 = cb_pc(); emit16(0x0000);
+        emit8(M6502_JSR);
+        putchar_call3 = cb_pc();
+        emit16(0x0000);
         emit8(M6502_RTS);
 
         patch16(putchar_call1, C64_CHROUT);
@@ -162,7 +182,5 @@ static void c64_end(int main_idx) {
     }
 }
 
-const Platform plat_6502_c64 = {
-    "--c64", &be_6502, 0x0801, "c64", 1,
-    c64_begin, c64_end, c64_write, NULL
-};
+const Platform plat_6502_c64 = {"--c64",   &be_6502, 0x0801,    "c64", 1,
+                                c64_begin, c64_end,  c64_write, NULL};

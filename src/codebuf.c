@@ -2,59 +2,53 @@
 #include "codebuf.h"
 
 typedef struct {
-    u8  split;
+    u8 split;
     u16 off1;
     u16 off2;
     u16 data_offset;
 } DataReloc;
 
 typedef struct {
-    u16  patch_offset;
+    u16 patch_offset;
     char name[MAX_TOK];
 } ExternReloc;
 
 typedef struct {
     u16 patch_data_off;
     u16 target_val;
-    u8  addr_bytes;
-    u8  is_code;
+    u8 addr_bytes;
+    u8 is_code;
 } DataInitReloc;
 
-static u8            code_buf[MAX_CODE];
-static u16           code_pc   = 0;
-static u16           base_addr = 0x0100; /* Default: CP/M .COM load address */
-static u8            data_buf[MAX_DATA];
-static u16           data_size = 0;
-static u16           data_init_size = 0;
-static DataReloc     relocs[MAX_RELOCS];
-static u16           reloc_cnt = 0;
+static u8 code_buf[MAX_CODE];
+static u16 code_pc = 0;
+static u16 base_addr = 0x0100; /* Default: CP/M .COM load address */
+static u8 data_buf[MAX_DATA];
+static u16 data_size = 0;
+static u16 data_init_size = 0;
+static DataReloc relocs[MAX_RELOCS];
+static u16 reloc_cnt = 0;
 static DataInitReloc data_init_relocs[MAX_RELOCS];
-static u16           data_init_reloc_cnt = 0;
-static ExternReloc   ext_relocs[MAX_RELOCS];
-static u16           ext_reloc_cnt = 0;
+static u16 data_init_reloc_cnt = 0;
+static ExternReloc ext_relocs[MAX_RELOCS];
+static u16 ext_reloc_cnt = 0;
 
 void cb_reset(u16 base) {
-    code_pc             = 0;
-    base_addr           = base;
-    data_size           = 0;
-    data_init_size      = 0;
-    reloc_cnt           = 0;
+    code_pc = 0;
+    base_addr = base;
+    data_size = 0;
+    data_init_size = 0;
+    reloc_cnt = 0;
     data_init_reloc_cnt = 0;
-    ext_reloc_cnt       = 0;
+    ext_reloc_cnt = 0;
     memset(data_buf, 0, sizeof(data_buf));
 }
 
-u16 cb_pc(void) {
-    return code_pc;
-}
+u16 cb_pc(void) { return code_pc; }
 
-u16 cb_cur_addr(void) {
-    return (u16)(base_addr + code_pc);
-}
+u16 cb_cur_addr(void) { return (u16)(base_addr + code_pc); }
 
-const u8 *cb_data(void) {
-    return code_buf;
-}
+const u8 *cb_data(void) { return code_buf; }
 
 void emit8(u8 b) {
     if (code_pc >= MAX_CODE) {
@@ -64,8 +58,8 @@ void emit8(u8 b) {
 }
 
 void emit16(u16 w) {
-    emit8((u8)(w & 0xFF));         /* Little-endian low byte */
-    emit8((u8)((w >> 8) & 0xFF));  /* Little-endian high byte */
+    emit8((u8)(w & 0xFF));        /* Little-endian low byte */
+    emit8((u8)((w >> 8) & 0xFF)); /* Little-endian high byte */
 }
 
 void emit32(u32 w) {
@@ -107,7 +101,7 @@ void patch16(u16 patch_offset, u16 target_addr) {
     if ((u32)patch_offset + 1 >= MAX_CODE) {
         ir4_die("patch offset out of bounds");
     }
-    code_buf[patch_offset]     = (u8)(target_addr & 0xFF);
+    code_buf[patch_offset] = (u8)(target_addr & 0xFF);
     code_buf[patch_offset + 1] = (u8)((target_addr >> 8) & 0xFF);
 }
 
@@ -152,9 +146,7 @@ u16 cb_alloc_data(u16 size, u8 align) {
     return aligned;
 }
 
-u16 cb_data_size(void) {
-    return data_size;
-}
+u16 cb_data_size(void) { return data_size; }
 
 void cb_emit_data_u8(u8 b) {
     if (data_size >= MAX_DATA) {
@@ -186,21 +178,17 @@ void cb_emit_data_word(i32 val, u8 word_bytes) {
     }
 }
 
-const u8 *cb_init_data(void) {
-    return data_buf;
-}
+const u8 *cb_init_data(void) { return data_buf; }
 
-u16 cb_init_data_size(void) {
-    return data_init_size;
-}
+u16 cb_init_data_size(void) { return data_init_size; }
 
 void cb_add_data_reloc(u16 patch_offset, u16 data_offset) {
     if (reloc_cnt >= MAX_RELOCS) {
         ir4_die("too many data relocations");
     }
-    relocs[reloc_cnt].split       = 0;
-    relocs[reloc_cnt].off1        = patch_offset;
-    relocs[reloc_cnt].off2        = 0;
+    relocs[reloc_cnt].split = 0;
+    relocs[reloc_cnt].off1 = patch_offset;
+    relocs[reloc_cnt].off2 = 0;
     relocs[reloc_cnt].data_offset = data_offset;
     reloc_cnt++;
 }
@@ -209,9 +197,9 @@ void cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset) {
     if (reloc_cnt >= MAX_RELOCS) {
         ir4_die("too many data relocations");
     }
-    relocs[reloc_cnt].split       = 1;
-    relocs[reloc_cnt].off1        = lo_offset;
-    relocs[reloc_cnt].off2        = hi_offset;
+    relocs[reloc_cnt].split = 1;
+    relocs[reloc_cnt].off1 = lo_offset;
+    relocs[reloc_cnt].off2 = hi_offset;
     relocs[reloc_cnt].data_offset = data_offset;
     reloc_cnt++;
 }
@@ -219,9 +207,8 @@ void cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset) {
 void cb_patch_data_init_relocs_base(u32 code_base, u32 data_base) {
     u16 i;
     for (i = 0; i < data_init_reloc_cnt; i++) {
-        u32 val = data_init_relocs[i].is_code
-                ? (code_base + (u32)data_init_relocs[i].target_val)
-                : (data_base + (u32)data_init_relocs[i].target_val);
+        u32 val = data_init_relocs[i].is_code ? (code_base + (u32)data_init_relocs[i].target_val)
+                                              : (data_base + (u32)data_init_relocs[i].target_val);
         u16 off = data_init_relocs[i].patch_data_off;
         u8 b;
         for (b = 0; b < data_init_relocs[i].addr_bytes; b++) {
@@ -250,21 +237,20 @@ void cb_add_data_init_reloc(u16 patch_data_off, u16 target_val, u8 addr_bytes, u
         ir4_die("too many data address relocations");
     }
     data_init_relocs[data_init_reloc_cnt].patch_data_off = patch_data_off;
-    data_init_relocs[data_init_reloc_cnt].target_val     = target_val;
-    data_init_relocs[data_init_reloc_cnt].addr_bytes     = addr_bytes;
-    data_init_relocs[data_init_reloc_cnt].is_code        = is_code;
+    data_init_relocs[data_init_reloc_cnt].target_val = target_val;
+    data_init_relocs[data_init_reloc_cnt].addr_bytes = addr_bytes;
+    data_init_relocs[data_init_reloc_cnt].is_code = is_code;
     data_init_reloc_cnt++;
 }
 
-u16 cb_data_init_reloc_count(void) {
-    return data_init_reloc_cnt;
-}
+u16 cb_data_init_reloc_count(void) { return data_init_reloc_cnt; }
 
-void cb_get_data_init_reloc(u16 idx, u16 *patch_data_off, u16 *target_val, u8 *addr_bytes, u8 *is_code) {
+void cb_get_data_init_reloc(u16 idx, u16 *patch_data_off, u16 *target_val, u8 *addr_bytes,
+                            u8 *is_code) {
     *patch_data_off = data_init_relocs[idx].patch_data_off;
-    *target_val     = data_init_relocs[idx].target_val;
-    *addr_bytes     = data_init_relocs[idx].addr_bytes;
-    *is_code        = data_init_relocs[idx].is_code;
+    *target_val = data_init_relocs[idx].target_val;
+    *addr_bytes = data_init_relocs[idx].addr_bytes;
+    *is_code = data_init_relocs[idx].is_code;
 }
 
 void cb_patch_data_init_reloc(u16 idx, u16 code_addr) {
@@ -285,9 +271,7 @@ void cb_add_extern_reloc(u16 patch_offset, const char *name) {
     ext_reloc_cnt++;
 }
 
-u16 cb_extern_reloc_count(void) {
-    return ext_reloc_cnt;
-}
+u16 cb_extern_reloc_count(void) { return ext_reloc_cnt; }
 
 const char *cb_extern_reloc_name(u16 idx, u16 *patch_offset) {
     *patch_offset = ext_relocs[idx].patch_offset;
