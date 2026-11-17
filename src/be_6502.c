@@ -7,6 +7,7 @@
 #include "codebuf.h"
 #include "be_6502.h"
 #include "be_6502_wozfp.h"
+#include "be_6502_i32.h"
 #include <math.h>
 
 static u8  zp_scratch      = 0xFB;
@@ -25,6 +26,7 @@ static u16 mul16_addr      = 0;
 static u16 udivmod16_addr  = 0;
 static u16 sdivmod16_addr  = 0;
 static u16 wozfp_addr      = 0;
+static u16 i32_addr        = 0;
 
 void be_6502_set_zp(u8 zp) {
     zp_scratch = zp;
@@ -114,7 +116,7 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
     m6502_big_bytes = 0;
     for (i = 0; i < total_locals; i++) {
         u16 sz = (locals[i].size > 0) ? locals[i].size
-                                      : (u16)((locals[i].type == TY_F) ? 4 : 2);
+                                      : (u16)((locals[i].type == TY_F || locals[i].type == TY_I32) ? 4 : 2);
         if (is_recursive && locals[i].size > 0) {
             m6502_local_is_big[i] = 1;
             m6502_local_off[i] = m6502_big_bytes;
@@ -175,7 +177,7 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
     for (i = param_cnt; i > 0; i--) {
         u8 idx = (u8)(i - 1);
         u16 off = m6502_local_off[idx];
-        u8 sz = (locals[idx].type == TY_F) ? 4 : 2;
+        u8 sz = (locals[idx].type == TY_F || locals[idx].type == TY_I32) ? 4 : 2;
         u8 b;
         for (b = 0; b < sz; b++) {
             m6502_lda_stk(b);
@@ -189,7 +191,7 @@ static void m6502_fn_begin(const char *name, u8 param_cnt,
         emit8_8(M6502_LDA_IMM, 0x00);
         for (i = param_cnt; i < total_locals; i++) {
             u16 off = m6502_local_off[i];
-            u8 sz = (locals[i].type == TY_F) ? 4 : 2;
+            u8 sz = (locals[i].type == TY_F || locals[i].type == TY_I32) ? 4 : 2;
             u8 b;
             if (locals[i].size > 0) continue;
             for (b = 0; b < sz; b++) {
@@ -328,6 +330,16 @@ static void m6502_push_f(double val) {
     }
 }
 
+static void m6502_push_i32(i32 val) {
+    u8 b;
+    u32 u = (u32)val;
+    for (b = 0; b < 4; b++) emit8(M6502_DEX);
+    for (b = 0; b < 4; b++) {
+        emit8_8(M6502_LDA_IMM, (u8)((u >> (b * 8)) & 0xFF));
+        m6502_sta_stk(b);
+    }
+}
+
 static void m6502_push_data(u16 offset) {
     u16 lo_pos, hi_pos;
     emit8(M6502_DEX);
@@ -341,7 +353,7 @@ static void m6502_push_data(u16 offset) {
 
 static void m6502_local_get(u8 slot, u8 type, u16 stack_bytes) {
     u16 off = m6502_local_off[slot];
-    u8 sz = (type == TY_F) ? 4 : 2;
+    u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
     u8 b;
     (void)stack_bytes;
     for (b = 0; b < sz; b++) emit8(M6502_DEX);
@@ -363,7 +375,7 @@ static void m6502_local_get(u8 slot, u8 type, u16 stack_bytes) {
 
 static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
     u16 off = m6502_local_off[slot];
-    u8 sz = (type == TY_F) ? 4 : 2;
+    u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
     u8 b;
     (void)stack_bytes;
     if (!m6502_static_frame) m6502_ldy_lfp();
@@ -412,8 +424,8 @@ static void m6502_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes)
 }
 
 static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {
-    u8 sz1 = (t1 == TY_F) ? 4 : 2;
-    u8 sz2 = (t2 == TY_F) ? 4 : 2;
+    u8 sz1 = (t1 == TY_F || t1 == TY_I32) ? 4 : 2;
+    u8 sz2 = (t2 == TY_F || t2 == TY_I32) ? 4 : 2;
     u8 b;
     switch (op) {
     case OP_DUP:
@@ -713,24 +725,35 @@ static void ensure_sdivmod16(void) {
     patch16(skip_patch, cb_cur_addr());
 }
 
-static void ensure_wozfp(void) {
+static void ensure_rt_blob(u16 *addr, const u8 *code, u16 code_len,
+                           const u16 *relocs, u16 reloc_cnt) {
     u16 jmp_skip;
     u16 base_pc;
     u16 i;
-    if (wozfp_addr != 0) return;
+    if (*addr != 0) return;
 
     emit8(M6502_JMP); jmp_skip = cb_pc(); emit16(0x0000); /* JMP skip */
     base_pc = cb_pc();
-    wozfp_addr = cb_cur_addr();
-    for (i = 0; i < (u16)sizeof(be_6502_wozfp); i++) {
-        emit8(be_6502_wozfp[i]);
+    *addr = cb_cur_addr();
+    for (i = 0; i < code_len; i++) {
+        emit8(code[i]);
     }
-    for (i = 0; i < (u16)BE_6502_WOZFP_RELOC_CNT; i++) {
-        u16 r = be_6502_wozfp_relocs[i];
-        u16 orig = (u16)be_6502_wozfp[r] | ((u16)be_6502_wozfp[r + 1] << 8);
-        patch16((u16)(base_pc + r), (u16)(orig + wozfp_addr));
+    for (i = 0; i < reloc_cnt; i++) {
+        u16 r = relocs[i];
+        u16 orig = (u16)code[r] | ((u16)code[r + 1] << 8);
+        patch16((u16)(base_pc + r), (u16)(orig + *addr));
     }
     patch16(jmp_skip, cb_cur_addr());
+}
+
+static void ensure_wozfp(void) {
+    ensure_rt_blob(&wozfp_addr, be_6502_wozfp, (u16)sizeof(be_6502_wozfp),
+                   be_6502_wozfp_relocs, (u16)BE_6502_WOZFP_RELOC_CNT);
+}
+
+static void ensure_i32_6502(void) {
+    ensure_rt_blob(&i32_addr, be_6502_i32, (u16)sizeof(be_6502_i32),
+                   be_6502_i32_relocs, (u16)BE_6502_I32_RELOC_CNT);
 }
 
 static void wozfp_pop_to(u8 zp_base) {
@@ -806,6 +829,24 @@ static int m6502_data_mem(IrOp op, u16 data_offset) {
         emit_data_abs(0x8D, (u16)(data_offset + 1)); /* STA abs+1 */
         emit8(M6502_INX); emit8(M6502_INX);
         return 1;
+    case OP_I32FETCH: {
+        u8 b;
+        for (b = 0; b < 4; b++) emit8(M6502_DEX);
+        for (b = 0; b < 4; b++) {
+            emit_data_abs(0xAD, (u16)(data_offset + b));
+            m6502_sta_stk(b);
+        }
+        return 1;
+    }
+    case OP_I32STORE: {
+        u8 b;
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk(b);
+            emit_data_abs(0x8D, (u16)(data_offset + b));
+        }
+        for (b = 0; b < 4; b++) emit8(M6502_INX);
+        return 1;
+    }
     default:
         return 0;
     }
@@ -820,7 +861,8 @@ static int m6502_mem_imm(IrOp op, i32 off) {
     case OP_FETCH: case OP_AFETCH: case OP_I16FETCH: case OP_U16FETCH:
     case OP_STORE: case OP_ASTORE: case OP_I16STORE:
     case OP_SSTORE: case OP_SASTORE: case OP_SI16STORE:                 sz = 2; break;
-    case OP_FFETCH: case OP_FSTORE: case OP_SFSTORE:                    sz = 4; break;
+    case OP_FFETCH: case OP_FSTORE: case OP_SFSTORE:
+    case OP_I32FETCH: case OP_I32STORE:                               sz = 4; break;
     default: return 0;
     }
     if (off < 0 || off > 256 - sz) return 0;
@@ -884,7 +926,8 @@ static int m6502_mem_imm(IrOp op, i32 off) {
         emit8(M6502_INX); emit8(M6502_INX);
         emit8(M6502_INX); emit8(M6502_INX);
         break;
-    case OP_FFETCH: {
+    case OP_FFETCH:
+    case OP_I32FETCH: {
         u8 b;
         emit8(M6502_DEX);
         emit8(M6502_DEX);
@@ -896,7 +939,8 @@ static int m6502_mem_imm(IrOp op, i32 off) {
         break;
     }
     case OP_FSTORE:
-    case OP_SFSTORE: {
+    case OP_SFSTORE:
+    case OP_I32STORE: {
         u8 b;
         for (b = 0; b < 4; b++) {
             m6502_lda_stk((u8)(val_off + b));
@@ -1028,6 +1072,129 @@ static void m6502_op(IrOp op) {
     case OP_SI16STORE:
     case OP_SSTORE:
     case OP_SASTORE:
+    case OP_I32FETCH:
+    case OP_I32STORE:
+        m6502_mem_imm(op, 0);
+        break;
+    case OP_INV32: {
+        u8 b;
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk(b);
+            emit8_8(M6502_EOR_IMM, 0xFF);
+            m6502_sta_stk(b);
+        }
+        break;
+    }
+    case OP_ADD32: {
+        u8 b;
+        emit8(M6502_CLC);
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk((u8)(4 + b));
+            m6502_adc_stk(b);
+            m6502_sta_stk((u8)(4 + b));
+        }
+        for (b = 0; b < 4; b++) emit8(M6502_INX);
+        break;
+    }
+    case OP_SUB32: {
+        u8 b;
+        emit8(M6502_SEC);
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk((u8)(4 + b));
+            m6502_sbc_stk(b);
+            m6502_sta_stk((u8)(4 + b));
+        }
+        for (b = 0; b < 4; b++) emit8(M6502_INX);
+        break;
+    }
+    case OP_AND32:
+    case OP_OR32:
+    case OP_XOR32: {
+        u8 b;
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk((u8)(4 + b));
+            if (op == OP_AND32) m6502_and_stk(b);
+            else if (op == OP_OR32) m6502_ora_stk(b);
+            else m6502_eor_stk(b);
+            m6502_sta_stk((u8)(4 + b));
+        }
+        for (b = 0; b < 4; b++) emit8(M6502_INX);
+        break;
+    }
+    case OP_W2I32:
+        emit8(M6502_DEX); emit8(M6502_DEX);
+        m6502_lda_stk(2); m6502_sta_stk(0);
+        m6502_lda_stk(3); m6502_sta_stk(1);
+        emit8_8(M6502_BPL, 0x04);
+        emit8_8(M6502_LDA_IMM, 0xFF);
+        emit8_8(M6502_BMI, 0x02);
+        emit8_8(M6502_LDA_IMM, 0x00);
+        m6502_sta_stk(2);
+        m6502_sta_stk(3);
+        break;
+    case OP_U2I32:
+        emit8(M6502_DEX); emit8(M6502_DEX);
+        m6502_lda_stk(2); m6502_sta_stk(0);
+        m6502_lda_stk(3); m6502_sta_stk(1);
+        emit8_8(M6502_LDA_IMM, 0x00);
+        m6502_sta_stk(2);
+        m6502_sta_stk(3);
+        break;
+    case OP_I322W:
+        m6502_lda_stk(0); m6502_sta_stk(2);
+        m6502_lda_stk(1); m6502_sta_stk(3);
+        emit8(M6502_INX); emit8(M6502_INX);
+        break;
+    case OP_EQ32:
+    case OP_NE32: {
+        u8 b;
+        emit8_8(M6502_LDA_IMM, 0x00);
+        emit8_8(M6502_STA_ZP, zp_scratch);
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk((u8)(4 + b));
+            m6502_eor_stk(b);
+            emit8_8(M6502_ORA_ZP, zp_scratch);
+            emit8_8(M6502_STA_ZP, zp_scratch);
+        }
+        for (b = 0; b < 6; b++) emit8(M6502_INX);
+        emit8_8(M6502_LDA_ZP, zp_scratch);
+        emit8_8(op == OP_EQ32 ? M6502_BEQ : M6502_BNE, 0x04);
+        emit8_8(M6502_LDA_IMM, 0x00);
+        emit8_8(M6502_BEQ, 0x02);
+        emit8_8(M6502_LDA_IMM, 0xFF);
+        m6502_sta_stk(0);
+        m6502_sta_stk(1);
+        break;
+    }
+    case OP_ULT32: case OP_UGE32: case OP_UGT32: case OP_ULE32:
+    case OP_LT32:  case OP_GE32:  case OP_GT32:  case OP_LE32: {
+        u8 swap_ops = (op == OP_UGT32 || op == OP_ULE32 || op == OP_GT32 || op == OP_LE32);
+        u8 invert = (op == OP_UGE32 || op == OP_ULE32 || op == OP_GE32 || op == OP_LE32);
+        u8 is_signed = (op >= OP_LT32 && op <= OP_GE32);
+        u8 lhs_off = swap_ops ? 0 : 4;
+        u8 rhs_off = swap_ops ? 4 : 0;
+        u8 b;
+        emit8(M6502_SEC);
+        for (b = 0; b < 4; b++) {
+            m6502_lda_stk((u8)(lhs_off + b));
+            m6502_sbc_stk((u8)(rhs_off + b));
+        }
+        for (b = 0; b < 6; b++) emit8(M6502_INX);
+        if (is_signed) {
+            emit8_8(M6502_BVC, 0x02);
+            emit8_8(M6502_EOR_IMM, 0x80);
+            emit8_8(0x09, 0x00); /* ORA #$00: refresh N from A after INX */
+            emit8_8(invert ? M6502_BPL : M6502_BMI, 0x04);
+        } else {
+            emit8_8(invert ? M6502_BCS : M6502_BCC, 0x04);
+        }
+        emit8_8(M6502_LDA_IMM, 0x00);
+        emit8_8(M6502_BEQ, 0x02);
+        emit8_8(M6502_LDA_IMM, 0xFF);
+        m6502_sta_stk(0);
+        m6502_sta_stk(1);
+        break;
+    }
     case OP_SFSTORE:
         m6502_mem_imm(op, 0);
         break;
@@ -1177,6 +1344,40 @@ static void m6502_op(IrOp op) {
         patch8(skip_neg2, (u8)(cb_pc() - (skip_neg2 + 1)));
         break;
     }
+    case OP_MUL32:
+    case OP_DIV32:
+    case OP_MOD32:
+    case OP_UDIV32:
+    case OP_UMOD32: {
+        u16 entry = (op == OP_MUL32) ? RT_I32_MUL
+                  : (op == OP_UDIV32 || op == OP_UMOD32) ? RT_I32_UDIVMOD
+                  : RT_I32_SDIVMOD;
+        u8 res_zp = (op == OP_MOD32 || op == OP_UMOD32) ? I32_ZP_R : I32_ZP_A;
+        ensure_i32_6502();
+        wozfp_pop_to(I32_ZP_B);
+        wozfp_pop_to(I32_ZP_A);
+        emit8_16(M6502_JSR, (u16)(i32_addr + entry));
+        wozfp_push_from(res_zp);
+        break;
+    }
+    case OP_SHL32:
+    case OP_RSHR32:
+    case OP_ASHR32: {
+        u16 entry = (op == OP_SHL32) ? RT_I32_SHL
+                  : (op == OP_RSHR32) ? RT_I32_SHR : RT_I32_ASHR;
+        ensure_i32_6502();
+        m6502_lda_stk(0);
+        emit8_8(M6502_STA_ZP, I32_ZP_B);
+        emit8(M6502_INX);
+        emit8(M6502_INX);
+        wozfp_pop_to(I32_ZP_A);
+        emit8_16(M6502_JSR, (u16)(i32_addr + entry));
+        wozfp_push_from(I32_ZP_A);
+        break;
+    }
+    case OP_I322F:
+    case OP_F2I32:
+        ir4_die("unimplemented 6502 i32<->f conversion");
     }
 }
 
@@ -1249,6 +1450,7 @@ const Backend be_6502 = {
     m6502_push_w,
     m6502_push_a,
     m6502_push_f,
+    m6502_push_i32,
     m6502_push_data,
     m6502_local_op,
     m6502_stack_op,

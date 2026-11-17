@@ -394,13 +394,15 @@ static int rv_mem_imm(IrOp op, i32 off) {
     case OP_I16STORE: funct3 = 1; is_store = 1; break;
     case OP_FETCH:
     case OP_AFETCH:
-    case OP_FFETCH:   funct3 = 2; break;
+    case OP_FFETCH:
+    case OP_I32FETCH: funct3 = 2; break;
     case OP_SSTORE:
     case OP_SASTORE:
     case OP_SFSTORE:  swapped = 1; /* fall through */
     case OP_STORE:
     case OP_ASTORE:
-    case OP_FSTORE:   funct3 = 2; is_store = 1; break;
+    case OP_FSTORE:
+    case OP_I32STORE: funct3 = 2; is_store = 1; break;
     default: return 0;
     }
 
@@ -416,7 +418,37 @@ static int rv_mem_imm(IrOp op, i32 off) {
     return 1;
 }
 
+static IrOp rv_norm32(IrOp op) {
+    switch (op) {
+    case OP_ADD32:  return OP_ADD;
+    case OP_SUB32:  return OP_SUB;
+    case OP_MUL32:  return OP_MUL;
+    case OP_DIV32:  return OP_DIV;
+    case OP_MOD32:  return OP_MOD;
+    case OP_UDIV32: return OP_UDIV;
+    case OP_UMOD32: return OP_UMOD;
+    case OP_AND32:  return OP_AND;
+    case OP_OR32:   return OP_OR;
+    case OP_XOR32:  return OP_XOR;
+    case OP_SHL32:  return OP_LSHIFT;
+    case OP_ASHR32: return OP_ARSHIFT;
+    case OP_RSHR32: return OP_RSHIFT;
+    case OP_EQ32:   return OP_EQ;
+    case OP_NE32:   return OP_NE;
+    case OP_LT32:   return OP_LT;
+    case OP_GT32:   return OP_GT;
+    case OP_LE32:   return OP_LE;
+    case OP_GE32:   return OP_GE;
+    case OP_ULT32:  return OP_ULT;
+    case OP_UGT32:  return OP_UGT;
+    case OP_ULE32:  return OP_ULE;
+    case OP_UGE32:  return OP_UGE;
+    default:        return op;
+    }
+}
+
 static void rv_op(IrOp op) {
+    op = rv_norm32(op);
     switch (op) {
     case OP_ADD: case OP_AADD:
     case OP_SUB: case OP_ASUB: case OP_ADIFF:
@@ -426,6 +458,7 @@ static void rv_op(IrOp op) {
         rv_int_alu(op);
         break;
     case OP_INVERT:
+    case OP_INV32:
         pop_reg(RV_T0);
         emit32(enc_i(-1, RV_T0, 4, RV_T0, 0x13UL)); /* XORI t0, t0, -1 */
         push_reg(RV_T0);
@@ -453,6 +486,8 @@ static void rv_op(IrOp op) {
     case OP_SSTORE:
     case OP_SASTORE:
     case OP_SFSTORE:
+    case OP_I32FETCH:
+    case OP_I32STORE:
         rv_mem_imm(op, 0);
         break;
     case OP_FNEG:
@@ -510,6 +545,7 @@ static void rv_op(IrOp op) {
         push_reg(RV_T0);
         break;
     case OP_W2F:
+    case OP_I322F:
         pop_reg(RV_A0);
         if (rv_obj_mode) {
             rv_emit_extern_call("__floatsisf");
@@ -520,6 +556,7 @@ static void rv_op(IrOp op) {
         push_reg(RV_A0);
         break;
     case OP_F2W:
+    case OP_F2I32:
         pop_reg(RV_A0);
         if (rv_obj_mode) {
             rv_emit_extern_call("__fixsfsi");
@@ -537,6 +574,9 @@ static void rv_op(IrOp op) {
         break;
     case OP_W2A:
     case OP_A2W:
+    case OP_W2I32:
+    case OP_U2I32:
+    case OP_I322W:
         /* Uniform 32-bit cells: zero-cost no-op */
         break;
     default:
@@ -646,6 +686,7 @@ const Backend be_rv32 = {
     rv_push_w,
     rv_push_a,
     rv_push_f,
+    rv_push_w,
     rv_push_data,
     rv_local_op,
     rv_stack_op,

@@ -6,16 +6,24 @@
 #include "codebuf.h"
 #include "be_z80.h"
 #include "be_z80_math48.h"
+#include "be_z80_i32.h"
 #include <math.h>
 
 static u16 rt_mul_addr     = 0;
 static u16 rt_udivmod_addr = 0;
 static u16 rt_sdivmod_addr = 0;
 static u16 rt_math48_addr  = 0;
+static u16 rt_i32_addr     = 0;
 static u16 z80_local_off[MAX_LOCALS];
 static u16 z80_local_bytes = 0;
 static u16 z80_last_push_pc = 0;
 static u8  z80_last_push_op = 0;
+
+static u8 z80_type_bytes(u8 t) {
+    if (t == TY_F)   return 6;
+    if (t == TY_I32) return 4;
+    return 2;
+}
 
 static void z80_peep_barrier(void) {
     z80_last_push_op = 0;
@@ -105,6 +113,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
         rt_udivmod_addr = 0;
         rt_sdivmod_addr = 0;
         rt_math48_addr  = 0;
+        rt_i32_addr     = 0;
     }
 
     for (i = 0; i < total_locals; i++) z80_is_static_slot[i] = 0;
@@ -114,7 +123,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
         u16 static_bytes = 0;
         for (i = param_cnt; i < total_locals; i++) {
             u16 sz = (locals[i].size > 0) ? (u16)((locals[i].size + 1) & ~1)
-                                          : (u16)((locals[i].type == TY_F) ? 6 : 2);
+                                          : (u16)z80_type_bytes(locals[i].type);
             z80_local_off[i] = static_bytes;
             z80_is_static_slot[i] = 1;
             static_bytes += sz;
@@ -124,14 +133,15 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
             z80_static_base = cb_alloc_data(static_bytes, 1);
             for (i = param_cnt; i < total_locals; i++) {
                 if (locals[i].size > 0) continue;
-                if (locals[i].type == TY_F) {
+                if (locals[i].type == TY_F || locals[i].type == TY_I32) {
                     u8 k;
+                    u8 nbytes = z80_type_bytes(locals[i].type);
                     emit8(Z80_LD_HL_NN);
                     cb_add_data_reloc(cb_pc(), (u16)(z80_static_base + z80_local_off[i]));
                     emit16(0x0000);
-                    for (k = 0; k < 6; k++) {
+                    for (k = 0; k < nbytes; k++) {
                         emit8_8(0x36, 0x00); /* LD (HL), 0 */
-                        if (k < 5) emit8(Z80_INC_HL);
+                        if (k + 1 < nbytes) emit8(Z80_INC_HL);
                     }
                 } else {
                     emit8_16(Z80_LD_HL_NN, 0x0000);
@@ -145,7 +155,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
         z80_local_bytes = 0;
         for (i = param_cnt; i < total_locals; i++) {
             u16 sz = (locals[i].size > 0) ? (u16)((locals[i].size + 1) & ~1)
-                                          : (u16)((locals[i].type == TY_F) ? 6 : 2);
+                                          : (u16)z80_type_bytes(locals[i].type);
             z80_local_off[i] = z80_local_bytes;
             z80_local_bytes += sz;
         }
@@ -155,7 +165,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
     off = (u16)(z80_local_bytes + 2);
     for (i = param_cnt; i > 0; i--) {
         u8 idx = (u8)(i - 1);
-        u8 sz = (locals[idx].type == TY_F) ? 6 : 2;
+        u8 sz = z80_type_bytes(locals[idx].type);
         z80_local_off[idx] = off;
         off += sz;
     }
@@ -176,7 +186,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt,
             for (i = param_cnt; i < total_locals; i++) {
                 if (locals[i].size == 0) {
                     u8 k;
-                    u8 sz = (locals[i].type == TY_F) ? 6 : 2;
+                    u8 sz = z80_type_bytes(locals[i].type);
                     emit8_16(Z80_LD_HL_NN, z80_local_off[i]);
                     emit8(Z80_ADD_HL_SP);
                     for (k = 0; k < sz; k++) {
@@ -198,10 +208,10 @@ static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_loca
     (void)total_locals;
 
     for (i = 0; i < sig->in_count; i++) {
-        param_bytes += (sig->in_types[i] == TY_F) ? 6 : 2;
+        param_bytes += z80_type_bytes(sig->in_types[i]);
     }
     for (i = 0; i < sig->out_count; i++) {
-        out_bytes += (sig->out_types[i] == TY_F) ? 6 : 2;
+        out_bytes += z80_type_bytes(sig->out_types[i]);
     }
     out_words = (u8)(out_bytes / 2);
     if (out_words > 4) ir4_die("Z80 return values exceed 8 bytes");
@@ -367,6 +377,14 @@ static void z80_push_f(double val) {
     z80_push(Z80_PUSH_HL);
 }
 
+static void z80_push_i32(i32 val) {
+    u32 u = (u32)val;
+    emit8_16(Z80_LD_HL_NN, (u16)((u >> 16) & 0xFFFFU));
+    emit8(Z80_PUSH_HL);
+    emit8_16(Z80_LD_HL_NN, (u16)(u & 0xFFFFU));
+    z80_push(Z80_PUSH_HL);
+}
+
 static void z80_push_data(u16 offset) {
     emit8(Z80_LD_HL_NN);
     cb_add_data_reloc(cb_pc(), offset);
@@ -378,16 +396,17 @@ static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
     u16 off;
     if (z80_is_static_slot[slot]) {
         u16 addr_off = (u16)(z80_static_base + z80_local_off[slot]);
-        if (type == TY_F) {
+        if (type == TY_F || type == TY_I32) {
             u8 i;
+            u8 w = (type == TY_F) ? 3 : 2;
             emit8(Z80_LD_HL_NN);
-            cb_add_data_reloc(cb_pc(), (u16)(addr_off + 5));
+            cb_add_data_reloc(cb_pc(), (u16)(addr_off + (u16)(w * 2 - 1)));
             emit16(0x0000);
-            for (i = 0; i < 3; i++) {
+            for (i = 0; i < w; i++) {
                 emit8(Z80_LD_D_MHL);
                 emit8(Z80_DEC_HL);
                 emit8(Z80_LD_E_MHL);
-                if (i < 2) emit8(Z80_DEC_HL);
+                if (i + 1 < w) emit8(Z80_DEC_HL);
                 z80_push(Z80_PUSH_DE);
             }
         } else {
@@ -397,15 +416,16 @@ static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
         return;
     }
     off = (u16)(z80_local_off[slot] + stack_bytes);
-    if (type == TY_F) {
+    if (type == TY_F || type == TY_I32) {
         u8 i;
-        emit8_16(Z80_LD_HL_NN, (u16)(off + 5));
+        u8 w = (type == TY_F) ? 3 : 2;
+        emit8_16(Z80_LD_HL_NN, (u16)(off + (u16)(w * 2 - 1)));
         emit8(Z80_ADD_HL_SP);
-        for (i = 0; i < 3; i++) {
+        for (i = 0; i < w; i++) {
             emit8(Z80_LD_D_MHL);
             emit8(Z80_DEC_HL);
             emit8(Z80_LD_E_MHL);
-            if (i < 2) emit8(Z80_DEC_HL);
+            if (i + 1 < w) emit8(Z80_DEC_HL);
             z80_push(Z80_PUSH_DE);
         }
     } else {
@@ -422,17 +442,18 @@ static void z80_local_set(u8 slot, u8 type, u16 stack_bytes) {
     u16 off;
     if (z80_is_static_slot[slot]) {
         u16 addr_off = (u16)(z80_static_base + z80_local_off[slot]);
-        if (type == TY_F) {
+        if (type == TY_F || type == TY_I32) {
             u8 i;
+            u8 w = (type == TY_F) ? 3 : 2;
             emit8(Z80_LD_HL_NN);
             cb_add_data_reloc(cb_pc(), addr_off);
             emit16(0x0000);
-            for (i = 0; i < 3; i++) {
+            for (i = 0; i < w; i++) {
                 emit8(Z80_POP_DE);
                 emit8(Z80_LD_MHL_E);
                 emit8(Z80_INC_HL);
                 emit8(Z80_LD_MHL_D);
-                if (i < 2) emit8(Z80_INC_HL);
+                if (i + 1 < w) emit8(Z80_INC_HL);
             }
         } else {
             z80_pop(Z80_POP_HL);
@@ -441,16 +462,17 @@ static void z80_local_set(u8 slot, u8 type, u16 stack_bytes) {
         return;
     }
     off = (u16)(z80_local_off[slot] + stack_bytes);
-    if (type == TY_F) {
+    if (type == TY_F || type == TY_I32) {
         u8 i;
-        emit8_16(Z80_LD_HL_NN, (u16)(off + 6));
+        u8 w = (type == TY_F) ? 3 : 2;
+        emit8_16(Z80_LD_HL_NN, (u16)(off + (u16)(w * 2)));
         emit8(Z80_ADD_HL_SP);
-        for (i = 0; i < 3; i++) {
+        for (i = 0; i < w; i++) {
             emit8(Z80_POP_DE);
             emit8(Z80_LD_MHL_E);
             emit8(Z80_INC_HL);
             emit8(Z80_LD_MHL_D);
-            if (i < 2) emit8(Z80_INC_HL);
+            if (i + 1 < w) emit8(Z80_INC_HL);
         }
     } else {
         z80_pop(Z80_POP_DE);
@@ -492,13 +514,37 @@ static void z80_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
     else                       z80_local_set(slot, (u8)type, stack_bytes);
 }
 
+static void z80_pop_any(StackType t) {
+    if (t == TY_F) {
+        z80_pop_f_ac();
+    } else if (t == TY_I32) {
+        z80_pop(Z80_POP_DE);
+        emit8(Z80_POP_BC);
+    } else {
+        z80_pop(Z80_POP_HL);
+    }
+}
+
+static void z80_push_any(StackType t) {
+    if (t == TY_F) {
+        z80_push_f_ac();
+    } else if (t == TY_I32) {
+        emit8(Z80_PUSH_BC);
+        z80_push(Z80_PUSH_DE);
+    } else {
+        z80_push(Z80_PUSH_HL);
+    }
+}
+
 static void z80_stack_op(StackOp op, StackType t1, StackType t2) {
+    u8 is4_1 = (t1 == TY_F || t1 == TY_I32);
+    u8 is4_2 = (t2 == TY_F || t2 == TY_I32);
     switch (op) {
     case OP_DUP:
-        if (t1 == TY_F) {
-            z80_pop_f_ac();
-            z80_push_f_ac();
-            z80_push_f_ac();
+        if (is4_1) {
+            z80_pop_any(t1);
+            z80_push_any(t1);
+            z80_push_any(t1);
         } else {
             z80_pop(Z80_POP_HL);
             emit8(Z80_PUSH_HL);
@@ -510,54 +556,43 @@ static void z80_stack_op(StackOp op, StackType t1, StackType t2) {
         if (t1 == TY_F) {
             emit8(Z80_POP_HL);
             emit8(Z80_POP_HL);
+        } else if (t1 == TY_I32) {
+            emit8(Z80_POP_HL);
         }
         break;
     case OP_SWAP:
-        if (t1 != TY_F && t2 != TY_F) {
+        if (!is4_1 && !is4_2) {
             z80_pop(Z80_POP_HL);
             emit8(Z80_EX_SP_HL);
             z80_push(Z80_PUSH_HL);
-        } else if (t1 == TY_F && t2 == TY_F) {
-            z80_pop_f_ac();
-            emit8(Z80_EXX); z80_pop_f_ac(); emit8(Z80_EXX);
-            z80_push_f_ac();
-            emit8(Z80_EXX); z80_push_f_ac(); emit8(Z80_EXX);
-        } else if (t1 == TY_F) {
-            z80_pop_f_ac();
-            emit8(Z80_POP_AF);
-            z80_push_f_ac();
-            emit8(Z80_PUSH_AF);
         } else {
-            emit8(Z80_POP_AF);
-            z80_pop_f_ac();
-            emit8(Z80_PUSH_AF);
-            z80_push_f_ac();
+            z80_pop_any(t1);
+            emit8(Z80_EXX);
+            z80_pop_any(t2);
+            emit8(Z80_EXX);
+            z80_push_any(t1);
+            emit8(Z80_EXX);
+            z80_push_any(t2);
+            emit8(Z80_EXX);
         }
         break;
     case OP_OVER:
-        if (t1 != TY_F && t2 != TY_F) {
+        if (!is4_1 && !is4_2) {
             z80_pop(Z80_POP_DE);
             emit8(Z80_POP_HL);
             emit8(Z80_PUSH_HL);
             emit8(Z80_PUSH_DE);
             z80_push(Z80_PUSH_HL);
-        } else if (t1 == TY_F && t2 == TY_F) {
-            z80_pop_f_ac();
-            emit8(Z80_EXX); z80_pop_f_ac(); z80_push_f_ac(); emit8(Z80_EXX);
-            z80_push_f_ac();
-            emit8(Z80_EXX); z80_push_f_ac(); emit8(Z80_EXX);
-        } else if (t1 == TY_F) {
-            z80_pop_f_ac();
-            emit8(Z80_POP_AF);
-            emit8(Z80_PUSH_AF);
-            z80_push_f_ac();
-            emit8(Z80_PUSH_AF);
         } else {
-            emit8(Z80_POP_AF);
-            z80_pop_f_ac();
-            z80_push_f_ac();
-            emit8(Z80_PUSH_AF);
-            z80_push_f_ac();
+            z80_pop_any(t1);
+            emit8(Z80_EXX);
+            z80_pop_any(t2);
+            z80_push_any(t2);
+            emit8(Z80_EXX);
+            z80_push_any(t1);
+            emit8(Z80_EXX);
+            z80_push_any(t2);
+            emit8(Z80_EXX);
         }
         break;
     default:
@@ -662,30 +697,54 @@ static void z80_emit_sdivmod(void) {
     z80_call(rt_sdivmod_addr);
 }
 
-static void z80_ensure_math48(void) {
+static void z80_ensure_rt_blob(u16 *addr, const u8 *code, u16 code_len,
+                               const u16 *relocs, u16 reloc_cnt) {
     u16 skip_patch;
     u16 base_off;
     u16 i;
 
-    if (rt_math48_addr != 0) return;
+    if (*addr != 0) return;
 
     emit8(Z80_JP);
     skip_patch = cb_pc();
     emit16(0x0000);
 
-    rt_math48_addr = cb_cur_addr();
+    *addr = cb_cur_addr();
     base_off = cb_pc();
-    for (i = 0; i < (u16)sizeof(be_z80_math48); i++) {
-        emit8(be_z80_math48[i]);
+    for (i = 0; i < code_len; i++) {
+        emit8(code[i]);
     }
-    for (i = 0; i < BE_Z80_MATH48_RELOC_CNT; i++) {
-        u16 rel_off = be_z80_math48_relocs[i];
-        u16 rel_val = (u16)(be_z80_math48[rel_off] |
-                            ((u16)be_z80_math48[rel_off + 1] << 8));
-        patch16((u16)(base_off + rel_off), (u16)(rt_math48_addr + rel_val));
+    for (i = 0; i < reloc_cnt; i++) {
+        u16 rel_off = relocs[i];
+        u16 rel_val = (u16)(code[rel_off] | ((u16)code[rel_off + 1] << 8));
+        patch16((u16)(base_off + rel_off), (u16)(*addr + rel_val));
     }
 
     patch16(skip_patch, cb_cur_addr());
+}
+
+static void z80_ensure_math48(void) {
+    z80_ensure_rt_blob(&rt_math48_addr, be_z80_math48, (u16)sizeof(be_z80_math48),
+                       be_z80_math48_relocs, (u16)BE_Z80_MATH48_RELOC_CNT);
+}
+
+static void z80_ensure_i32(void) {
+    z80_ensure_rt_blob(&rt_i32_addr, be_z80_i32, (u16)sizeof(be_z80_i32),
+                       be_z80_i32_relocs, (u16)BE_Z80_I32_RELOC_CNT);
+}
+
+static void z80_i32_pop_to(u16 off) {
+    z80_pop(Z80_POP_HL);
+    emit8_16(0x22, (u16)(rt_i32_addr + off));
+    emit8(Z80_POP_HL);
+    emit8_16(0x22, (u16)(rt_i32_addr + off + 2));
+}
+
+static void z80_i32_push_from(u16 off) {
+    emit8_16(0x2A, (u16)(rt_i32_addr + off + 2));
+    emit8(Z80_PUSH_HL);
+    emit8_16(0x2A, (u16)(rt_i32_addr + off));
+    z80_push(Z80_PUSH_HL);
 }
 
 static void z80_call_math48(u16 entry_offset) {
@@ -866,6 +925,18 @@ static int z80_data_mem(IrOp op, u16 data_offset) {
         z80_pop(Z80_POP_HL);
         emit8(0x22); cb_add_data_reloc(cb_pc(), data_offset); emit16(0x0000); /* LD (nn), HL */
         return 1;
+    case OP_I32FETCH:
+        emit8(0x2A); cb_add_data_reloc(cb_pc(), (u16)(data_offset + 2)); emit16(0x0000);
+        emit8(Z80_PUSH_HL);
+        emit8(0x2A); cb_add_data_reloc(cb_pc(), data_offset); emit16(0x0000);
+        z80_push(Z80_PUSH_HL);
+        return 1;
+    case OP_I32STORE:
+        z80_pop(Z80_POP_HL);
+        emit8(0x22); cb_add_data_reloc(cb_pc(), data_offset); emit16(0x0000);
+        emit8(Z80_POP_HL);
+        emit8(0x22); cb_add_data_reloc(cb_pc(), (u16)(data_offset + 2)); emit16(0x0000);
+        return 1;
     default:
         return 0;
     }
@@ -873,7 +944,8 @@ static int z80_data_mem(IrOp op, u16 data_offset) {
 
 static int z80_mem_imm(IrOp op, i32 off) {
     int swapped = (op >= OP_SI8STORE && op <= OP_SFSTORE);
-    if ((op < OP_I8FETCH || op > OP_FSTORE) && !swapped) return 0;
+    int is_i32 = (op == OP_I32FETCH || op == OP_I32STORE);
+    if ((op < OP_I8FETCH || op > OP_FSTORE) && !swapped && !is_i32) return 0;
 
     if (swapped) {
         if (op == OP_SFSTORE) {
@@ -987,6 +1059,22 @@ static int z80_mem_imm(IrOp op, i32 off) {
         emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
         emit8(Z80_LD_MHL_D);
         break;
+    case OP_I32FETCH:
+        emit8(Z80_LD_E_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_D_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_C_MHL); emit8(Z80_INC_HL);
+        emit8(Z80_LD_B_MHL);
+        emit8(Z80_PUSH_BC);
+        z80_push(Z80_PUSH_DE);
+        break;
+    case OP_I32STORE:
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D); emit8(Z80_INC_HL);
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_MHL_E); emit8(Z80_INC_HL);
+        emit8(Z80_LD_MHL_D);
+        break;
     default:
         break;
     }
@@ -1066,6 +1154,8 @@ static void z80_op(IrOp op) {
     case OP_SSTORE:
     case OP_SASTORE:
     case OP_SFSTORE:
+    case OP_I32FETCH:
+    case OP_I32STORE:
         z80_mem_imm(op, 0);
         break;
     case OP_SEXT:
@@ -1090,6 +1180,170 @@ static void z80_op(IrOp op) {
         z80_call_math48(RT_FP_FTOI);
         z80_push(Z80_PUSH_HL);
         break;
+    case OP_W2I32:
+        z80_pop(Z80_POP_DE);
+        emit8(Z80_LD_A_D);
+        emit8(Z80_RLA);
+        emit8(Z80_SBC_A_A);
+        emit8(Z80_LD_H_A);
+        emit8(Z80_LD_L_A);
+        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_DE);
+        break;
+    case OP_U2I32:
+        z80_pop(Z80_POP_DE);
+        emit8_16(Z80_LD_HL_NN, 0x0000);
+        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_DE);
+        break;
+    case OP_I322W:
+        z80_pop(Z80_POP_DE);
+        emit8(Z80_POP_HL);
+        z80_push(Z80_PUSH_DE);
+        break;
+    case OP_INV32:
+        z80_pop(Z80_POP_DE);
+        emit8(Z80_POP_HL);
+        emit8(0x7B); emit8(0x2F); emit8(0x5F); /* LD A,E; CPL; LD E,A */
+        emit8(Z80_LD_A_D); emit8(0x2F); emit8(Z80_LD_D_A);
+        emit8(Z80_LD_A_L); emit8(0x2F); emit8(Z80_LD_L_A);
+        emit8(Z80_LD_A_H); emit8(0x2F); emit8(Z80_LD_H_A);
+        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_DE);
+        break;
+    case OP_ADD32:
+        z80_pop(Z80_POP_BC);
+        emit8(Z80_POP_DE);
+        emit8(Z80_POP_HL);
+        emit8(0x09); /* ADD HL, BC */
+        emit8(0xE3); /* EX (SP), HL */
+        emit8(0xED); emit8(0x5A); /* ADC HL, DE */
+        emit8(Z80_POP_DE);
+        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_DE);
+        break;
+    case OP_SUB32:
+        z80_pop(Z80_POP_BC);
+        emit8(Z80_POP_DE);
+        emit8(Z80_POP_HL);
+        emit8(Z80_OR_A);
+        emit8(0xED); emit8(0x42); /* SBC HL, BC */
+        emit8(0xE3); /* EX (SP), HL */
+        emit8(0xED); emit8(0x52); /* SBC HL, DE */
+        emit8(Z80_POP_DE);
+        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_DE);
+        break;
+    case OP_AND32:
+    case OP_OR32:
+    case OP_XOR32: {
+        u8 alu_e = (op == OP_AND32) ? 0xA3 : (op == OP_OR32) ? 0xB3 : 0xAB;
+        u8 alu_d = (op == OP_AND32) ? 0xA2 : (op == OP_OR32) ? 0xB2 : 0xAA;
+        z80_pop(Z80_POP_BC); /* rhs_lo */
+        emit8(Z80_POP_DE);   /* rhs_hi */
+        emit8(Z80_POP_HL);   /* lhs_lo */
+        emit8(Z80_LD_A_L); emit8(0xA1 + (alu_e - 0xA3)); emit8(Z80_LD_L_A);
+        emit8(Z80_LD_A_H); emit8(0xA0 + (alu_d - 0xA2)); emit8(Z80_LD_H_A);
+        emit8(0xE3); /* EX (SP), HL -> (SP)=res_lo, HL=lhs_hi */
+        emit8(Z80_LD_A_L); emit8(alu_e); emit8(Z80_LD_L_A);
+        emit8(Z80_LD_A_H); emit8(alu_d); emit8(Z80_LD_H_A);
+        emit8(Z80_POP_DE);
+        emit8(Z80_PUSH_HL);
+        z80_push(Z80_PUSH_DE);
+        break;
+    }
+    case OP_EQ32:
+    case OP_NE32:
+        z80_pop(Z80_POP_BC);
+        emit8(Z80_POP_DE);
+        emit8(Z80_POP_HL);
+        emit8(Z80_OR_A);
+        emit8(0xED); emit8(0x42); /* SBC HL, BC */
+        emit8(0xE3); /* EX (SP), HL */
+        emit8(0xED); emit8(0x52); /* SBC HL, DE */
+        emit8(Z80_POP_DE);
+        emit8(Z80_LD_A_H); emit8(Z80_OR_L); emit8(Z80_OR_D); emit8(Z80_OR_E);
+        emit8_8(op == OP_EQ32 ? Z80_JR_Z : Z80_JR_NZ, 0x05);
+        emit8_16(Z80_LD_HL_NN, 0x0000);
+        emit8_8(Z80_JR, 0x03);
+        emit8_16(Z80_LD_HL_NN, 0xFFFF);
+        z80_push(Z80_PUSH_HL);
+        break;
+    case OP_ULT32: case OP_UGE32: case OP_UGT32: case OP_ULE32:
+    case OP_LT32:  case OP_GE32:  case OP_GT32:  case OP_LE32: {
+        u8 swap_ops = (op == OP_UGT32 || op == OP_ULE32 || op == OP_GT32 || op == OP_LE32);
+        u8 invert = (op == OP_UGE32 || op == OP_ULE32 || op == OP_GE32 || op == OP_LE32);
+        u8 is_signed = (op >= OP_LT32 && op <= OP_GE32);
+        if (swap_ops) {
+            /* Swap top two 32-bit values */
+            z80_pop_any(TY_I32);
+            emit8(Z80_EXX);
+            z80_pop_any(TY_I32);
+            emit8(Z80_EXX);
+            z80_push_any(TY_I32);
+            emit8(Z80_EXX);
+            z80_push_any(TY_I32);
+            emit8(Z80_EXX);
+        }
+        z80_pop(Z80_POP_BC);
+        emit8(Z80_POP_DE);
+        emit8(Z80_POP_HL);
+        emit8(Z80_OR_A);
+        emit8(0xED); emit8(0x42); /* SBC HL, BC */
+        emit8(0xE3); /* EX (SP), HL */
+        emit8(0xED); emit8(0x52); /* SBC HL, DE */
+        emit8(Z80_POP_DE);
+        if (is_signed) {
+            /* Signed lhs < rhs iff (S ^ P/V) */
+            u16 a0 = cb_cur_addr();
+            u8 cc = invert ? 0xF2 : 0xFA; /* JP P : JP M */
+            emit8_16(0xEA, (u16)(a0 + 11)); /* JP PE, ovf */
+            emit8_16(cc, (u16)(a0 + 14));   /* JP M/P, set_true */
+            emit8_16(Z80_LD_HL_NN, 0x0000); /* set_false */
+            emit8_8(Z80_JR, 0x06);          /* JR done */
+            emit8_16(cc, (u16)(a0 + 6));    /* ovf: JP M/P, set_false */
+            emit8_16(Z80_LD_HL_NN, 0xFFFF); /* set_true */
+        } else {
+            emit8_8(invert ? Z80_JR_NC : Z80_JR_C, 0x05);
+            emit8_16(Z80_LD_HL_NN, 0x0000);
+            emit8_8(Z80_JR, 0x03);
+            emit8_16(Z80_LD_HL_NN, 0xFFFF);
+        }
+        z80_push(Z80_PUSH_HL);
+        break;
+    }
+    case OP_MUL32:
+    case OP_DIV32:
+    case OP_MOD32:
+    case OP_UDIV32:
+    case OP_UMOD32: {
+        u16 entry = (op == OP_MUL32) ? RT_I32_MUL
+                  : (op == OP_UDIV32 || op == OP_UMOD32) ? RT_I32_UDIVMOD
+                  : RT_I32_SDIVMOD;
+        u16 res_off = (op == OP_MOD32 || op == OP_UMOD32) ? I32_OFF_R : I32_OFF_A;
+        z80_ensure_i32();
+        z80_i32_pop_to(I32_OFF_B);
+        z80_i32_pop_to(I32_OFF_A);
+        z80_call((u16)(rt_i32_addr + entry));
+        z80_i32_push_from(res_off);
+        break;
+    }
+    case OP_SHL32:
+    case OP_RSHR32:
+    case OP_ASHR32: {
+        u16 entry = (op == OP_SHL32) ? RT_I32_SHL
+                  : (op == OP_RSHR32) ? RT_I32_SHR : RT_I32_ASHR;
+        z80_ensure_i32();
+        z80_pop(Z80_POP_HL);
+        emit8_16(0x22, (u16)(rt_i32_addr + I32_OFF_B));
+        z80_i32_pop_to(I32_OFF_A);
+        z80_call((u16)(rt_i32_addr + entry));
+        z80_i32_push_from(I32_OFF_A);
+        break;
+    }
+    case OP_I322F:
+    case OP_F2I32:
+        ir4_die("unimplemented Z80 i32<->f conversion");
     }
 }
 
@@ -1164,6 +1418,7 @@ const Backend be_z80 = {
     z80_push_w,
     z80_push_a,
     z80_push_f,
+    z80_push_i32,
     z80_push_data,
     z80_local_op,
     z80_stack_op,

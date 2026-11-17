@@ -33,6 +33,7 @@ typedef enum {
     IR_PUSH_W,
     IR_PUSH_A,
     IR_PUSH_F,
+    IR_PUSH_I32,
     IR_PUSH_DATA,
     IR_PUSH_HEAP_START,
     IR_LOCAL_OP,
@@ -123,16 +124,18 @@ void ir4_die(const char *msg) {
 }
 
 static const char *type_name(u8 t) {
-    if (t == TY_W) return ":i";
-    if (t == TY_A) return ":a";
-    if (t == TY_F) return ":f";
+    if (t == TY_W)   return ":i";
+    if (t == TY_A)   return ":a";
+    if (t == TY_F)   return ":f";
+    if (t == TY_I32) return ":i32";
     return "?";
 }
 
 static u8 parse_type_tok(const char *tok) {
-    if (strcmp(tok, ":i") == 0) return TY_W;
-    if (strcmp(tok, ":a") == 0) return TY_A;
-    if (strcmp(tok, ":f") == 0) return TY_F;
+    if (strcmp(tok, ":i") == 0)   return TY_W;
+    if (strcmp(tok, ":a") == 0)   return TY_A;
+    if (strcmp(tok, ":f") == 0)   return TY_F;
+    if (strcmp(tok, ":i32") == 0) return TY_I32;
     return TY_NONE;
 }
 
@@ -326,9 +329,10 @@ static u16 tstack_bytes(void) {
     u16 bytes = 0;
     u8 i;
     for (i = 0; i < tsp; i++) {
-        if (tstack[i] == TY_F)      bytes += be->float_bytes;
-        else if (tstack[i] == TY_A) bytes += be->addr_bytes;
-        else                        bytes += be->word_bytes;
+        if (tstack[i] == TY_F)        bytes += be->float_bytes;
+        else if (tstack[i] == TY_A)   bytes += be->addr_bytes;
+        else if (tstack[i] == TY_I32) bytes += 4;
+        else                          bytes += be->word_bytes;
     }
     return bytes;
 }
@@ -407,67 +411,98 @@ static const BuiltinDef builtins[] = {
     /* Arithmetic & bitwise */
     { "+",       OP_ADD,      TY_W, TY_W,    TY_W },
     { "+",       OP_AADD,     TY_W, TY_A,    TY_A },
-    { "+",       OP_FADD,     TY_F, TY_F,    TY_F },
-    { "-",       OP_SUB,      TY_W, TY_W,    TY_W },
-    { "-",       OP_ASUB,     TY_W, TY_A,    TY_A },
-    { "-",       OP_ADIFF,    TY_A, TY_A,    TY_W },
-    { "-",       OP_FSUB,     TY_F, TY_F,    TY_F },
-    { "*",       OP_MUL,      TY_W, TY_W,    TY_W },
-    { "*",       OP_FMUL,     TY_F, TY_F,    TY_F },
-    { "/",       OP_DIV,      TY_W, TY_W,    TY_W },
-    { "/",       OP_FDIV,     TY_F, TY_F,    TY_F },
-    { "mod",     OP_MOD,      TY_W, TY_W,    TY_W },
-    { "u/",      OP_UDIV,     TY_W, TY_W,    TY_W },
-    { "umod",    OP_UMOD,     TY_W, TY_W,    TY_W },
-    { "and",     OP_AND,      TY_W, TY_W,    TY_W },
-    { "or",      OP_OR,       TY_W, TY_W,    TY_W },
-    { "xor",     OP_XOR,      TY_W, TY_W,    TY_W },
-    { "invert",  OP_INVERT,   TY_W, TY_NONE, TY_W },
-    { "<<",      OP_LSHIFT,   TY_W, TY_W,    TY_W },
-    { ">>",      OP_ARSHIFT,  TY_W, TY_W,    TY_W },
-    { "u>>",     OP_RSHIFT,   TY_W, TY_W,    TY_W },
-    { "fnegate", OP_FNEG,     TY_F, TY_NONE, TY_F },
+    { "+",       OP_FADD,     TY_F,   TY_F,    TY_F },
+    { "+",       OP_ADD32,    TY_I32, TY_I32,  TY_I32 },
+    { "-",       OP_SUB,      TY_W,   TY_W,    TY_W },
+    { "-",       OP_ASUB,     TY_W,   TY_A,    TY_A },
+    { "-",       OP_ADIFF,    TY_A,   TY_A,    TY_W },
+    { "-",       OP_FSUB,     TY_F,   TY_F,    TY_F },
+    { "-",       OP_SUB32,    TY_I32, TY_I32,  TY_I32 },
+    { "*",       OP_MUL,      TY_W,   TY_W,    TY_W },
+    { "*",       OP_FMUL,     TY_F,   TY_F,    TY_F },
+    { "*",       OP_MUL32,    TY_I32, TY_I32,  TY_I32 },
+    { "/",       OP_DIV,      TY_W,   TY_W,    TY_W },
+    { "/",       OP_FDIV,     TY_F,   TY_F,    TY_F },
+    { "/",       OP_DIV32,    TY_I32, TY_I32,  TY_I32 },
+    { "mod",     OP_MOD,      TY_W,   TY_W,    TY_W },
+    { "mod",     OP_MOD32,    TY_I32, TY_I32,  TY_I32 },
+    { "u/",      OP_UDIV,     TY_W,   TY_W,    TY_W },
+    { "u/",      OP_UDIV32,   TY_I32, TY_I32,  TY_I32 },
+    { "umod",    OP_UMOD,     TY_W,   TY_W,    TY_W },
+    { "umod",    OP_UMOD32,   TY_I32, TY_I32,  TY_I32 },
+    { "and",     OP_AND,      TY_W,   TY_W,    TY_W },
+    { "and",     OP_AND32,    TY_I32, TY_I32,  TY_I32 },
+    { "or",      OP_OR,       TY_W,   TY_W,    TY_W },
+    { "or",      OP_OR32,     TY_I32, TY_I32,  TY_I32 },
+    { "xor",     OP_XOR,      TY_W,   TY_W,    TY_W },
+    { "xor",     OP_XOR32,    TY_I32, TY_I32,  TY_I32 },
+    { "invert",  OP_INVERT,   TY_W,   TY_NONE, TY_W },
+    { "invert",  OP_INV32,    TY_I32, TY_NONE, TY_I32 },
+    { "<<",      OP_LSHIFT,   TY_W,   TY_W,    TY_W },
+    { "<<",      OP_SHL32,    TY_W,   TY_I32,  TY_I32 },
+    { ">>",      OP_ARSHIFT,  TY_W,   TY_W,    TY_W },
+    { ">>",      OP_ASHR32,   TY_W,   TY_I32,  TY_I32 },
+    { "u>>",     OP_RSHIFT,   TY_W,   TY_W,    TY_W },
+    { "u>>",     OP_RSHR32,   TY_W,   TY_I32,  TY_I32 },
+    { "fnegate", OP_FNEG,     TY_F,   TY_NONE, TY_F },
 
     /* Comparisons */
-    { "==",      OP_EQ,       TY_W, TY_W,    TY_W },
-    { "==",      OP_AEQ,      TY_A, TY_A,    TY_W },
-    { "==",      OP_FEQ,      TY_F, TY_F,    TY_W },
-    { "!=",      OP_NE,       TY_W, TY_W,    TY_W },
-    { "!=",      OP_ANE,      TY_A, TY_A,    TY_W },
-    { "!=",      OP_FNE,      TY_F, TY_F,    TY_W },
-    { "<",       OP_LT,       TY_W, TY_W,    TY_W },
-    { "<",       OP_FLT,      TY_F, TY_F,    TY_W },
-    { ">",       OP_GT,       TY_W, TY_W,    TY_W },
-    { ">",       OP_FGT,      TY_F, TY_F,    TY_W },
-    { "<=",      OP_LE,       TY_W, TY_W,    TY_W },
-    { ">=",      OP_GE,       TY_W, TY_W,    TY_W },
-    { "u<",      OP_ULT,      TY_W, TY_W,    TY_W },
-    { "u<",      OP_ALT,      TY_A, TY_A,    TY_W },
-    { "u>",      OP_UGT,      TY_W, TY_W,    TY_W },
-    { "u>",      OP_AGT,      TY_A, TY_A,    TY_W },
-    { "u<=",     OP_ULE,      TY_W, TY_W,    TY_W },
-    { "u>=",     OP_UGE,      TY_W, TY_W,    TY_W },
+    { "==",      OP_EQ,       TY_W,   TY_W,    TY_W },
+    { "==",      OP_AEQ,      TY_A,   TY_A,    TY_W },
+    { "==",      OP_FEQ,      TY_F,   TY_F,    TY_W },
+    { "==",      OP_EQ32,     TY_I32, TY_I32,  TY_W },
+    { "!=",      OP_NE,       TY_W,   TY_W,    TY_W },
+    { "!=",      OP_ANE,      TY_A,   TY_A,    TY_W },
+    { "!=",      OP_FNE,      TY_F,   TY_F,    TY_W },
+    { "!=",      OP_NE32,     TY_I32, TY_I32,  TY_W },
+    { "<",       OP_LT,       TY_W,   TY_W,    TY_W },
+    { "<",       OP_FLT,      TY_F,   TY_F,    TY_W },
+    { "<",       OP_LT32,     TY_I32, TY_I32,  TY_W },
+    { ">",       OP_GT,       TY_W,   TY_W,    TY_W },
+    { ">",       OP_FGT,      TY_F,   TY_F,    TY_W },
+    { ">",       OP_GT32,     TY_I32, TY_I32,  TY_W },
+    { "<=",      OP_LE,       TY_W,   TY_W,    TY_W },
+    { "<=",      OP_LE32,     TY_I32, TY_I32,  TY_W },
+    { ">=",      OP_GE,       TY_W,   TY_W,    TY_W },
+    { ">=",      OP_GE32,     TY_I32, TY_I32,  TY_W },
+    { "u<",      OP_ULT,      TY_W,   TY_W,    TY_W },
+    { "u<",      OP_ALT,      TY_A,   TY_A,    TY_W },
+    { "u<",      OP_ULT32,    TY_I32, TY_I32,  TY_W },
+    { "u>",      OP_UGT,      TY_W,   TY_W,    TY_W },
+    { "u>",      OP_AGT,      TY_A,   TY_A,    TY_W },
+    { "u>",      OP_UGT32,    TY_I32, TY_I32,  TY_W },
+    { "u<=",     OP_ULE,      TY_W,   TY_W,    TY_W },
+    { "u<=",     OP_ULE32,    TY_I32, TY_I32,  TY_W },
+    { "u>=",     OP_UGE,      TY_W,   TY_W,    TY_W },
+    { "u>=",     OP_UGE32,    TY_I32, TY_I32,  TY_W },
 
     /* Memory load/store */
-    { "@i8",     OP_I8FETCH,  TY_A, TY_NONE, TY_W },
-    { "@u8",     OP_U8FETCH,  TY_A, TY_NONE, TY_W },
-    { "!i8",     OP_I8STORE,  TY_A, TY_W,    TY_NONE },
-    { "@i16",    OP_I16FETCH, TY_A, TY_NONE, TY_W },
-    { "@u16",    OP_U16FETCH, TY_A, TY_NONE, TY_W },
-    { "!i16",    OP_I16STORE, TY_A, TY_W,    TY_NONE },
-    { "@i",      OP_FETCH,    TY_A, TY_NONE, TY_W },
-    { "!i",      OP_STORE,    TY_A, TY_W,    TY_NONE },
-    { "@a",      OP_AFETCH,   TY_A, TY_NONE, TY_A },
-    { "!a",      OP_ASTORE,   TY_A, TY_A,    TY_NONE },
-    { "@f",      OP_FFETCH,   TY_A, TY_NONE, TY_F },
-    { "!f",      OP_FSTORE,   TY_A, TY_F,    TY_NONE },
+    { "@i8",     OP_I8FETCH,  TY_A,   TY_NONE, TY_W },
+    { "@u8",     OP_U8FETCH,  TY_A,   TY_NONE, TY_W },
+    { "!i8",     OP_I8STORE,  TY_A,   TY_W,    TY_NONE },
+    { "@i16",    OP_I16FETCH, TY_A,   TY_NONE, TY_W },
+    { "@u16",    OP_U16FETCH, TY_A,   TY_NONE, TY_W },
+    { "!i16",    OP_I16STORE, TY_A,   TY_W,    TY_NONE },
+    { "@i",      OP_FETCH,    TY_A,   TY_NONE, TY_W },
+    { "!i",      OP_STORE,    TY_A,   TY_W,    TY_NONE },
+    { "@a",      OP_AFETCH,   TY_A,   TY_NONE, TY_A },
+    { "!a",      OP_ASTORE,   TY_A,   TY_A,    TY_NONE },
+    { "@f",      OP_FFETCH,   TY_A,   TY_NONE, TY_F },
+    { "!f",      OP_FSTORE,   TY_A,   TY_F,    TY_NONE },
+    { "@i32",    OP_I32FETCH, TY_A,   TY_NONE, TY_I32 },
+    { "!i32",    OP_I32STORE, TY_A,   TY_I32,  TY_NONE },
 
     /* Type conversions */
-    { "sext",    OP_SEXT,     TY_W, TY_NONE, TY_W },
-    { ":a",      OP_W2A,      TY_W, TY_NONE, TY_A },
-    { ":i",      OP_A2W,      TY_A, TY_NONE, TY_W },
-    { ":f",      OP_W2F,      TY_W, TY_NONE, TY_F },
-    { ":i",      OP_F2W,      TY_F, TY_NONE, TY_W }
+    { "sext",    OP_SEXT,     TY_W,   TY_NONE, TY_W },
+    { ":a",      OP_W2A,      TY_W,   TY_NONE, TY_A },
+    { ":i",      OP_A2W,      TY_A,   TY_NONE, TY_W },
+    { ":f",      OP_W2F,      TY_W,   TY_NONE, TY_F },
+    { ":i",      OP_F2W,      TY_F,   TY_NONE, TY_W },
+    { ":i32",    OP_W2I32,    TY_W,   TY_NONE, TY_I32 },
+    { "u:i32",   OP_U2I32,    TY_W,   TY_NONE, TY_I32 },
+    { ":i",      OP_I322W,    TY_I32, TY_NONE, TY_W },
+    { ":f",      OP_I322F,    TY_I32, TY_NONE, TY_F },
+    { ":i32",    OP_F2I32,    TY_F,   TY_NONE, TY_I32 }
 };
 
 static IrInstr *emit_ir(IrKind kind, WordIR *w) {
@@ -586,11 +621,16 @@ static int handle_builtin(const char *tok, WordIR *w) {
 
             tsp -= need;
             if (builtins[i].out != TY_NONE) tpush(builtins[i].out);
-            if (builtins[i].op == OP_W2A && w->ir_len >= fold_fence + 1) {
+            if ((builtins[i].op == OP_W2A || builtins[i].op == OP_W2I32 || builtins[i].op == OP_U2I32) &&
+                w->ir_len >= fold_fence + 1) {
                 IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
                 if (p1->kind == IR_PUSH_W) {
-                    p1->kind = IR_PUSH_A;
-                    p1->u.a = (u32)p1->u.w;
+                    if (builtins[i].op == OP_W2A) {
+                        p1->kind = IR_PUSH_A;
+                        p1->u.a = (u32)p1->u.w;
+                    } else {
+                        p1->kind = IR_PUSH_I32;
+                    }
                     return 1;
                 }
             }
@@ -1011,20 +1051,23 @@ typedef struct {
 } LabelRef;
 
 static IrOp global_fetch_op(u8 ty) {
-    if (ty == TY_A) return OP_AFETCH;
-    if (ty == TY_F) return OP_FFETCH;
+    if (ty == TY_A)   return OP_AFETCH;
+    if (ty == TY_F)   return OP_FFETCH;
+    if (ty == TY_I32) return OP_I32FETCH;
     return OP_FETCH;
 }
 
 static IrOp global_store_op(u8 ty) {
-    if (ty == TY_A) return OP_ASTORE;
-    if (ty == TY_F) return OP_FSTORE;
+    if (ty == TY_A)   return OP_ASTORE;
+    if (ty == TY_F)   return OP_FSTORE;
+    if (ty == TY_I32) return OP_I32STORE;
     return OP_STORE;
 }
 
 static u16 global_type_bytes(u8 ty) {
-    if (ty == TY_A) return be->addr_bytes;
-    if (ty == TY_F) return be->float_bytes;
+    if (ty == TY_A)   return be->addr_bytes;
+    if (ty == TY_F)   return be->float_bytes;
+    if (ty == TY_I32) return 4;
     return be->word_bytes;
 }
 
@@ -1497,6 +1540,9 @@ static void emit_word(u8 fidx) {
             case IR_PUSH_F:
                 be->push_f(ins->u.f);
                 break;
+            case IR_PUSH_I32:
+                be->push_i32(ins->u.w);
+                break;
             case IR_PUSH_DATA:
                 if (i + 1 < w->ir_len &&
                     ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
@@ -1654,6 +1700,11 @@ static void compile_data(void) {
             if (!has_pending) ir4_die("expected integer before ':i16'");
             if (pending < -32768 || pending > 65535) ir4_die(":i16 value out of range");
             cb_emit_data_u16((u16)(pending & 0xFFFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":i32") == 0) {
+            if (!has_pending) ir4_die("expected integer before ':i32'");
+            cb_emit_data_u16((u16)((u32)pending & 0xFFFFU));
+            cb_emit_data_u16((u16)(((u32)pending >> 16) & 0xFFFFU));
             has_pending = 0;
         } else if (strcmp(tok, ":i") == 0) {
             if (!has_pending) ir4_die("expected integer before ':i'");

@@ -257,45 +257,99 @@ static void a64_int_alu(IrOp op) {
     case OP_AADD:
         emit32(0x8B010000UL); /* ADD X0, X0, X1 */
         break;
+    case OP_ADD32:
+        emit32(0x0B010000UL); /* ADD W0, W0, W1 */
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
+        break;
     case OP_SUB:
     case OP_ASUB:
     case OP_ADIFF:
         emit32(0xCB010000UL); /* SUB X0, X0, X1 */
         break;
+    case OP_SUB32:
+        emit32(0x4B010000UL); /* SUB W0, W0, W1 */
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
+        break;
     case OP_MUL:
         emit32(0x9B017C00UL); /* MUL X0, X0, X1 */
+        break;
+    case OP_MUL32:
+        emit32(0x1B017C00UL); /* MUL W0, W0, W1 */
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
         break;
     case OP_DIV:
         emit32(0x9AC10C00UL); /* SDIV X0, X0, X1 */
         break;
+    case OP_DIV32:
+        emit32(0x1AC10C00UL); /* SDIV W0, W0, W1 */
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
+        break;
     case OP_UDIV:
         emit32(0x9AC10800UL); /* UDIV X0, X0, X1 */
+        break;
+    case OP_UDIV32:
+        emit32(0x1AC10800UL); /* UDIV W0, W0, W1 */
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
         break;
     case OP_MOD:
         emit32(0x9AC10C02UL);
         emit32(0x9B018040UL);
         break;
+    case OP_MOD32:
+        emit32(0x1AC10C02UL);
+        emit32(0x1B018040UL);
+        emit32(0x93407C00UL);
+        break;
     case OP_UMOD:
         emit32(0x9AC10802UL);
         emit32(0x9B018040UL);
         break;
+    case OP_UMOD32:
+        emit32(0x1AC10802UL);
+        emit32(0x1B018040UL);
+        emit32(0x93407C00UL);
+        break;
     case OP_AND:
         emit32(0x8A010000UL); /* AND X0, X0, X1 */
+        break;
+    case OP_AND32:
+        emit32(0x0A010000UL);
+        emit32(0x93407C00UL);
         break;
     case OP_OR:
         emit32(0xAA010000UL); /* ORR X0, X0, X1 */
         break;
+    case OP_OR32:
+        emit32(0x2A010000UL);
+        emit32(0x93407C00UL);
+        break;
     case OP_XOR:
         emit32(0xCA010000UL); /* EOR X0, X0, X1 */
+        break;
+    case OP_XOR32:
+        emit32(0x4A010000UL);
+        emit32(0x93407C00UL);
         break;
     case OP_LSHIFT:
         emit32(0x9AC12000UL); /* LSLV X0, X0, X1 */
         break;
+    case OP_SHL32:
+        emit32(0x1AC12000UL);
+        emit32(0x93407C00UL);
+        break;
     case OP_RSHIFT:
         emit32(0x9AC12400UL); /* LSRV X0, X0, X1 */
         break;
+    case OP_RSHR32:
+        emit32(0x1AC12400UL);
+        emit32(0x93407C00UL);
+        break;
     case OP_ARSHIFT:
         emit32(0x9AC12800UL); /* ASRV X0, X0, X1 */
+        break;
+    case OP_ASHR32:
+        emit32(0x1AC12800UL);
+        emit32(0x93407C00UL);
         break;
     default:
         ir4_die("unimplemented ARM64 ALU op");
@@ -306,31 +360,31 @@ static void a64_int_alu(IrOp op) {
 
 static u32 a64_cmp_cond(IrOp op) {
     switch (op) {
-    case OP_EQ:
+    case OP_EQ: case OP_EQ32:
     case OP_AEQ:  return 0x0;
-    case OP_NE:
+    case OP_NE: case OP_NE32:
     case OP_ANE:  return 0x1;
-    case OP_LT:   return 0xB;
-    case OP_GE:   return 0xA;
-    case OP_GT:   return 0xC;
-    case OP_LE:   return 0xD;
-    case OP_ULT:
+    case OP_LT: case OP_LT32:   return 0xB;
+    case OP_GE: case OP_GE32:   return 0xA;
+    case OP_GT: case OP_GT32:   return 0xC;
+    case OP_LE: case OP_LE32:   return 0xD;
+    case OP_ULT: case OP_ULT32:
     case OP_ALT:  return 0x3;
-    case OP_UGE:  return 0x2;
-    case OP_UGT:
+    case OP_UGE: case OP_UGE32: return 0x2;
+    case OP_UGT: case OP_UGT32:
     case OP_AGT:  return 0x8;
-    case OP_ULE:  return 0x9;
+    case OP_ULE: case OP_ULE32: return 0x9;
     default:
         ir4_die("unimplemented ARM64 comparison op");
         return 0;
     }
 }
 
-static void a64_int_cmp(IrOp op) {
+static void a64_int_cmp(IrOp op, int is32) {
     u32 cond = a64_cmp_cond(op);
     pop_x1();
     pop_x0();
-    emit32(0xEB01001FUL); /* CMP X0, X1 */
+    emit32(is32 ? 0x6B01001FUL : 0xEB01001FUL); /* CMP W0,W1 / X0,X1 */
     emit32(0xDA9F03E0UL | ((cond ^ 1UL) << 12)); /* CSETM X0, cond */
     push_x0();
 }
@@ -349,6 +403,8 @@ static int a64_mem_imm(IrOp op, i32 off) {
     case OP_I16FETCH: sz = 2; unscaled_op = 0x78800000UL; scaled_op = 0x79800000UL; break;
     case OP_SI16STORE: swapped = 1; /* fall through */
     case OP_I16STORE: sz = 2; unscaled_op = 0x78000001UL; scaled_op = 0x79000001UL; is_store = 1; break;
+    case OP_I32FETCH: sz = 4; unscaled_op = 0xB8800000UL; scaled_op = 0xB9800000UL; break;
+    case OP_I32STORE: sz = 4; unscaled_op = 0xB8000001UL; scaled_op = 0xB9000001UL; is_store = 1; break;
     case OP_FETCH:
     case OP_AFETCH:
     case OP_FFETCH:   sz = 8; unscaled_op = 0xF8400000UL; scaled_op = 0xF9400000UL; break;
@@ -386,16 +442,25 @@ static int a64_mem_imm(IrOp op, i32 off) {
 
 static void a64_op(IrOp op) {
     switch (op) {
-    case OP_ADD: case OP_AADD:
-    case OP_SUB: case OP_ASUB: case OP_ADIFF:
+    case OP_ADD: case OP_AADD: case OP_ADD32:
+    case OP_SUB: case OP_ASUB: case OP_ADIFF: case OP_SUB32:
     case OP_MUL: case OP_DIV: case OP_UDIV: case OP_MOD: case OP_UMOD:
+    case OP_MUL32: case OP_DIV32: case OP_UDIV32: case OP_MOD32: case OP_UMOD32:
     case OP_AND: case OP_OR: case OP_XOR:
+    case OP_AND32: case OP_OR32: case OP_XOR32:
     case OP_LSHIFT: case OP_RSHIFT: case OP_ARSHIFT:
+    case OP_SHL32: case OP_RSHR32: case OP_ASHR32:
         a64_int_alu(op);
         break;
     case OP_INVERT:
         pop_x0();
         emit32(0xAA2003E0UL); /* MVN X0, X0 */
+        push_x0();
+        break;
+    case OP_INV32:
+        pop_x0();
+        emit32(0x2A2003E0UL); /* MVN W0, W0 */
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
         push_x0();
         break;
     case OP_FNEG:
@@ -419,7 +484,12 @@ static void a64_op(IrOp op) {
     case OP_NE: case OP_ANE:
     case OP_LT: case OP_GE: case OP_GT: case OP_LE:
     case OP_ULT: case OP_ALT: case OP_UGE: case OP_UGT: case OP_AGT: case OP_ULE:
-        a64_int_cmp(op);
+        a64_int_cmp(op, 0);
+        break;
+    case OP_EQ32: case OP_NE32:
+    case OP_LT32: case OP_GE32: case OP_GT32: case OP_LE32:
+    case OP_ULT32: case OP_UGE32: case OP_UGT32: case OP_ULE32:
+        a64_int_cmp(op, 1);
         break;
     case OP_FEQ:
     case OP_FNE:
@@ -450,6 +520,8 @@ static void a64_op(IrOp op) {
     case OP_SSTORE:
     case OP_SASTORE:
     case OP_SFSTORE:
+    case OP_I32FETCH:
+    case OP_I32STORE:
         a64_mem_imm(op, 0);
         break;
     case OP_SEXT:
@@ -469,6 +541,28 @@ static void a64_op(IrOp op) {
     case OP_F2W:
         pop_d0();
         emit32(0x9E780000UL); /* FCVTZS X0, D0 */
+        push_x0();
+        break;
+    case OP_W2I32:
+    case OP_I322W:
+        pop_x0();
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
+        push_x0();
+        break;
+    case OP_U2I32:
+        pop_x0();
+        emit32(0x2A0003E0UL); /* MOV W0, W0 (zero-extend 32->64) */
+        push_x0();
+        break;
+    case OP_I322F:
+        pop_x0();
+        emit32(0x1E620000UL); /* SCVTF D0, W0 */
+        push_d0();
+        break;
+    case OP_F2I32:
+        pop_d0();
+        emit32(0x1E780000UL); /* FCVTZS W0, D0 */
+        emit32(0x93407C00UL); /* SXTW X0, W0 */
         push_x0();
         break;
     }
@@ -557,6 +651,7 @@ const Backend be_arm64 = {
     a64_push_w,
     a64_push_a,
     a64_push_f,
+    a64_push_w,
     a64_push_data,
     a64_local_op,
     a64_stack_op,

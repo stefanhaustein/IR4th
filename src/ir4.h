@@ -36,7 +36,8 @@ typedef enum {
     TY_NONE = 0,
     TY_W,
     TY_A,
-    TY_F
+    TY_F,
+    TY_I32
 } StackType;
 
 /* Stack operations */
@@ -84,6 +85,20 @@ typedef enum {
     OP_FMUL,
     OP_FDIV,
     OP_FNEG,
+    OP_ADD32,
+    OP_SUB32,
+    OP_MUL32,
+    OP_DIV32,
+    OP_MOD32,
+    OP_UDIV32,
+    OP_UMOD32,
+    OP_AND32,
+    OP_OR32,
+    OP_XOR32,
+    OP_INV32,
+    OP_SHL32,
+    OP_ASHR32,
+    OP_RSHR32,
 
     OP_EQ,
     OP_NE,
@@ -103,6 +118,16 @@ typedef enum {
     OP_FNE,
     OP_FLT,
     OP_FGT,
+    OP_EQ32,
+    OP_NE32,
+    OP_LT32,
+    OP_GT32,
+    OP_LE32,
+    OP_GE32,
+    OP_ULT32,
+    OP_UGT32,
+    OP_ULE32,
+    OP_UGE32,
 
     OP_I8FETCH,
     OP_U8FETCH,
@@ -116,6 +141,8 @@ typedef enum {
     OP_ASTORE,
     OP_FFETCH,
     OP_FSTORE,
+    OP_I32FETCH,
+    OP_I32STORE,
 
     OP_SI8STORE,
     OP_SI16STORE,
@@ -127,7 +154,12 @@ typedef enum {
     OP_W2A,
     OP_A2W,
     OP_W2F,
-    OP_F2W
+    OP_F2W,
+    OP_W2I32,
+    OP_U2I32,
+    OP_I322W,
+    OP_I322F,
+    OP_F2I32
 } IrOp;
 
 typedef struct {
@@ -168,6 +200,7 @@ typedef struct {
     void (*push_w)(i32 val);
     void (*push_a)(u32 val);
     void (*push_f)(double val);
+    void (*push_i32)(i32 val);
     void (*push_data)(u16 data_offset);
     void (*local_op)(LocalOp op, u8 slot, StackType type, u16 stack_bytes);
 
