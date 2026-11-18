@@ -66,7 +66,7 @@ static void ensure_big_alloc(void) {
     }
 }
 
-u16 be_6502_stack_data_off(void) {
+size_t be_6502_stack_data_off(void) {
     if (stack_zp_base != 0) {
         return (u16)stack_zp_base;
     }
@@ -116,7 +116,7 @@ static void m6502_lsr_stk(u8 d) { emit_stack_op(0x5E, d); }
 static void m6502_ror_stk(u8 d) { emit_stack_op(0x7E, d); }
 
 /* --- Backend Interface Implementation --- */
-static u16 m6502_cur_addr(void) { return cb_cur_addr(); }
+static size_t m6502_cur_addr(void) { return cb_cur_addr(); }
 
 VEC_OF(U16Vec, u16);
 VEC_OF(U8Vec, u8);
@@ -138,7 +138,7 @@ static void m6502_emit_local_store(u16 off) {
 }
 
 static void m6502_fn_begin(const char *name, size_t param_cnt, const LocalVar *locals,
-                           size_t total_locals, u8 is_recursive) {
+                           size_t total_locals, Bool is_recursive) {
     size_t i;
     (void)name;
 
@@ -287,18 +287,18 @@ static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, size_t tota
     emit8(M6502_RTS);
 }
 
-static void m6502_call(u16 target_addr) { emit8_16(M6502_JSR, target_addr); }
+static void m6502_call(size_t target_addr) { emit8_16(M6502_JSR, (u16)target_addr); }
 
 static void m6502_call_extern(const FuncSig *sig) {
-    u8 i;
+    size_t i;
     u8 has_a = 0, has_x = 0, has_y = 0;
     if (!sig->has_addr)
         ir4_die("6502 extern requires a fixed address");
-    if (sig->out_count > 1)
+    if (sig->out_types.len > 1)
         ir4_die("6502 extern supports at most 1 return value");
 
-    for (i = sig->in_count; i > 0; i--) {
-        const char *r = sig->in_regs[i - 1];
+    for (i = sig->in_types.len; i > 0; i--) {
+        const char *r = sig->in_regs.data[i - 1];
         m6502_lda_stk(0);
         if (strcmp(r, "A") == 0) {
             emit8_8(M6502_STA_ZP, zp_scratch);
@@ -328,7 +328,7 @@ static void m6502_call_extern(const FuncSig *sig) {
 
     emit8_16(M6502_JSR, sig->addr);
 
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         const char *r = sig->out_reg;
         if (strcmp(r, "X") == 0) {
             emit8(M6502_TXA);
@@ -413,7 +413,7 @@ static void m6502_push_i32(i32 val) {
     }
 }
 
-static void m6502_push_data(u16 offset) {
+static void m6502_push_data(size_t offset) {
     u16 lo_pos, hi_pos;
     emit8(M6502_DEX);
     emit8(M6502_DEX);
@@ -428,7 +428,7 @@ static void m6502_push_data(u16 offset) {
     cb_add_data_reloc_split(lo_pos, hi_pos, offset);
 }
 
-static void m6502_local_get(size_t slot, u8 type, u16 stack_bytes) {
+static void m6502_local_get(size_t slot, StackType type, u16 stack_bytes) {
     u16 off = m6502_local_off.data[slot];
     u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
     u8 b;
@@ -451,7 +451,7 @@ static void m6502_local_get(size_t slot, u8 type, u16 stack_bytes) {
     }
 }
 
-static void m6502_local_set(size_t slot, u8 type, u16 stack_bytes) {
+static void m6502_local_set(size_t slot, StackType type, u16 stack_bytes) {
     u16 off = m6502_local_off.data[slot];
     u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
     u8 b;
@@ -509,13 +509,13 @@ static void m6502_local_addr(size_t slot) {
     cb_add_data_reloc_split(lo_pos, hi_pos, (u16)(locals_data_off + m6502_local_off.data[slot]));
 }
 
-static void m6502_local_op(LocalOp op, size_t slot, StackType type, u16 stack_bytes) {
+static void m6502_local_op(LocalOp op, size_t slot, StackType type, size_t stack_bytes) {
     if (op == LOCAL_GET)
-        m6502_local_get(slot, (u8)type, stack_bytes);
+        m6502_local_get(slot, type, (u16)stack_bytes);
     else if (op == LOCAL_ADDR)
         m6502_local_addr(slot);
     else
-        m6502_local_set(slot, (u8)type, stack_bytes);
+        m6502_local_set(slot, type, (u16)stack_bytes);
 }
 
 static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {
@@ -905,7 +905,7 @@ static void emit_data_abs(u8 opcode, u16 data_offset) {
     emit16(0x0000);
 }
 
-static int m6502_data_mem(IrOp op, u16 data_offset) {
+static int m6502_data_mem(IrOp op, size_t data_offset) {
     switch (op) {
     case OP_U8FETCH:
         emit8(M6502_DEX);
@@ -1616,14 +1616,14 @@ static void m6502_op(IrOp op) {
     }
 }
 
-static int m6502_local_mem(size_t slot, i32 off, IrOp op, u16 stack_bytes) {
+static int m6502_local_mem(size_t slot, i32 off, IrOp op, size_t stack_bytes) {
     (void)stack_bytes;
     if (!m6502_static_frame)
         return 0;
     return m6502_data_mem(op, (u16)(m6502_static_base + m6502_local_off.data[slot] + off));
 }
 
-static u16 m6502_emit_br_fwd(BranchCond cond) {
+static size_t m6502_emit_br_fwd(BranchCond cond) {
     u16 patch_pos;
     if (cond == BR_JZ) {
         m6502_lda_stk(0);
@@ -1640,7 +1640,7 @@ static u16 m6502_emit_br_fwd(BranchCond cond) {
     return patch_pos;
 }
 
-static void m6502_emit_br_back(BranchCond cond, u16 target_addr) {
+static void m6502_emit_br_back(BranchCond cond, size_t target_addr) {
     if (cond == BR_JZ) {
         m6502_lda_stk(0);
         m6502_ora_stk(1);
@@ -1653,7 +1653,7 @@ static void m6502_emit_br_back(BranchCond cond, u16 target_addr) {
     emit8_16(M6502_JMP, target_addr);
 }
 
-static void m6502_patch_fwd(u16 patch_offset) { patch16(patch_offset, cb_cur_addr()); }
+static void m6502_patch_fwd(size_t patch_offset) { patch16(patch_offset, (u16)cb_cur_addr()); }
 
 static int m6502_add_imm(i32 imm) {
     u16 d = (u16)(i16)imm;
@@ -1718,13 +1718,13 @@ static int m6502_shift_imm(IrOp op, u8 count) {
     return 1;
 }
 
-static void m6502_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
+static void m6502_patch_call(size_t call_pc, size_t call_addr, size_t target_addr) {
     (void)call_addr;
-    patch16((u16)(call_pc + 1), target_addr);
+    patch16(call_pc + 1, (u16)target_addr);
 }
 
-static u16 m6502_push_fn(u16 target_addr) {
-    u16 pc;
+static size_t m6502_push_fn(size_t target_addr) {
+    size_t pc;
     emit8(M6502_DEX);
     emit8(M6502_DEX);
     pc = cb_pc();
@@ -1735,7 +1735,7 @@ static u16 m6502_push_fn(u16 target_addr) {
     return pc;
 }
 
-static void m6502_patch_fn(u16 patch_pc, u16 patch_addr, u16 target_addr) {
+static void m6502_patch_fn(size_t patch_pc, size_t patch_addr, size_t target_addr) {
     u16 sta_len = (stack_zp_base != 0) ? 2 : 3;
     (void)patch_addr;
     patch8((u16)(patch_pc + 1), (u8)(target_addr & 0xFF));

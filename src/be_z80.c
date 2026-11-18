@@ -21,7 +21,7 @@ static u16 z80_local_bytes = 0;
 static u16 z80_last_push_pc = 0;
 static u8 z80_last_push_op = 0;
 
-static u8 z80_type_bytes(u8 t) {
+static u8 z80_type_bytes(StackType t) {
     if (t == TY_F)
         return 6;
     if (t == TY_I32)
@@ -94,7 +94,7 @@ static void z80_neg_de(void) {
 }
 
 /* --- Backend Interface Implementation --- */
-static u16 z80_cur_addr(void) {
+static size_t z80_cur_addr(void) {
     z80_peep_barrier();
     return cb_cur_addr();
 }
@@ -103,7 +103,7 @@ static U8Vec z80_is_static_slot;
 static u16 z80_static_base = 0;
 
 static void z80_fn_begin(const char *name, size_t param_cnt, const LocalVar *locals,
-                         size_t total_locals, u8 is_recursive) {
+                         size_t total_locals, Bool is_recursive) {
     size_t i;
     u16 off = 0;
     (void)name;
@@ -206,18 +206,18 @@ static void z80_fn_begin(const char *name, size_t param_cnt, const LocalVar *loc
 }
 
 static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_locals) {
-    u8 i;
+    size_t i;
     u16 param_bytes = 0;
     u16 out_bytes = 0;
     u8 out_words;
     (void)locals;
     (void)total_locals;
 
-    for (i = 0; i < sig->in_count; i++) {
-        param_bytes += z80_type_bytes(sig->in_types[i]);
+    for (i = 0; i < sig->in_types.len; i++) {
+        param_bytes += z80_type_bytes(sig->in_types.data[i]);
     }
-    for (i = 0; i < sig->out_count; i++) {
-        out_bytes += z80_type_bytes(sig->out_types[i]);
+    for (i = 0; i < sig->out_types.len; i++) {
+        out_bytes += z80_type_bytes(sig->out_types.data[i]);
     }
     out_words = (u8)(out_bytes / 2);
     if (out_words > 4)
@@ -274,22 +274,22 @@ static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_
     emit8(Z80_JP_HL);
 }
 
-static void z80_call(u16 target_addr) { emit8_16(Z80_CALL, target_addr); }
+static void z80_call(size_t target_addr) { emit8_16(Z80_CALL, (u16)target_addr); }
 
 static void z80_call_extern(const FuncSig *sig) {
     u8 used_bc = 0;
     u8 used_de = 0;
     u8 used_hl = 0;
-    u8 i;
+    size_t i;
 
     if (!sig->has_addr)
         ir4_die("Z80 extern requires a fixed address");
-    if (sig->out_count > 1)
+    if (sig->out_types.len > 1)
         ir4_die("Z80 extern supports at most 1 return value");
 
     z80_peep_barrier();
-    for (i = sig->in_count; i > 0; i--) {
-        const char *r = sig->in_regs[i - 1];
+    for (i = sig->in_types.len; i > 0; i--) {
+        const char *r = sig->in_regs.data[i - 1];
         if (strcmp(r, "BC") == 0 || strcmp(r, "C") == 0) {
             emit8(Z80_POP_BC);
             used_bc = 1;
@@ -332,7 +332,7 @@ static void z80_call_extern(const FuncSig *sig) {
 
     emit8_16(Z80_CALL, sig->addr);
 
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         const char *r = sig->out_reg;
         if (strcmp(r, "HL") == 0) {
             z80_push(Z80_PUSH_HL);
@@ -430,14 +430,14 @@ static void z80_push_i32(i32 val) {
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_push_data(u16 offset) {
+static void z80_push_data(size_t offset) {
     emit8(Z80_LD_HL_NN);
     cb_add_data_reloc(cb_pc(), offset);
     emit16(0x0000);
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_local_get(size_t slot, u8 type, u16 stack_bytes) {
+static void z80_local_get(size_t slot, StackType type, u16 stack_bytes) {
     u16 off;
     if (z80_is_static_slot.data[slot]) {
         u16 addr_off = (u16)(z80_static_base + z80_local_off.data[slot]);
@@ -487,7 +487,7 @@ static void z80_local_get(size_t slot, u8 type, u16 stack_bytes) {
     }
 }
 
-static void z80_local_set(size_t slot, u8 type, u16 stack_bytes) {
+static void z80_local_set(size_t slot, StackType type, u16 stack_bytes) {
     u16 off;
     if (z80_is_static_slot.data[slot]) {
         u16 addr_off = (u16)(z80_static_base + z80_local_off.data[slot]);
@@ -561,13 +561,13 @@ static void z80_local_addr(size_t slot, u16 stack_bytes) {
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_local_op(LocalOp op, size_t slot, StackType type, u16 stack_bytes) {
+static void z80_local_op(LocalOp op, size_t slot, StackType type, size_t stack_bytes) {
     if (op == LOCAL_GET)
-        z80_local_get(slot, (u8)type, stack_bytes);
+        z80_local_get(slot, type, (u16)stack_bytes);
     else if (op == LOCAL_ADDR)
-        z80_local_addr(slot, stack_bytes);
+        z80_local_addr(slot, (u16)stack_bytes);
     else
-        z80_local_set(slot, (u8)type, stack_bytes);
+        z80_local_set(slot, type, (u16)stack_bytes);
 }
 
 static void z80_pop_any(StackType t) {
@@ -944,7 +944,7 @@ static void z80_int_cmp(IrOp op) {
     z80_push(Z80_PUSH_HL);
 }
 
-static int z80_data_mem(IrOp op, u16 data_offset) {
+static int z80_data_mem(IrOp op, size_t data_offset) {
     switch (op) {
     case OP_U8FETCH:
         emit8(0x3A);
@@ -1496,14 +1496,14 @@ static void z80_op(IrOp op) {
     }
 }
 
-static int z80_local_mem(size_t slot, i32 off, IrOp op, u16 stack_bytes) {
+static int z80_local_mem(size_t slot, i32 off, IrOp op, size_t stack_bytes) {
     (void)stack_bytes;
     if (!z80_is_static_slot.data[slot])
         return 0;
     return z80_data_mem(op, (u16)(z80_static_base + z80_local_off.data[slot] + off));
 }
 
-static u16 z80_emit_br_fwd(BranchCond cond) {
+static size_t z80_emit_br_fwd(BranchCond cond) {
     u16 patch_pos;
     if (cond == BR_JZ) {
         z80_pop(Z80_POP_HL);
@@ -1518,7 +1518,7 @@ static u16 z80_emit_br_fwd(BranchCond cond) {
     return patch_pos;
 }
 
-static void z80_emit_br_back(BranchCond cond, u16 target_addr) {
+static void z80_emit_br_back(BranchCond cond, size_t target_addr) {
     if (cond == BR_JZ) {
         z80_pop(Z80_POP_HL);
         emit8(Z80_LD_A_H);
@@ -1529,7 +1529,7 @@ static void z80_emit_br_back(BranchCond cond, u16 target_addr) {
     }
 }
 
-static void z80_patch_fwd(u16 patch_offset) {
+static void z80_patch_fwd(size_t patch_offset) {
     z80_peep_barrier();
     patch16(patch_offset, cb_cur_addr());
 }
@@ -1611,21 +1611,21 @@ static int z80_shift_imm(IrOp op, u8 count) {
     return 1;
 }
 
-static void z80_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
+static void z80_patch_call(size_t call_pc, size_t call_addr, size_t target_addr) {
     (void)call_addr;
-    patch16((u16)(call_pc + 1), target_addr);
+    patch16(call_pc + 1, (u16)target_addr);
 }
 
-static u16 z80_push_fn(u16 target_addr) {
-    u16 pc = cb_pc();
-    emit8_16(Z80_LD_HL_NN, target_addr);
+static size_t z80_push_fn(size_t target_addr) {
+    size_t pc = cb_pc();
+    emit8_16(Z80_LD_HL_NN, (u16)target_addr);
     z80_push(Z80_PUSH_HL);
     return pc;
 }
 
-static void z80_patch_fn(u16 patch_pc, u16 patch_addr, u16 target_addr) {
+static void z80_patch_fn(size_t patch_pc, size_t patch_addr, size_t target_addr) {
     (void)patch_addr;
-    patch16((u16)(patch_pc + 1), target_addr);
+    patch16(patch_pc + 1, (u16)target_addr);
 }
 
 static void z80_icall(void) {

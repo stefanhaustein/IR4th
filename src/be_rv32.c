@@ -134,13 +134,13 @@ static void pop_reg(u32 reg) {
 }
 
 /* --- Backend Interface --- */
-static u16 rv_cur_addr(void) { return cb_cur_addr(); }
+static size_t rv_cur_addr(void) { return cb_cur_addr(); }
 
 VEC_OF(I32Vec, i32);
 static I32Vec rv_local_off;
 
 static void rv_fn_begin(const char *name, size_t param_cnt, const LocalVar *locals,
-                        size_t total_locals, u8 is_recursive) {
+                        size_t total_locals, Bool is_recursive) {
     size_t i;
     i32 cur_off = 0;
     (void)name;
@@ -195,7 +195,7 @@ static void rv_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_l
     emit32(enc_i(0, RV_RA, 0, RV_ZERO, 0x67UL)); /* JALR x0, 0(ra) */
 }
 
-static void rv_call(u16 target_addr) {
+static void rv_call(size_t target_addr) {
     i32 diff = (i32)target_addr - (i32)cb_cur_addr();
     emit32(enc_j(diff, RV_RA));
 }
@@ -208,12 +208,12 @@ static void rv_emit_extern_call(const char *name) {
 }
 
 static void rv_call_extern(const FuncSig *sig) {
-    u8 i;
-    if (sig->in_count > 8 || sig->out_count > 1) {
+    size_t i;
+    if (sig->in_types.len > 8 || sig->out_types.len > 1) {
         ir4_die("RV32 extern supports at most 8 args and 1 return");
     }
 
-    for (i = sig->in_count; i > 0; i--) {
+    for (i = sig->in_types.len; i > 0; i--) {
         pop_reg(RV_A0 + (u32)(i - 1));
     }
 
@@ -224,7 +224,7 @@ static void rv_call_extern(const FuncSig *sig) {
         rv_emit_extern_call(sig->name);
     }
 
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         push_reg(RV_A0);
     }
 }
@@ -245,7 +245,7 @@ static void rv_push_f(double val) {
     push_reg(RV_T0);
 }
 
-static void rv_push_data(u16 offset) {
+static void rv_push_data(size_t offset) {
     if (offset <= 2047) {
         rv_addi(RV_T0, RV_DB, (i32)offset);
     } else {
@@ -255,7 +255,7 @@ static void rv_push_data(u16 offset) {
     push_reg(RV_T0);
 }
 
-static void rv_local_op(LocalOp op, size_t slot, StackType type, u16 stack_bytes) {
+static void rv_local_op(LocalOp op, size_t slot, StackType type, size_t stack_bytes) {
     i32 off = rv_local_off.data[slot];
     (void)type;
     (void)stack_bytes;
@@ -704,7 +704,7 @@ static void rv_op(IrOp op) {
     }
 }
 
-static u16 rv_emit_br_fwd(BranchCond cond) {
+static size_t rv_emit_br_fwd(BranchCond cond) {
     u16 pos;
     if (cond == BR_JZ) {
         pop_reg(RV_T0);
@@ -715,7 +715,7 @@ static u16 rv_emit_br_fwd(BranchCond cond) {
     return pos;
 }
 
-static void rv_emit_br_back(BranchCond cond, u16 target_addr) {
+static void rv_emit_br_back(BranchCond cond, size_t target_addr) {
     i32 diff;
     if (cond == BR_JZ) {
         pop_reg(RV_T0);
@@ -733,7 +733,7 @@ static void rv_emit_br_back(BranchCond cond, u16 target_addr) {
     }
 }
 
-static void rv_patch_fwd(u16 patch_offset) {
+static void rv_patch_fwd(size_t patch_offset) {
     i32 diff = (i32)cb_pc() - (i32)patch_offset;
     patch32(patch_offset, enc_j(diff, RV_ZERO));
 }
@@ -823,13 +823,13 @@ static int rv_shift_imm(IrOp op, u8 count) {
     return 1;
 }
 
-static void rv_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
+static void rv_patch_call(size_t call_pc, size_t call_addr, size_t target_addr) {
     i32 diff = (i32)target_addr - (i32)call_addr;
     patch32(call_pc, enc_j(diff, RV_RA));
 }
 
-static u16 rv_push_fn(u16 target_addr) {
-    u16 pc = cb_pc();
+static size_t rv_push_fn(size_t target_addr) {
+    size_t pc = cb_pc();
     i32 diff = (i32)target_addr - (i32)cb_cur_addr();
     u32 hi = (u32)((diff + 0x800) & 0xFFFFF000L);
     i32 lo = diff - (i32)hi;
@@ -839,12 +839,12 @@ static u16 rv_push_fn(u16 target_addr) {
     return pc;
 }
 
-static void rv_patch_fn(u16 patch_pc, u16 patch_addr, u16 target_addr) {
+static void rv_patch_fn(size_t patch_pc, size_t patch_addr, size_t target_addr) {
     i32 diff = (i32)target_addr - (i32)patch_addr;
     u32 hi = (u32)((diff + 0x800) & 0xFFFFF000L);
     i32 lo = diff - (i32)hi;
     patch32(patch_pc, enc_u(hi, RV_T0, 0x17UL));
-    patch32((u16)(patch_pc + 4), enc_i(lo, RV_T0, 0, RV_T0, 0x13UL));
+    patch32(patch_pc + 4, enc_i(lo, RV_T0, 0, RV_T0, 0x13UL));
 }
 
 static void rv_icall(void) {

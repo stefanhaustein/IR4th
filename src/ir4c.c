@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
     const char *in_path = NULL;
     const char *out_path = "out.bin";
     const char *platform = NULL;
-    u16 base = 0x0100;
+    size_t base = 0x0100;
     int target_set = 0;
     int base_set = 0;
     int i;
@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
             }
         } else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
             i++;
-            base = (u16)strtoul(argv[i], NULL, 0);
+            base = (size_t)strtoul(argv[i], NULL, 0);
             base_set = 1;
         } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             i++;
@@ -175,8 +175,8 @@ int main(int argc, char **argv) {
     }
     fclose(out_fp);
 
-    printf("Compiled %s -> %s (target: %s, base: 0x%04X, size: %u bytes)\n", in_path, out_path,
-           be->name, base, cb_pc());
+    printf("Compiled %s -> %s (target: %s, base: 0x%04lX, size: %lu bytes)\n", in_path, out_path,
+           be->name, (unsigned long)base, (unsigned long)cb_pc());
 
     if (plat && plat->run) {
         int main_idx = ir4_find_func("main");
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%s requires a 'main' function\n", plat->flag);
             return 1;
         }
-        plat->run((u8)main_idx);
+        plat->run((size_t)main_idx);
     }
 
     return 0;

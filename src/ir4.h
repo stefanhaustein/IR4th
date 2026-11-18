@@ -12,8 +12,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "vec.h"
 
 typedef unsigned char u8;
+typedef int Bool;
+#ifndef true
+#define false 0
+#define true 1
+#endif
 typedef signed char i8;
 typedef unsigned short u16;
 typedef signed short i16;
@@ -139,26 +145,27 @@ typedef enum {
 
 typedef struct {
     const char *name;
-    u8 type;
+    StackType type;
     size_t slot;
-    u16 size;
+    size_t size;
 } LocalVar;
+
+VEC_OF(TypeVec, StackType);
+VEC_OF(StrVec, const char *);
 
 typedef struct {
     const char *name;
-    u16 addr;
-    u8 is_extern;
-    u8 is_defined;
-    u8 is_default;
-    u8 has_addr;
-    u8 is_recursive;
+    size_t addr;
+    Bool is_extern;
+    Bool is_defined;
+    Bool is_default;
+    Bool has_addr;
+    Bool is_recursive;
     u16 req_group;
-    u8 in_types[8];
-    const char *in_regs[8];
-    u8 in_count;
-    u8 out_types[4];
+    TypeVec in_types;
+    StrVec in_regs;
+    TypeVec out_types;
     const char *out_reg;
-    u8 out_count;
 } FuncSig;
 
 /* Backend code-generation interface implemented by each target (be_*.c). */
@@ -168,19 +175,19 @@ typedef struct {
     u8 addr_bytes;
     u8 float_bytes;
 
-    u16 (*cur_addr)(void);
+    size_t (*cur_addr)(void);
     void (*fn_begin)(const char *name, size_t param_cnt, const LocalVar *locals,
-                     size_t total_locals, u8 is_recursive);
+                     size_t total_locals, Bool is_recursive);
     void (*fn_end)(const FuncSig *sig, const LocalVar *locals, size_t total_locals);
-    void (*call)(u16 target_addr);
+    void (*call)(size_t target_addr);
     void (*call_extern)(const FuncSig *sig);
 
     void (*push_w)(i32 val);
     void (*push_a)(u32 val);
     void (*push_f)(double val);
     void (*push_i32)(i32 val);
-    void (*push_data)(u16 data_offset);
-    void (*local_op)(LocalOp op, size_t slot, StackType type, u16 stack_bytes);
+    void (*push_data)(size_t data_offset);
+    void (*local_op)(LocalOp op, size_t slot, StackType type, size_t stack_bytes);
 
     void (*stack_op)(StackOp op, StackType t1, StackType t2);
     void (*op)(IrOp op);
@@ -188,17 +195,17 @@ typedef struct {
     int (*cmp_imm)(IrOp op, i32 imm);
     int (*shift_imm)(IrOp op, u8 count);
     int (*mem_imm)(IrOp op, i32 off);
-    int (*data_mem)(IrOp op, u16 data_offset);
-    int (*local_mem)(size_t slot, i32 off, IrOp op, u16 stack_bytes);
+    int (*data_mem)(IrOp op, size_t data_offset);
+    int (*local_mem)(size_t slot, i32 off, IrOp op, size_t stack_bytes);
 
-    u16 (*emit_br_fwd)(BranchCond cond);
-    void (*emit_br_back)(BranchCond cond, u16 target_addr);
-    void (*patch_fwd)(u16 patch_offset);
-    void (*patch_call)(u16 call_pc, u16 call_addr, u16 target_addr);
-    u16 (*push_fn)(u16 target_addr);
-    void (*patch_fn)(u16 patch_pc, u16 patch_addr, u16 target_addr);
+    size_t (*emit_br_fwd)(BranchCond cond);
+    void (*emit_br_back)(BranchCond cond, size_t target_addr);
+    void (*patch_fwd)(size_t patch_offset);
+    void (*patch_call)(size_t call_pc, size_t call_addr, size_t target_addr);
+    size_t (*push_fn)(size_t target_addr);
+    void (*patch_fn)(size_t patch_pc, size_t patch_addr, size_t target_addr);
     void (*icall)(void);
-    u16 (*stack_data_off)(void);
+    size_t (*stack_data_off)(void);
 } Backend;
 
 /* Error reporting (implemented in frontend.c) */
@@ -208,13 +215,13 @@ void ir4_die(const char *msg);
 typedef struct {
     const char *flag;
     const Backend *be;
-    u16 default_base;
+    size_t default_base;
     const char *req_platform;
-    int needs_main;
-    void (*begin)(u16 base);
+    Bool needs_main;
+    void (*begin)(size_t base);
     void (*end)(int main_idx);
-    int (*write)(FILE *fp, u16 base);
-    void (*run)(u8 main_idx);
+    int (*write)(FILE *fp, size_t base);
+    void (*run)(size_t main_idx);
 } Platform;
 
 extern const Backend be_z80;
@@ -232,7 +239,7 @@ extern const Platform plat_rv32_obj;
 void be_6502_set_zp(u8 zp);
 void be_6502_set_stack_zp(u8 base, u8 init_x);
 u8 be_6502_stack_zp_base(void);
-u16 be_6502_stack_data_off(void);
+size_t be_6502_stack_data_off(void);
 void be_rv32_set_obj(int obj);
 
 #endif /* IR4_H */

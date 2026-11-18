@@ -7,14 +7,14 @@
 #define SIM65_EXIT 0xFFF9
 #define SIM65_SP_ZP 0x10
 
-static void sim_begin(u16 base) {
+static void sim_begin(size_t base) {
     (void)base;
     be_6502_set_ram_top(0xF000);
     /* Reserve JMP 0x0000 at base; patched by sim_end() */
     emit8_16(M6502_JMP, 0x0000);
 }
 
-static int sim_write(FILE *fp, u16 base) {
+static int sim_write(FILE *fp, size_t base) {
     u8 hdr[12];
     hdr[0] = 's';
     hdr[1] = 'i';
@@ -43,7 +43,7 @@ static void sim_end(int main_idx) {
     u16 putchar_addr;
     u16 div_loop_pc;
 
-    if (sig->in_count != 0 || sig->out_count > 1) {
+    if (sig->in_types.len != 0 || sig->out_types.len > 1) {
         fprintf(stderr, "--sim65 requires 'main' with 0 inputs and at most 1 output\n");
         exit(1);
     }
@@ -60,7 +60,7 @@ static void sim_end(int main_idx) {
     /* JSR main */
     emit8_16(M6502_JSR, sig->addr);
 
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         u8 zp_stk = be_6502_stack_zp_base();
         /* Pop 16-bit signed value from (stack_base,X) into $04/$05 */
         if (zp_stk != 0) {
@@ -114,7 +114,7 @@ static void sim_end(int main_idx) {
     emit8_8(M6502_LDA_IMM, 0x00);
     emit8_16(M6502_JMP, SIM65_EXIT);
 
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         print_u16_addr = cb_cur_addr();
         patch16(print_call1, print_u16_addr);
 

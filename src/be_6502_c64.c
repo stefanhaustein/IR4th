@@ -9,7 +9,7 @@
 
 static u16 c64_jmp_pc = 0;
 
-static void c64_begin(u16 base) {
+static void c64_begin(size_t base) {
     char digits[8];
     int len = 0;
     int i;
@@ -52,7 +52,7 @@ static void c64_begin(u16 base) {
     emit16(0x0000);
 }
 
-static int c64_write(FILE *fp, u16 base) {
+static int c64_write(FILE *fp, size_t base) {
     u8 hdr[2];
     put_le16(hdr, base);
     if (fwrite(hdr, 1, sizeof(hdr), fp) != sizeof(hdr))
@@ -71,7 +71,7 @@ static void c64_end(int main_idx) {
     u16 print_u16_addr;
     u16 div_loop_pc;
 
-    if (sig->in_count != 0 || sig->out_count > 1) {
+    if (sig->in_types.len != 0 || sig->out_types.len > 1) {
         fprintf(stderr, "--c64 requires 'main' with 0 inputs and at most 1 output\n");
         exit(1);
     }
@@ -85,7 +85,7 @@ static void c64_end(int main_idx) {
     /* JSR main */
     emit8_16(M6502_JSR, sig->addr);
 
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         u8 zp_stk = be_6502_stack_zp_base();
         /* Pop 16-bit signed value from (stack_base,X) into $FB/$FC */
         if (zp_stk != 0) {
@@ -141,7 +141,7 @@ static void c64_end(int main_idx) {
     emit8_8(M6502_STA_ZP, 0x01);
     emit8(M6502_RTS);
 
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         print_u16_addr = cb_cur_addr();
         patch16(print_call1, print_u16_addr);
 

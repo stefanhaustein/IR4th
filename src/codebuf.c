@@ -4,22 +4,22 @@
 #include "vec.h"
 
 typedef struct {
-    u8 split;
-    u16 off1;
-    u16 off2;
-    u16 data_offset;
+    Bool split;
+    size_t off1;
+    size_t off2;
+    size_t data_offset;
 } DataReloc;
 
 typedef struct {
-    u16 patch_offset;
+    size_t patch_offset;
     const char *name;
 } ExternReloc;
 
 typedef struct {
-    u16 patch_data_off;
+    size_t patch_data_off;
     size_t target_val;
     u8 addr_bytes;
-    u8 is_code;
+    Bool is_code;
 } DataInitReloc;
 
 VEC_OF(ByteVec, u8);
@@ -28,14 +28,14 @@ VEC_OF(DataInitRelocVec, DataInitReloc);
 VEC_OF(ExternRelocVec, ExternReloc);
 
 static ByteVec code_buf;
-static u16 base_addr = 0x0100; /* Default: CP/M .COM load address */
+static size_t base_addr = 0x0100; /* Default: CP/M .COM load address */
 static ByteVec data_buf;
-static u16 data_init_size = 0;
+static size_t data_init_size = 0;
 static DataRelocVec relocs;
 static DataInitRelocVec data_init_relocs;
 static ExternRelocVec ext_relocs;
 
-void cb_reset(u16 base) {
+void cb_reset(size_t base) {
     code_buf.len = 0;
     base_addr = base;
     data_buf.len = 0;
@@ -45,9 +45,9 @@ void cb_reset(u16 base) {
     ext_relocs.len = 0;
 }
 
-u16 cb_pc(void) { return (u16)code_buf.len; }
+size_t cb_pc(void) { return code_buf.len; }
 
-u16 cb_cur_addr(void) { return (u16)(base_addr + code_buf.len); }
+size_t cb_cur_addr(void) { return base_addr + code_buf.len; }
 
 const u8 *cb_data(void) { return code_buf.data; }
 
@@ -79,31 +79,31 @@ void emit8_8_8(u8 a, u8 b, u8 c) {
     emit8(c);
 }
 
-void cb_rewind(u16 n) {
+void cb_rewind(size_t n) {
     if (n > code_buf.len) {
         ir4_die("code buffer underflow");
     }
     code_buf.len -= n;
 }
 
-void patch8(u16 patch_offset, u8 val) {
+void patch8(size_t patch_offset, u8 val) {
     if (patch_offset >= code_buf.len) {
         ir4_die("patch offset out of bounds");
     }
     code_buf.data[patch_offset] = val;
 }
 
-void patch16(u16 patch_offset, u16 target_addr) {
-    if ((size_t)patch_offset + 1 >= code_buf.len) {
+void patch16(size_t patch_offset, u16 target_addr) {
+    if (patch_offset + 1 >= code_buf.len) {
         ir4_die("patch offset out of bounds");
     }
     code_buf.data[patch_offset] = (u8)(target_addr & 0xFF);
     code_buf.data[patch_offset + 1] = (u8)((target_addr >> 8) & 0xFF);
 }
 
-void patch32(u16 patch_offset, u32 val) {
+void patch32(size_t patch_offset, u32 val) {
     patch16(patch_offset, (u16)(val & 0xFFFFU));
-    patch16((u16)(patch_offset + 2), (u16)((val >> 16) & 0xFFFFU));
+    patch16(patch_offset + 2, (u16)((val >> 16) & 0xFFFFU));
 }
 
 void put_le16(u8 *p, u16 v) {
@@ -118,18 +118,18 @@ void put_le32(u8 *p, u32 v) {
     p[3] = (u8)((v >> 24) & 0xFFUL);
 }
 
-int cb_write_raw(FILE *fp, int include_data) {
+Bool cb_write_raw(FILE *fp, Bool include_data) {
     if (code_buf.len > 0 && fwrite(code_buf.data, 1, code_buf.len, fp) != code_buf.len) {
-        return 0;
+        return false;
     }
     if (include_data && data_init_size > 0 &&
-        fwrite(data_buf.data, 1, data_init_size, fp) != (size_t)data_init_size) {
-        return 0;
+        fwrite(data_buf.data, 1, data_init_size, fp) != data_init_size) {
+        return false;
     }
-    return 1;
+    return true;
 }
 
-u16 cb_alloc_data(u16 size, u8 align) {
+size_t cb_alloc_data(size_t size, u8 align) {
     size_t aligned = data_buf.len;
     size_t mask = (size_t)(align > 1 ? align - 1 : 0);
     size_t new_len;
@@ -142,14 +142,14 @@ u16 cb_alloc_data(u16 size, u8 align) {
         memset(data_buf.data + data_buf.len, 0, new_len - data_buf.len);
         data_buf.len = new_len;
     }
-    return (u16)aligned;
+    return aligned;
 }
 
-u16 cb_data_size(void) { return (u16)data_buf.len; }
+size_t cb_data_size(void) { return data_buf.len; }
 
 void cb_emit_data_u8(u8 b) {
     VEC_PUSH(data_buf, b);
-    data_init_size = (u16)data_buf.len;
+    data_init_size = data_buf.len;
 }
 
 void cb_emit_data_u16(u16 w) {
@@ -176,19 +176,19 @@ void cb_emit_data_word(i32 val, u8 word_bytes) {
 
 const u8 *cb_init_data(void) { return data_buf.data; }
 
-u16 cb_init_data_size(void) { return data_init_size; }
+size_t cb_init_data_size(void) { return data_init_size; }
 
-void cb_add_data_reloc(u16 patch_offset, u16 data_offset) {
+void cb_add_data_reloc(size_t patch_offset, size_t data_offset) {
     DataReloc *r = VEC_ADD(relocs);
-    r->split = 0;
+    r->split = false;
     r->off1 = patch_offset;
     r->off2 = 0;
     r->data_offset = data_offset;
 }
 
-void cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset) {
+void cb_add_data_reloc_split(size_t lo_offset, size_t hi_offset, size_t data_offset) {
     DataReloc *r = VEC_ADD(relocs);
-    r->split = 1;
+    r->split = true;
     r->off1 = lo_offset;
     r->off2 = hi_offset;
     r->data_offset = data_offset;
@@ -197,10 +197,10 @@ void cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset) {
 void cb_patch_data_init_relocs_base(u32 code_base, u32 data_base) {
     size_t i;
     for (i = 0; i < data_init_relocs.len; i++) {
-        u32 val = data_init_relocs.data[i].is_code
-                      ? (code_base + (u32)data_init_relocs.data[i].target_val)
-                      : (data_base + (u32)data_init_relocs.data[i].target_val);
-        u16 off = data_init_relocs.data[i].patch_data_off;
+        size_t val = data_init_relocs.data[i].is_code
+                         ? ((size_t)code_base + data_init_relocs.data[i].target_val)
+                         : ((size_t)data_base + data_init_relocs.data[i].target_val);
+        size_t off = data_init_relocs.data[i].patch_data_off;
         u8 b;
         for (b = 0; b < data_init_relocs.data[i].addr_bytes; b++) {
             data_buf.data[off + b] = (u8)(val & 0xFF);
@@ -209,7 +209,7 @@ void cb_patch_data_init_relocs_base(u32 code_base, u32 data_base) {
     }
 }
 
-void cb_patch_data_relocs(u16 data_base) {
+void cb_patch_data_relocs(size_t data_base) {
     size_t i;
     for (i = 0; i < relocs.len; i++) {
         u16 addr = (u16)(data_base + relocs.data[i].data_offset);
@@ -223,7 +223,7 @@ void cb_patch_data_relocs(u16 data_base) {
     cb_patch_data_init_relocs_base(0, (u32)data_base);
 }
 
-void cb_add_data_init_reloc(u16 patch_data_off, size_t target_val, u8 addr_bytes, u8 is_code) {
+void cb_add_data_init_reloc(size_t patch_data_off, size_t target_val, u8 addr_bytes, Bool is_code) {
     DataInitReloc *r = VEC_ADD(data_init_relocs);
     r->patch_data_off = patch_data_off;
     r->target_val = target_val;
@@ -233,19 +233,19 @@ void cb_add_data_init_reloc(u16 patch_data_off, size_t target_val, u8 addr_bytes
 
 size_t cb_data_init_reloc_count(void) { return data_init_relocs.len; }
 
-void cb_get_data_init_reloc(size_t idx, u16 *patch_data_off, size_t *target_val, u8 *addr_bytes,
-                            u8 *is_code) {
+void cb_get_data_init_reloc(size_t idx, size_t *patch_data_off, size_t *target_val, u8 *addr_bytes,
+                            Bool *is_code) {
     *patch_data_off = data_init_relocs.data[idx].patch_data_off;
     *target_val = data_init_relocs.data[idx].target_val;
     *addr_bytes = data_init_relocs.data[idx].addr_bytes;
     *is_code = data_init_relocs.data[idx].is_code;
 }
 
-void cb_patch_data_init_reloc(size_t idx, u16 code_addr) {
+void cb_patch_data_init_reloc(size_t idx, size_t code_addr) {
     data_init_relocs.data[idx].target_val = code_addr;
 }
 
-void cb_add_extern_reloc(u16 patch_offset, const char *name) {
+void cb_add_extern_reloc(size_t patch_offset, const char *name) {
     ExternReloc *r = VEC_ADD(ext_relocs);
     r->patch_offset = patch_offset;
     r->name = intern_str(name);
@@ -253,7 +253,7 @@ void cb_add_extern_reloc(u16 patch_offset, const char *name) {
 
 size_t cb_extern_reloc_count(void) { return ext_relocs.len; }
 
-const char *cb_extern_reloc_name(size_t idx, u16 *patch_offset) {
+const char *cb_extern_reloc_name(size_t idx, size_t *patch_offset) {
     *patch_offset = ext_relocs.data[idx].patch_offset;
     return ext_relocs.data[idx].name;
 }

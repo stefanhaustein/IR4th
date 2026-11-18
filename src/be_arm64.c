@@ -30,13 +30,13 @@ static void mov_x0_u32(u32 lo, u32 hi) {
 static void mov_x0_imm(i32 val) { mov_x0_u32((u32)val, (val < 0) ? 0xFFFFFFFFUL : 0x00000000UL); }
 
 /* --- Backend Interface --- */
-static u16 a64_cur_addr(void) { return cb_cur_addr(); }
+static size_t a64_cur_addr(void) { return cb_cur_addr(); }
 
 VEC_OF(U32Vec, u32);
 static U32Vec a64_local_off;
 
 static void a64_fn_begin(const char *name, size_t param_cnt, const LocalVar *locals,
-                         size_t total_locals, u8 is_recursive) {
+                         size_t total_locals, Bool is_recursive) {
     size_t i;
     u32 cur_off = 0;
     u32 frame_bytes;
@@ -99,9 +99,9 @@ static void a64_fn_begin(const char *name, size_t param_cnt, const LocalVar *loc
 }
 
 static void a64_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_locals) {
-    u8 k;
-    u8 param_cnt = sig->in_count;
-    u8 out_count = sig->out_count;
+    size_t k;
+    size_t param_cnt = sig->in_types.len;
+    size_t out_count = sig->out_types.len;
     (void)locals;
     (void)total_locals;
 
@@ -127,7 +127,7 @@ static void a64_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_
     emit32(0xD65F03C0UL); /* RET */
 }
 
-static void a64_call(u16 target_addr) {
+static void a64_call(size_t target_addr) {
     i32 diff = (i32)target_addr - (i32)cb_cur_addr();
     emit32(0x94000000UL | (((u32)(diff >> 2)) & 0x03FFFFFFUL));
 }
@@ -135,14 +135,14 @@ static void a64_call(u16 target_addr) {
 static void a64_call_extern(const FuncSig *sig) {
     u8 int_cnt = 0;
     u8 flt_cnt = 0;
-    u8 i;
+    size_t i;
 
     if (sig->has_addr) {
         ir4_die("ARM64 extern does not take a fixed address");
     }
 
-    for (i = 0; i < sig->in_count; i++) {
-        if (sig->in_types[i] == TY_F)
+    for (i = 0; i < sig->in_types.len; i++) {
+        if (sig->in_types.data[i] == TY_F)
             flt_cnt++;
         else
             int_cnt++;
@@ -151,8 +151,8 @@ static void a64_call_extern(const FuncSig *sig) {
         ir4_die("ARM64 extern supports at most 8 int and 8 float args");
     }
 
-    for (i = sig->in_count; i > 0; i--) {
-        if (sig->in_types[i - 1] == TY_F) {
+    for (i = sig->in_types.len; i > 0; i--) {
+        if (sig->in_types.data[i - 1] == TY_F) {
             flt_cnt--;
             emit32(0xFC4107E0UL | (u32)flt_cnt); /* LDR D<k>, [SP], #16 */
         } else {
@@ -168,8 +168,8 @@ static void a64_call_extern(const FuncSig *sig) {
     emit32(0xF2E00009UL); /* MOVK X9, #0, LSL #48 */
     emit32(0xD63F0120UL); /* BLR X9 */
 
-    if (sig->out_count == 1) {
-        if (sig->out_types[0] == TY_F)
+    if (sig->out_types.len == 1) {
+        if (sig->out_types.data[0] == TY_F)
             push_d0();
         else
             push_x0();
@@ -194,7 +194,7 @@ static void a64_push_f(double val) {
     push_x0();
 }
 
-static void a64_push_data(u16 offset) {
+static void a64_push_data(size_t offset) {
     if (offset <= 4095) {
         emit32(0x91000380UL | (((u32)offset & 0xFFFUL) << 10)); /* ADD X0, X28, #offset */
     } else {
@@ -204,7 +204,7 @@ static void a64_push_data(u16 offset) {
     push_x0();
 }
 
-static void a64_local_op(LocalOp op, size_t slot, StackType type, u16 stack_bytes) {
+static void a64_local_op(LocalOp op, size_t slot, StackType type, size_t stack_bytes) {
     u32 off = a64_local_off.data[slot];
     (void)type;
     (void)stack_bytes;
@@ -707,7 +707,7 @@ static void a64_op(IrOp op) {
     }
 }
 
-static u16 a64_emit_br_fwd(BranchCond cond) {
+static size_t a64_emit_br_fwd(BranchCond cond) {
     u16 pos;
     if (cond == BR_JZ) {
         pop_x0();
@@ -720,7 +720,7 @@ static u16 a64_emit_br_fwd(BranchCond cond) {
     return pos;
 }
 
-static void a64_emit_br_back(BranchCond cond, u16 target_addr) {
+static void a64_emit_br_back(BranchCond cond, size_t target_addr) {
     i32 diff;
     if (cond == BR_JZ) {
         u32 imm19;
@@ -734,7 +734,7 @@ static void a64_emit_br_back(BranchCond cond, u16 target_addr) {
     }
 }
 
-static void a64_patch_fwd(u16 patch_offset) {
+static void a64_patch_fwd(size_t patch_offset) {
     i32 diff = (i32)cb_pc() - (i32)patch_offset;
     u8 top = cb_data()[patch_offset + 3];
     if (top == 0xB4) {
@@ -810,13 +810,13 @@ static int a64_shift_imm(IrOp op, u8 count) {
     return 1;
 }
 
-static void a64_patch_call(u16 call_pc, u16 call_addr, u16 target_addr) {
+static void a64_patch_call(size_t call_pc, size_t call_addr, size_t target_addr) {
     i32 diff = (i32)target_addr - (i32)call_addr;
     patch32(call_pc, 0x94000000UL | (((u32)(diff >> 2)) & 0x03FFFFFFUL));
 }
 
-static u16 a64_push_fn(u16 target_addr) {
-    u16 pc = cb_pc();
+static size_t a64_push_fn(size_t target_addr) {
+    size_t pc = cb_pc();
     i32 diff = (i32)target_addr - (i32)cb_cur_addr();
     u32 imm = (u32)diff;
     emit32(0x10000000UL | ((imm & 0x3UL) << 29) |
@@ -825,7 +825,7 @@ static u16 a64_push_fn(u16 target_addr) {
     return pc;
 }
 
-static void a64_patch_fn(u16 patch_pc, u16 patch_addr, u16 target_addr) {
+static void a64_patch_fn(size_t patch_pc, size_t patch_addr, size_t target_addr) {
     i32 diff = (i32)target_addr - (i32)patch_addr;
     u32 imm = (u32)diff;
     patch32(patch_pc, 0x10000000UL | ((imm & 0x3UL) << 29) | (((imm >> 2) & 0x7FFFFUL) << 5));

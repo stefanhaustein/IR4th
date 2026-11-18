@@ -34,13 +34,13 @@ static void init_elf32_hdr(u8 *hdr, u16 e_type) {
 
 /* --- QEMU virt (ET_EXEC) --- */
 
-static void virt_begin(u16 base) {
+static void virt_begin(size_t base) {
     (void)base;
     /* Placeholder JAL x0, entry_off; patched by virt_end() */
     emit32(enc_j(0, 0));
 }
 
-static int virt_write(FILE *fp, u16 base) {
+static int virt_write(FILE *fp, size_t base) {
     u8 hdr[84];
     u32 filesz = (u32)cb_pc() + (u32)cb_init_data_size();
     u32 memsz = (u32)cb_pc() + (u32)cb_data_size();
@@ -75,7 +75,7 @@ static void virt_end(int main_idx) {
     u32 hi;
     i32 lo;
 
-    if (sig->in_count != 0 || sig->out_count > 1) {
+    if (sig->in_types.len != 0 || sig->out_types.len > 1) {
         fprintf(stderr, "--virt requires 'main' with 0 inputs and at most 1 output\n");
         exit(1);
     }
@@ -94,7 +94,7 @@ static void virt_end(int main_idx) {
     /* JAL ra, main */
     emit32(enc_j((i32)sig->addr - (i32)cb_pc(), 1));
 
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         u16 div_loop;
         u16 print_loop;
         emit32(enc_i(0, 9, 2, 10, 0x03UL));   /* LW a0, 0(s1) */
@@ -198,7 +198,7 @@ static void obj_end(int main_idx) {
 
     {
         const FuncSig *sig = ir4_func_sig((u8)main_idx);
-        if (sig->in_count != 0 || sig->out_count > 1) {
+        if (sig->in_types.len != 0 || sig->out_types.len > 1) {
             fprintf(stderr, "--obj requires 'main' with 0 inputs and at most 1 output\n");
             exit(1);
         }
@@ -226,7 +226,7 @@ static void obj_end(int main_idx) {
 
         emit32(enc_j((i32)sig->addr - (i32)cb_pc(), 1)); /* JAL ra, ir4 main */
 
-        if (sig->out_count == 1) {
+        if (sig->out_types.len == 1) {
             emit32(enc_i(0, 9, 2, 10, 0x03UL)); /* LW a0, 0(s1) */
             emit32(enc_i(4, 9, 0, 9, 0x13UL));  /* ADDI s1, s1, 4 */
         } else {
@@ -243,7 +243,7 @@ static void obj_end(int main_idx) {
     }
 }
 
-static int obj_write(FILE *fp, u16 base) {
+static int obj_write(FILE *fp, size_t base) {
     static const char shstrtab[] = "\0.text\0.data\0.bss\0.rela.text\0.symtab\0.strtab\0.shstrtab";
     u8 ehdr[52];
     u8 shdrs[8 * 40];
@@ -292,7 +292,7 @@ static int obj_write(FILE *fp, u16 base) {
     }
 
     for (i = 0; i < reloc_cnt; i++) {
-        u16 patch_off = 0;
+        size_t patch_off = 0;
         const char *name = cb_extern_reloc_name(i, &patch_off);
         u32 sym_idx = 0;
         u32 j;

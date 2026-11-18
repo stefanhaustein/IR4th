@@ -18,10 +18,10 @@
  *   LDP X29, X30, [SP], #16
  *   RET
  */
-static void arm64_run_jit(u8 main_idx) {
+static void arm64_run_jit(size_t main_idx) {
     const FuncSig *sig = ir4_func_sig(main_idx);
-    u16 main_addr = sig->addr;
-    u16 entry_pc = cb_pc();
+    size_t main_addr = sig->addr;
+    size_t entry_pc = cb_pc();
     i32 diff;
     u32 imm26;
     void *mem;
@@ -29,7 +29,7 @@ static void arm64_run_jit(u8 main_idx) {
     long (*jit_fn)(void *);
     long result;
 
-    if (sig->in_count != 0 || sig->out_count > 1) {
+    if (sig->in_types.len != 0 || sig->out_types.len > 1) {
         fprintf(stderr, "--run requires 'main' with 0 inputs and at most 1 output\n");
         exit(1);
     }
@@ -45,7 +45,7 @@ static void arm64_run_jit(u8 main_idx) {
     imm26 = ((u32)(diff >> 2)) & 0x03FFFFFFUL;
     emit16((u16)((0x94000000UL | imm26) & 0xFFFFU));
     emit16((u16)(((0x94000000UL | imm26) >> 16) & 0xFFFFU));
-    if (sig->out_count == 1) {
+    if (sig->out_types.len == 1) {
         emit16(0x07E0);
         emit16(0xF841); /* LDR X0, [SP], #16 */
     } else {
@@ -81,9 +81,10 @@ static void arm64_run_jit(u8 main_idx) {
             {
                 size_t i;
                 for (i = 0; i < cb_data_init_reloc_count(); i++) {
-                    u16 patch_off;
+                    size_t patch_off;
                     size_t target_val;
-                    u8 addr_bytes, is_code;
+                    u8 addr_bytes;
+                    Bool is_code;
                     unsigned long addr;
                     cb_get_data_init_reloc(i, &patch_off, &target_val, &addr_bytes, &is_code);
                     addr = (unsigned long)((u8 *)(is_code ? mem : data_mem) + target_val);
@@ -97,7 +98,7 @@ static void arm64_run_jit(u8 main_idx) {
         {
             size_t i;
             for (i = 0; i < cb_extern_reloc_count(); i++) {
-                u16 off;
+                size_t off;
                 const char *name = cb_extern_reloc_name(i, &off);
                 void *sym = dlsym(RTLD_DEFAULT, name);
                 unsigned long addr;
@@ -127,7 +128,7 @@ static void arm64_run_jit(u8 main_idx) {
     }
 }
 #else
-static void arm64_run_jit(u8 main_idx) {
+static void arm64_run_jit(size_t main_idx) {
     (void)main_idx;
     fprintf(stderr, "--run is only supported on Apple Silicon macOS\n");
     exit(1);

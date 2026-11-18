@@ -1,4 +1,5 @@
 #include "vec.h"
+#include "ir4.h"
 
 void *vec_grow(void *data, size_t *cap, size_t elem_size, size_t need) {
     size_t new_cap = *cap ? *cap * 2 : 16;

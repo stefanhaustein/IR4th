@@ -1,7 +1,8 @@
 #ifndef IR4_VEC_H
 #define IR4_VEC_H
 
-#include "ir4.h"
+#include <stdlib.h>
+#include <string.h>
 
 #define VEC_OF(Name, T) \
     typedef struct {    \
