@@ -64,6 +64,7 @@ end
 ### 3.1 Accessing, Mutating & Addressing Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
 * **Write (`-> <ident>`):** Pops the top value from the stack (verifying its type matches `<ident>`'s declared type `T`) and stores it into `<ident>`.
+* **Declare & Initialize (`-> var <ident> :<type>`):** Declares a function-scoped local scalar (`:i`, `:i32`, `:a`, or `:f`) and initializes it by popping the top value from the stack (not valid for `:bytes`).
 * **Address (`& <ident>`):** Pushes the memory address of parameter, local, typed global, or function `<ident>` onto the stack with type `:a` (functions referenced via `&` are retained by dead-code elimination).
 
 ### 3.2 Global Variables & Named Data Buffers (`var`)

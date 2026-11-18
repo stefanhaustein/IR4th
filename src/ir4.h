@@ -25,11 +25,7 @@ typedef unsigned long u32;
 typedef signed long i32;
 #endif
 
-#define MAX_TOK 64
 #define MAX_LOCALS 64
-#define MAX_CODE 65535
-#define MAX_DATA 49152
-#define MAX_RELOCS 16384
 
 /* Stack types (v0.3) */
 typedef enum { TY_NONE = 0, TY_W, TY_A, TY_F, TY_I32 } StackType;
@@ -144,14 +140,14 @@ typedef enum {
 } IrOp;
 
 typedef struct {
-    char name[MAX_TOK];
+    const char *name;
     u8 type;
     u8 slot;
     u16 size;
 } LocalVar;
 
 typedef struct {
-    char name[MAX_TOK];
+    const char *name;
     u16 addr;
     u8 is_extern;
     u8 is_defined;
@@ -160,10 +156,10 @@ typedef struct {
     u8 is_recursive;
     u16 req_group;
     u8 in_types[8];
-    char in_regs[8][MAX_TOK];
+    const char *in_regs[8];
     u8 in_count;
     u8 out_types[4];
-    char out_reg[MAX_TOK];
+    const char *out_reg;
     u8 out_count;
 } FuncSig;
 

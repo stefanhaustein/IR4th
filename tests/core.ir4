@@ -207,6 +207,20 @@ fn test_long_branch ( flag :i -> :i )
   x
 end
 
+fn test_inline_var ( n :i -> :i )
+  10 20 + -> var base :i
+  0 -> var acc :i
+  0 -> var i :i
+  begin
+    i n <
+  while
+    i 2 * -> var doubled :i
+    acc doubled + -> acc
+    i 1 + -> i
+  repeat
+  base acc +
+end
+
 fn main ( -> :i )
   test_stack
   dup 0 != if return then drop
@@ -233,4 +247,6 @@ fn main ( -> :i )
   0 test_long_branch 542 47 assert_eq
   dup 0 != if return then drop
   1 test_long_branch 500 48 assert_eq
+  dup 0 != if return then drop
+  5 test_inline_var 50 49 assert_eq
 end

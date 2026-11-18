@@ -1,25 +1,19 @@
 #include "frontend.h"
 #include "codebuf.h"
+#include "strpool.h"
+#include "vec.h"
 
-#define MAX_INCLUDE_DEPTH 16
-#define MAX_INCLUDES 64
-#define MAX_PATH 256
-#define MAX_IR 8192
-#define MAX_SYMS 255
-#define MAX_STACK 32
-#define MAX_BLOCKS 16
+VEC_OF(ByteVec, u8);
 
 typedef enum { BLOCK_IF = 1, BLOCK_BEGIN = 2 } BlockKind;
 
 typedef struct {
     BlockKind kind;
-    u16 patch_else;
-    u16 patch_end;
-    u16 loop_addr;
-    u8 saved_sp;
-    u8 saved_stack[MAX_STACK];
-    u8 else_sp;
-    u8 else_stack[MAX_STACK];
+    size_t patch_else;
+    size_t patch_end;
+    size_t loop_addr;
+    ByteVec saved_stack;
+    ByteVec else_stack;
     u8 has_else;
     u8 saved_unreach;
     u8 if_unreach;
@@ -63,29 +57,27 @@ typedef struct {
             StackType t2;
         } stk;
         IrOp op;
-        u8 func_idx;
+        size_t func_idx;
         struct {
             BranchCond cond;
-            u16 target;
+            size_t target;
         } br;
     } u;
 } IrInstr;
 
-#define MAX_CODE_RELOCS 512
-
 enum { CODE_REL_SELF = 1, CODE_REL_STACK = 2 };
 
 typedef struct {
-    u16 ir_off;
+    size_t ir_off;
     u16 addend;
     u8 kind;
 } CodeReloc;
 
 typedef struct {
-    u16 ir_start;
-    u16 ir_len;
-    u16 reloc_start;
-    u16 reloc_cnt;
+    size_t ir_start;
+    size_t ir_len;
+    size_t reloc_start;
+    size_t reloc_cnt;
     u8 param_cnt;
     u8 local_count;
     LocalVar locals[MAX_LOCALS];
@@ -93,68 +85,66 @@ typedef struct {
     u8 is_code;
 } WordIR;
 
-static IrInstr ir_buf[MAX_IR];
-static u16 ir_count = 0;
-static u16 fold_fence = 0;
-static WordIR words[MAX_SYMS];
-static u8 raw_code_buf[MAX_CODE];
-static u16 raw_code_len = 0;
-static CodeReloc code_relocs[MAX_CODE_RELOCS];
-static u16 code_reloc_count = 0;
+VEC_OF(IrVec, IrInstr);
+VEC_OF(WordVec, WordIR *);
+VEC_OF(CodeRelocVec, CodeReloc);
+
+static IrVec ir_buf;
+static size_t fold_fence = 0;
+static WordVec words;
+static ByteVec raw_code_buf;
+static CodeRelocVec code_relocs;
 
 typedef struct {
     FILE *fp;
-    char path[MAX_PATH];
+    const char *path;
     u16 line_num;
     u16 req_group;
 } SrcFile;
 
-static SrcFile src_stack[MAX_INCLUDE_DEPTH];
-static u8 src_depth = 0;
+VEC_OF(SrcVec, SrcFile);
+VEC_OF(StrVec, const char *);
+
+static SrcVec src_stack;
 static u16 next_req_group = 1;
-#define MAX_LIB_ROOTS 16
-static const char *extra_lib_roots[MAX_LIB_ROOTS];
-static int extra_lib_root_count = 0;
+static StrVec extra_lib_roots;
 
 void ir4_add_lib_root(const char *path) {
     if (!path || path[0] == '\0')
         return;
-    if (extra_lib_root_count >= MAX_LIB_ROOTS) {
-        ir4_die("too many -I library roots");
-    }
-    extra_lib_roots[extra_lib_root_count++] = path;
+    VEC_PUSH(extra_lib_roots, path);
 }
-static char seen_files[MAX_INCLUDES][MAX_PATH];
-static u8 seen_count = 0;
+static StrVec seen_files;
 static const Backend *be;
 static const char *platform_name = NULL;
 
-static FuncSig funcs[MAX_SYMS];
-static u8 func_count = 0;
+VEC_OF(FuncVec, FuncSig *);
+static FuncVec funcs;
 
 typedef struct {
-    char name[MAX_TOK];
+    const char *name;
     u16 offset;
     u8 type; /* TY_NONE for :bytes / data buffers; TY_W/TY_A/TY_F for typed globals */
 } BufferSym;
 
-static BufferSym buffers[MAX_SYMS];
-static u8 buffer_count = 0;
+static StrBuf path_scratch;
+
+VEC_OF(BufVec, BufferSym *);
+static BufVec buffers;
 
 static LocalVar locals[MAX_LOCALS];
 static u8 local_count = 0;
 static u8 cur_outs[4];
 static u8 cur_out_count = 0;
 
-static u8 tstack[MAX_STACK];
-static u8 tsp = 0;
+VEC_OF(BlockVec, BlockInfo *);
 
-static BlockInfo blocks[MAX_BLOCKS];
-static u8 bsp = 0;
+static ByteVec tstack;
+static BlockVec blocks;
 
 void ir4_die(const char *msg) {
-    if (src_depth > 0) {
-        const SrcFile *cur = &src_stack[src_depth - 1];
+    if (src_stack.len > 0) {
+        const SrcFile *cur = &src_stack.data[src_stack.len - 1];
         fprintf(stderr, "ir4c error (%s:%u): %s\n", cur->path, cur->line_num, msg);
     } else {
         fprintf(stderr, "ir4c error: %s\n", msg);
@@ -190,14 +180,14 @@ static int skip_ws_and_comments(void) {
     for (;;) {
         SrcFile *cur;
         int c;
-        if (src_depth == 0)
+        if (src_stack.len == 0)
             return EOF;
-        cur = &src_stack[src_depth - 1];
+        cur = &src_stack.data[src_stack.len - 1];
         c = fgetc(cur->fp);
         if (c == EOF) {
-            if (src_depth > 1) {
+            if (src_stack.len > 1) {
                 fclose(cur->fp);
-                src_depth--;
+                src_stack.len--;
                 continue;
             }
             return EOF;
@@ -224,6 +214,18 @@ static int skip_ws_and_comments(void) {
     }
 }
 
+static const char *read_quoted_intern(FILE *fp, const char *err_unterm) {
+    int c = fgetc(fp);
+    sb_reset(&path_scratch);
+    while (c != EOF && c != '\n' && c != '"') {
+        sb_putc(&path_scratch, (char)c);
+        c = fgetc(fp);
+    }
+    if (c != '"')
+        ir4_die(err_unterm);
+    return sb_intern(&path_scratch);
+}
+
 static void parse_line_directive(SrcFile *cur, int last_c) {
     int c = last_c;
     u32 new_line = 0;
@@ -243,16 +245,7 @@ static void parse_line_directive(SrcFile *cur, int last_c) {
     while (c == ' ' || c == '\t')
         c = fgetc(cur->fp);
     if (c == '"') {
-        size_t plen = 0;
-        c = fgetc(cur->fp);
-        while (c != EOF && c != '\n' && c != '"') {
-            if (plen < sizeof(cur->path) - 1)
-                cur->path[plen++] = (char)c;
-            c = fgetc(cur->fp);
-        }
-        if (c != '"')
-            ir4_die("unterminated filename in '#line'");
-        cur->path[plen] = '\0';
+        cur->path = read_quoted_intern(cur->fp, "unterminated filename in '#line'");
         c = fgetc(cur->fp);
     }
     while (c != EOF && c != '\n')
@@ -260,38 +253,45 @@ static void parse_line_directive(SrcFile *cur, int last_c) {
     cur->line_num = (u16)new_line;
 }
 
-static int next_tok(char *buf) {
+static StrBuf tok_sb;
+
+static const char *next_tok(void) {
     for (;;) {
         int c = skip_ws_and_comments();
-        u8 len = 0;
-
         if (c == EOF)
-            return 0;
+            return NULL;
 
         {
-            SrcFile *cur = &src_stack[src_depth - 1];
+            SrcFile *cur = &src_stack.data[src_stack.len - 1];
+            sb_reset(&tok_sb);
             while (c != EOF && !isspace((unsigned char)c)) {
-                if (len >= MAX_TOK - 1)
-                    ir4_die("token too long");
-                buf[len++] = (char)c;
+                sb_putc(&tok_sb, (char)c);
                 c = fgetc(cur->fp);
             }
-            buf[len] = '\0';
-            if (strcmp(buf, "#line") == 0) {
+            if (strcmp(tok_sb.data, "#line") == 0) {
                 parse_line_directive(cur, c);
                 continue;
             }
             if (c == '\n')
                 cur->line_num++;
         }
-        return 1;
+        return tok_sb.data;
     }
 }
 
-static void resolve_path(const char *base_path, const char *rel, char *out, size_t out_sz) {
+static const char *next_tok_intern(void) { return next_tok() ? sb_intern(&tok_sb) : NULL; }
+
+static const char *join_path(const char *a, const char *b) {
+    sb_reset(&path_scratch);
+    sb_append(&path_scratch, a);
+    sb_putc(&path_scratch, '/');
+    sb_append(&path_scratch, b);
+    return sb_intern(&path_scratch);
+}
+
+static const char *resolve_path(const char *base_path, const char *rel) {
     const char *slash;
     size_t dir_len = 0;
-    size_t rel_len;
 
     while (rel[0] == '.' && rel[1] == '/') {
         rel += 2;
@@ -304,35 +304,36 @@ static void resolve_path(const char *base_path, const char *rel, char *out, size
         }
     }
 
-    rel_len = strlen(rel);
-    if (dir_len + rel_len >= out_sz) {
-        ir4_die("required file path too long");
-    }
-    if (dir_len > 0) {
-        memcpy(out, base_path, dir_len);
-    }
-    memcpy(out + dir_len, rel, rel_len + 1);
+    if (dir_len == 0)
+        return intern_str(rel);
+    sb_reset(&path_scratch);
+    sb_append_n(&path_scratch, base_path, dir_len);
+    sb_append(&path_scratch, rel);
+    return sb_intern(&path_scratch);
 }
 
 static FILE *try_open_require(const char *path, int *already_seen) {
-    u8 i;
+    size_t i;
+    const char *p = intern_find(path);
     *already_seen = 0;
-    for (i = 0; i < seen_count; i++) {
-        if (strcmp(seen_files[i], path) == 0) {
-            *already_seen = 1;
-            return NULL;
+    if (p) {
+        for (i = 0; i < seen_files.len; i++) {
+            if (seen_files.data[i] == p) {
+                *already_seen = 1;
+                return NULL;
+            }
         }
     }
     return fopen(path, "r");
 }
 
-static char exe_dir[MAX_PATH] = "";
+static const char *exe_dir = NULL;
 
 void ir4_set_exe_path(const char *exe_path) {
     const char *sep = NULL;
     const char *p;
     size_t len;
-    exe_dir[0] = '\0';
+    exe_dir = NULL;
     if (!exe_path)
         return;
     for (p = exe_path; *p; p++) {
@@ -342,111 +343,80 @@ void ir4_set_exe_path(const char *exe_path) {
     if (!sep)
         return;
     len = (size_t)(sep - exe_path);
-    if (len == 0) {
-        strcpy(exe_dir, "/");
-    } else if (len < sizeof(exe_dir)) {
-        memcpy(exe_dir, exe_path, len);
-        exe_dir[len] = '\0';
-    }
+    exe_dir = (len == 0) ? intern_str("/") : intern_str_n(exe_path, len);
 }
 
 static void push_src_file(FILE *fp, const char *path, u16 req_group) {
-    if (seen_count >= MAX_INCLUDES) {
-        fclose(fp);
-        ir4_die("too many required files");
-    }
-    if (src_depth >= MAX_INCLUDE_DEPTH) {
-        fclose(fp);
-        ir4_die("require nesting too deep");
-    }
-    memcpy(seen_files[seen_count++], path, strlen(path) + 1);
-    src_stack[src_depth].fp = fp;
-    memcpy(src_stack[src_depth].path, path, strlen(path) + 1);
-    src_stack[src_depth].line_num = 1;
-    src_stack[src_depth].req_group = req_group;
-    src_depth++;
+    const char *ipath = intern_str(path);
+    SrcFile *sf = VEC_ADD(src_stack);
+    VEC_PUSH(seen_files, ipath);
+    sf->fp = fp;
+    sf->path = ipath;
+    sf->line_num = 1;
+    sf->req_group = req_group;
 }
 
 static void push_require_ex(const char *name, int lib_only) {
-    char cands[3][MAX_PATH];
+    const char *cands[3];
     int n_cands = 0;
     int c;
     FILE *found_fps[3];
-    char found_paths[3][MAX_PATH];
+    const char *found_paths[3];
     int found_cnt = 0;
     int seen_cnt = 0;
 
     if (name[0] != '/') {
         if (platform_name != NULL && platform_name[0] != '\0') {
-            if (strlen(platform_name) + 1 + strlen(name) >= MAX_PATH) {
-                ir4_die("required file path too long");
-            }
-            sprintf(cands[n_cands++], "%s/%s", platform_name, name);
+            cands[n_cands++] = join_path(platform_name, name);
         }
-        if (strlen(be->name) + 1 + strlen(name) >= MAX_PATH) {
-            ir4_die("required file path too long");
-        }
-        sprintf(cands[n_cands++], "%s/%s", be->name, name);
+        cands[n_cands++] = join_path(be->name, name);
     }
-    if (strlen(name) >= MAX_PATH) {
-        ir4_die("required file path too long");
-    }
-    strcpy(cands[n_cands++], name);
+    cands[n_cands++] = intern_str(name);
 
     if (!lib_only) {
         for (c = 0; c < n_cands; c++) {
-            char path[MAX_PATH];
+            const char *path = resolve_path(src_stack.data[src_stack.len - 1].path, cands[c]);
             int seen = 0;
-            FILE *fp;
-            resolve_path(src_stack[src_depth - 1].path, cands[c], path, sizeof(path));
-            fp = try_open_require(path, &seen);
+            FILE *fp = try_open_require(path, &seen);
             if (seen)
                 seen_cnt++;
             else if (fp) {
                 found_fps[found_cnt] = fp;
-                strcpy(found_paths[found_cnt], path);
+                found_paths[found_cnt] = path;
                 found_cnt++;
             }
         }
     }
 
     if (found_cnt == 0 && seen_cnt == 0 && name[0] != '/') {
-        const char *roots[MAX_LIB_ROOTS + 3];
-        char root_bufs[2][MAX_PATH];
-        int n_roots = 0;
-        int r;
-        for (r = 0; r < extra_lib_root_count; r++) {
-            roots[n_roots++] = extra_lib_roots[r];
+        StrVec roots;
+        size_t r;
+        roots.data = NULL;
+        roots.len = 0;
+        roots.cap = 0;
+        for (r = 0; r < extra_lib_roots.len; r++) {
+            VEC_PUSH(roots, extra_lib_roots.data[r]);
         }
-        if (exe_dir[0] != '\0') {
-            if (strlen(exe_dir) + 8 < MAX_PATH) {
-                sprintf(root_bufs[0], "%s/../lib", exe_dir);
-                roots[n_roots++] = root_bufs[0];
-            }
-            if (strlen(exe_dir) + 5 < MAX_PATH) {
-                sprintf(root_bufs[1], "%s/lib", exe_dir);
-                roots[n_roots++] = root_bufs[1];
-            }
+        if (exe_dir != NULL) {
+            VEC_PUSH(roots, join_path(exe_dir, "../lib"));
+            VEC_PUSH(roots, join_path(exe_dir, "lib"));
         }
-        roots[n_roots++] = "lib";
-        for (r = 0; r < n_roots && found_cnt == 0 && seen_cnt == 0; r++) {
+        VEC_PUSH(roots, "lib");
+        for (r = 0; r < roots.len && found_cnt == 0 && seen_cnt == 0; r++) {
             for (c = 0; c < n_cands; c++) {
-                char path[MAX_PATH];
+                const char *path = join_path(roots.data[r], cands[c]);
                 int seen = 0;
-                FILE *fp;
-                if (strlen(roots[r]) + 1 + strlen(cands[c]) >= sizeof(path))
-                    continue;
-                sprintf(path, "%s/%s", roots[r], cands[c]);
-                fp = try_open_require(path, &seen);
+                FILE *fp = try_open_require(path, &seen);
                 if (seen)
                     seen_cnt++;
                 else if (fp) {
                     found_fps[found_cnt] = fp;
-                    strcpy(found_paths[found_cnt], path);
+                    found_paths[found_cnt] = path;
                     found_cnt++;
                 }
             }
         }
+        free(roots.data);
     }
 
     if (found_cnt > 0) {
@@ -462,30 +432,20 @@ static void push_require_ex(const char *name, int lib_only) {
         return;
 
     {
-        const SrcFile *cur = &src_stack[src_depth - 1];
+        const SrcFile *cur = &src_stack.data[src_stack.len - 1];
         fprintf(stderr, "ir4c error (%s:%u): cannot open required file '%s'\n", cur->path,
                 cur->line_num, name);
         exit(1);
     }
 }
 
-static void read_require_path(char *out, size_t out_sz) {
+static const char *read_require_path(void) {
     int c = skip_ws_and_comments();
-    SrcFile *cur = &src_stack[src_depth - 1];
-    size_t len = 0;
+    SrcFile *cur = &src_stack.data[src_stack.len - 1];
 
     if (c != '"')
         ir4_die("expected quoted filename after 'require'");
-    c = fgetc(cur->fp);
-    while (c != EOF && c != '\n' && c != '"') {
-        if (len + 1 >= out_sz)
-            ir4_die("required file path too long");
-        out[len++] = (char)c;
-        c = fgetc(cur->fp);
-    }
-    if (c != '"')
-        ir4_die("unterminated filename in 'require'");
-    out[len] = '\0';
+    return read_quoted_intern(cur->fp, "unterminated filename in 'require'");
 }
 
 static void push_require(const char *name) { push_require_ex(name, 0); }
@@ -534,13 +494,13 @@ static int parse_float(const char *s, double *val) {
 
 static u16 tstack_bytes(void) {
     u16 bytes = 0;
-    u8 i;
-    for (i = 0; i < tsp; i++) {
-        if (tstack[i] == TY_F)
+    size_t i;
+    for (i = 0; i < tstack.len; i++) {
+        if (tstack.data[i] == TY_F)
             bytes += be->float_bytes;
-        else if (tstack[i] == TY_A)
+        else if (tstack.data[i] == TY_A)
             bytes += be->addr_bytes;
-        else if (tstack[i] == TY_I32)
+        else if (tstack.data[i] == TY_I32)
             bytes += 4;
         else
             bytes += be->word_bytes;
@@ -548,22 +508,18 @@ static u16 tstack_bytes(void) {
     return bytes;
 }
 
-static void tpush(u8 t) {
-    if (tsp >= MAX_STACK)
-        ir4_die("type stack overflow");
-    tstack[tsp++] = t;
-}
+static void tpush(u8 t) { VEC_PUSH(tstack, t); }
 
 static u8 tpop(void) {
-    if (tsp == 0)
+    if (tstack.len == 0)
         ir4_die("type stack underflow");
-    return tstack[--tsp];
+    return tstack.data[--tstack.len];
 }
 
 static void tpop_expect(u8 expected) {
     u8 got = tpop();
     if (got != expected) {
-        const SrcFile *cur = &src_stack[src_depth - 1];
+        const SrcFile *cur = &src_stack.data[src_stack.len - 1];
         fprintf(stderr, "ir4c error (%s:%u): expected %s, got %s\n", cur->path, cur->line_num,
                 type_name(expected), type_name(got));
         exit(1);
@@ -571,52 +527,78 @@ static void tpop_expect(u8 expected) {
 }
 
 static void check_return_stack(void) {
-    u8 i;
-    if (tsp != cur_out_count)
+    size_t i;
+    if (tstack.len != cur_out_count)
         ir4_die("return stack depth mismatch");
     for (i = 0; i < cur_out_count; i++) {
-        if (tstack[i] != cur_outs[i])
+        if (tstack.data[i] != cur_outs[i])
             ir4_die("return stack type mismatch");
     }
 }
 
+static void stack_copy(ByteVec *dst, const ByteVec *src) {
+    VEC_ENSURE(*dst, src->len);
+    if (src->len > 0)
+        memcpy(dst->data, src->data, src->len);
+    dst->len = src->len;
+}
+
+static int stack_eq(const ByteVec *a, const ByteVec *b) {
+    return a->len == b->len && (a->len == 0 || memcmp(a->data, b->data, a->len) == 0);
+}
+
+static void free_block(BlockInfo *b) {
+    free(b->saved_stack.data);
+    free(b->else_stack.data);
+    free(b);
+}
+
 static int find_local(const char *name) {
     u8 i;
+    const char *p = intern_find(name);
+    if (!p)
+        return -1;
     for (i = 0; i < local_count; i++) {
-        if (strcmp(locals[i].name, name) == 0)
+        if (locals[i].name == p)
             return (int)i;
     }
     return -1;
 }
 
 int ir4_find_func(const char *name) {
-    u8 i;
-    for (i = 0; i < func_count; i++) {
-        if (strcmp(funcs[i].name, name) == 0)
+    size_t i;
+    const char *p = intern_find(name);
+    if (!p)
+        return -1;
+    for (i = 0; i < funcs.len; i++) {
+        if (funcs.data[i]->name == p)
             return (int)i;
     }
     return -1;
 }
 
 static int find_buffer(const char *name) {
-    u8 i;
-    for (i = 0; i < buffer_count; i++) {
-        if (strcmp(buffers[i].name, name) == 0)
+    size_t i;
+    const char *p = intern_find(name);
+    if (!p)
+        return -1;
+    for (i = 0; i < buffers.len; i++) {
+        if (buffers.data[i]->name == p)
             return (int)i;
     }
     return -1;
 }
 
-u16 ir4_func_addr(u8 idx) {
-    if (idx >= func_count)
+u16 ir4_func_addr(size_t idx) {
+    if (idx >= funcs.len)
         ir4_die("function index out of bounds");
-    return funcs[idx].addr;
+    return funcs.data[idx]->addr;
 }
 
-const FuncSig *ir4_func_sig(u8 idx) {
-    if (idx >= func_count)
+const FuncSig *ir4_func_sig(size_t idx) {
+    if (idx >= funcs.len)
         ir4_die("function index out of bounds");
-    return &funcs[idx];
+    return funcs.data[idx];
 }
 
 typedef struct {
@@ -728,11 +710,7 @@ static const BuiltinDef builtins[] = {/* Native word (:i) arithmetic & bitwise *
                                       {"i32>i", OP_I322W, TY_I32, TY_NONE, TY_W}};
 
 static IrInstr *emit_ir(IrKind kind, WordIR *w) {
-    IrInstr *ins;
-    if (ir_count >= MAX_IR) {
-        ir4_die("IR buffer overflow");
-    }
-    ins = &ir_buf[ir_count++];
+    IrInstr *ins = VEC_ADD(ir_buf);
     memset(ins, 0, sizeof(IrInstr));
     ins->kind = kind;
     w->ir_len++;
@@ -917,20 +895,20 @@ static int handle_builtin(const char *tok, WordIR *w) {
             }
             matched_name = 1;
             need = (builtins[i].in2 != TY_NONE) ? 2 : 1;
-            if (tsp < need)
+            if (tstack.len < (size_t)need)
                 continue;
-            if (tstack[tsp - 1] != builtins[i].in1)
+            if (tstack.data[tstack.len - 1] != builtins[i].in1)
                 continue;
-            if (builtins[i].in2 != TY_NONE && tstack[tsp - 2] != builtins[i].in2)
+            if (builtins[i].in2 != TY_NONE && tstack.data[tstack.len - 2] != builtins[i].in2)
                 continue;
 
-            tsp -= need;
+            tstack.len -= need;
             if (builtins[i].out != TY_NONE)
                 tpush(builtins[i].out);
             if ((builtins[i].op == OP_W2A || builtins[i].op == OP_W2I32 ||
                  builtins[i].op == OP_U2I32) &&
                 w->ir_len >= fold_fence + 1) {
-                IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
+                IrInstr *p1 = &ir_buf.data[w->ir_start + w->ir_len - 1];
                 if (p1->kind == IR_PUSH_W) {
                     if (builtins[i].op == OP_W2A) {
                         p1->kind = IR_PUSH_A;
@@ -944,7 +922,7 @@ static int handle_builtin(const char *tok, WordIR *w) {
             if (w->ir_len >= fold_fence + 1) {
                 IrOp sop = swapped_store_op(builtins[i].op);
                 if (sop != builtins[i].op) {
-                    IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
+                    IrInstr *p1 = &ir_buf.data[w->ir_start + w->ir_len - 1];
                     if (p1->kind == IR_STACK_OP && p1->u.stk.op == OP_SWAP) {
                         p1->kind = IR_ALU_OP;
                         p1->u.op = sop;
@@ -953,14 +931,14 @@ static int handle_builtin(const char *tok, WordIR *w) {
                 }
             }
             if (w->ir_len >= fold_fence + 2) {
-                IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 2];
-                IrInstr *p2 = &ir_buf[w->ir_start + w->ir_len - 1];
+                IrInstr *p1 = &ir_buf.data[w->ir_start + w->ir_len - 2];
+                IrInstr *p2 = &ir_buf.data[w->ir_start + w->ir_len - 1];
                 i32 folded;
                 if (p1->kind == IR_PUSH_W && p2->kind == IR_PUSH_W &&
                     try_fold_const_w(builtins[i].op, p1->u.w, p2->u.w, &folded)) {
                     p1->u.w = folded;
                     w->ir_len--;
-                    ir_count--;
+                    ir_buf.len--;
                     return 1;
                 }
             }
@@ -968,14 +946,14 @@ static int handle_builtin(const char *tok, WordIR *w) {
                 IrOp rop = builtins[i].op;
                 if (rop == OP_MUL || rop == OP_UDIV || rop == OP_UMOD || rop == OP_MUL32 ||
                     rop == OP_UDIV32 || rop == OP_UMOD32) {
-                    IrInstr *p1 = &ir_buf[w->ir_start + w->ir_len - 1];
+                    IrInstr *p1 = &ir_buf.data[w->ir_start + w->ir_len - 1];
                     u8 is32 = (rop == OP_MUL32 || rop == OP_UDIV32 || rop == OP_UMOD32);
                     if ((!is32 && p1->kind == IR_PUSH_W) || (is32 && p1->kind == IR_PUSH_I32)) {
                         u32 v = (!is32 && be->word_bytes == 2) ? (u32)(u16)p1->u.w : (u32)p1->u.w;
                         if (v == 1 && (rop == OP_MUL || rop == OP_UDIV || rop == OP_MUL32 ||
                                        rop == OP_UDIV32)) {
                             w->ir_len--;
-                            ir_count--;
+                            ir_buf.len--;
                             return 1;
                         }
                         if (v >= 2 && (v & (v - 1)) == 0 &&
@@ -1019,7 +997,7 @@ typedef struct {
     u8 src_slot;
     u8 dst_slot;
     u16 size;
-    char name[MAX_TOK];
+    const char *name;
 } BytesParamCopy;
 
 static BytesParamCopy cur_bytes_copies[8];
@@ -1036,8 +1014,7 @@ static void flush_bytes_params(u8 *params_flushed) {
     for (k = 0; k < cur_bytes_copy_count; k++) {
         if (local_count >= MAX_LOCALS)
             ir4_die("too many parameters/locals");
-        memcpy(locals[local_count].name, cur_bytes_copies[k].name,
-               strlen(cur_bytes_copies[k].name) + 1);
+        locals[local_count].name = cur_bytes_copies[k].name;
         locals[local_count].type = TY_A;
         locals[local_count].slot = local_count;
         locals[local_count].size = cur_bytes_copies[k].size;
@@ -1047,10 +1024,10 @@ static void flush_bytes_params(u8 *params_flushed) {
 }
 
 static void parse_icall_sig(FuncSig *sig) {
-    char tok[MAX_TOK];
+    const char *tok;
     u8 in_outs = 0;
 
-    while (next_tok(tok)) {
+    while ((tok = next_tok()) != NULL) {
         u8 ty;
         if (strcmp(tok, ")") == 0) {
             if (in_outs && sig->out_count == 0)
@@ -1080,7 +1057,7 @@ static void parse_icall_sig(FuncSig *sig) {
 }
 
 static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
-    char tok[MAX_TOK];
+    const char *tok;
     u8 param_cnt = 0;
     u8 in_outs = 0;
     u8 params_flushed = 0;
@@ -1089,11 +1066,12 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
     cur_out_count = 0;
     cur_bytes_copy_count = 0;
     cur_bytes_cnt_slot = 0;
+    sig->out_reg = intern_str("");
 
     /* Parse inputs -> outputs ) (after '(' has been consumed) */
-    while (next_tok(tok)) {
+    while ((tok = next_tok()) != NULL) {
         u8 ty;
-        char ty_tok[MAX_TOK];
+        const char *ty_tok;
         if (strcmp(tok, ")") == 0) {
             flush_bytes_params(&params_flushed);
             if (in_outs && sig->out_count == 0)
@@ -1114,9 +1092,9 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
             ty = parse_type_tok(tok);
             if (ty == TY_NONE) {
                 if (!allow_bytes && cur_out_count == 0 && sig->out_reg[0] == '\0') {
-                    size_t len = strlen(tok);
-                    memcpy(sig->out_reg, tok, len + 1);
-                    if (!next_tok(tok))
+                    sig->out_reg = intern_str(tok);
+                    tok = next_tok();
+                    if (!tok)
                         ir4_die("expected type token (:i, :a, :f) after extern register");
                     ty = parse_type_tok(tok);
                 }
@@ -1133,12 +1111,15 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
             if (parse_type_tok(tok) != TY_NONE) {
                 ir4_die("expected identifier before type in signature");
             }
-            memcpy(locals[local_count].name, tok, strlen(tok) + 1);
-            if (!next_tok(ty_tok))
+            locals[local_count].name = intern_str(tok);
+            ty_tok = next_tok();
+            if (!ty_tok)
                 ir4_die("expected type token (:i, :a, :f) after identifier in signature");
             if (strcmp(ty_tok, ":bytes") == 0) {
                 i32 sz = 0;
-                if (!next_tok(ty_tok) || !parse_int(ty_tok, &sz) || sz <= 0 || sz > MAX_DATA) {
+                char bp_name[32];
+                ty_tok = next_tok();
+                if (!ty_tok || !parse_int(ty_tok, &sz) || sz <= 0 || sz > 0xFFFF) {
                     ir4_die("invalid byte count after ':bytes'");
                 }
                 if (!allow_bytes)
@@ -1147,9 +1128,10 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
                     ir4_die("too many parameters");
                 cur_bytes_copies[cur_bytes_copy_count].src_slot = local_count;
                 cur_bytes_copies[cur_bytes_copy_count].size = (u16)sz;
-                memcpy(cur_bytes_copies[cur_bytes_copy_count].name, tok, strlen(tok) + 1);
+                cur_bytes_copies[cur_bytes_copy_count].name = locals[local_count].name;
                 cur_bytes_copy_count++;
-                sprintf(locals[local_count].name, "__bp%u", (unsigned)param_cnt);
+                sprintf(bp_name, "__bp%u", (unsigned)param_cnt);
+                locals[local_count].name = intern_str(bp_name);
                 locals[local_count].type = TY_A;
                 locals[local_count].slot = local_count;
                 locals[local_count].size = 0;
@@ -1168,8 +1150,7 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
             if (sig->in_count >= 8)
                 ir4_die("too many parameters");
             sig->in_types[sig->in_count] = ty;
-            memcpy(sig->in_regs[sig->in_count], locals[local_count].name,
-                   strlen(locals[local_count].name) + 1);
+            sig->in_regs[sig->in_count] = locals[local_count].name;
             sig->in_count++;
             param_cnt++;
             local_count++;
@@ -1216,80 +1197,90 @@ static int sigs_match(const FuncSig *a, const FuncSig *b) {
            memcmp(a->out_types, b->out_types, a->out_count) == 0;
 }
 
+static size_t alloc_func(FuncSig **sig_out, WordIR **w_out) {
+    size_t idx = funcs.len;
+    FuncSig *sig = NEW(FuncSig);
+    WordIR *w = NEW(WordIR);
+    VEC_PUSH(funcs, sig);
+    VEC_PUSH(words, w);
+    if (sig_out)
+        *sig_out = sig;
+    if (w_out)
+        *w_out = w;
+    return idx;
+}
+
 static void compile_word(int is_default) {
-    char tok[MAX_TOK];
-    char name[MAX_TOK];
+    const char *tok;
+    const char *name;
     FuncSig *sig;
     WordIR *w;
     WordIR discard_w;
     int discard_body = 0;
-    u16 saved_ir_count = ir_count;
-    u8 fidx;
+    size_t saved_ir_count = ir_buf.len;
+    size_t fidx;
     int existing;
     u8 param_cnt = 0;
-    u16 cur_grp = src_stack[src_depth - 1].req_group;
+    u16 cur_grp = src_stack.data[src_stack.len - 1].req_group;
 
-    if (!next_tok(name))
+    name = next_tok_intern();
+    if (!name)
         ir4_die("expected word name after 'fn'");
-    if (!next_tok(tok) || strcmp(tok, "(") != 0)
+    tok = next_tok();
+    if (!tok || strcmp(tok, "(") != 0)
         ir4_die("expected '(' after word name");
 
     existing = ir4_find_func(name);
     if (existing >= 0) {
         FuncSig fn_sig;
-        if (funcs[existing].is_extern) {
+        FuncSig *ex = funcs.data[existing];
+        if (ex->is_extern) {
             ir4_die("duplicate function definition");
         }
-        if (funcs[existing].is_defined) {
-            if (cur_grp == 0 || funcs[existing].req_group != cur_grp) {
+        if (ex->is_defined) {
+            if (cur_grp == 0 || ex->req_group != cur_grp) {
                 ir4_die("duplicate function definition");
             }
-            if (is_default && funcs[existing].is_default) {
+            if (is_default && ex->is_default) {
                 ir4_die("duplicate 'default' function definition");
             }
-            if (!is_default && !funcs[existing].is_default) {
+            if (!is_default && !ex->is_default) {
                 ir4_die("duplicate function definition");
             }
         }
-        fidx = (u8)existing;
+        fidx = (size_t)existing;
         memset(&fn_sig, 0, sizeof(FuncSig));
-        memcpy(fn_sig.name, name, strlen(name) + 1);
-        tsp = 0;
-        bsp = 0;
+        fn_sig.name = intern_str(name);
+        tstack.len = 0;
+        blocks.len = 0;
         parse_sig_body(&fn_sig, &param_cnt, 1);
-        if (!sigs_match(&fn_sig, &funcs[fidx])) {
-            ir4_die(funcs[fidx].is_defined
+        if (!sigs_match(&fn_sig, ex)) {
+            ir4_die(ex->is_defined
                         ? "override signature does not match 'default' declaration"
                         : "function signature does not match 'fwd' declaration");
         }
-        if (is_default && funcs[fidx].is_defined) {
+        if (is_default && ex->is_defined) {
             /* Already overridden by a more-specific file in this require group. */
             discard_body = 1;
             memset(&discard_w, 0, sizeof(WordIR));
             w = &discard_w;
         } else {
-            funcs[fidx] = fn_sig;
-            funcs[fidx].is_defined = 1;
-            funcs[fidx].is_default = (u8)is_default;
-            funcs[fidx].req_group = cur_grp;
-            sig = &funcs[fidx];
-            w = &words[fidx];
+            *ex = fn_sig;
+            ex->is_defined = 1;
+            ex->is_default = (u8)is_default;
+            ex->req_group = cur_grp;
+            sig = ex;
+            w = words.data[fidx];
             memset(w, 0, sizeof(WordIR));
         }
     } else {
-        if (func_count >= MAX_SYMS)
-            ir4_die("too many word definitions");
-        fidx = func_count++;
-        sig = &funcs[fidx];
-        w = &words[fidx];
-        memset(sig, 0, sizeof(FuncSig));
-        memset(w, 0, sizeof(WordIR));
-        memcpy(sig->name, name, strlen(name) + 1);
+        fidx = alloc_func(&sig, &w);
+        sig->name = intern_str(name);
         sig->is_defined = 1;
         sig->is_default = (u8)is_default;
         sig->req_group = cur_grp;
-        tsp = 0;
-        bsp = 0;
+        tstack.len = 0;
+        blocks.len = 0;
         parse_sig_body(sig, &param_cnt, 1);
     }
 
@@ -1297,82 +1288,77 @@ static void compile_word(int is_default) {
     emit_bytes_param_copies(w);
     compile_body(w);
     if (discard_body) {
-        ir_count = saved_ir_count;
+        ir_buf.len = saved_ir_count;
     }
 }
 
-static u8 init_funcs[MAX_SYMS];
-static u8 init_count = 0;
+VEC_OF(IdxVec, size_t);
+static IdxVec init_funcs;
 
 static void raw_emit_u8(WordIR *w, u8 b) {
-    if (raw_code_len >= MAX_CODE)
-        ir4_die("code buffer overflow");
-    raw_code_buf[raw_code_len++] = b;
+    VEC_PUSH(raw_code_buf, b);
     w->ir_len++;
 }
 
 static void compile_code(void) {
-    char tok[MAX_TOK];
-    char name[MAX_TOK];
+    const char *tok;
+    const char *name;
     FuncSig *sig;
     WordIR *w;
-    u8 fidx;
+    size_t fidx;
     i32 num_val;
     i32 pending = 0;
     int has_pending = 0;
 
     int existing;
-    u16 cur_grp = src_stack[src_depth - 1].req_group;
+    u16 cur_grp = src_stack.data[src_stack.len - 1].req_group;
 
-    if (!next_tok(name))
+    name = next_tok_intern();
+    if (!name)
         ir4_die("expected word name after 'code'");
     existing = ir4_find_func(name);
     if (existing >= 0) {
         FuncSig code_sig;
-        if (!funcs[existing].is_defined || funcs[existing].is_extern ||
-            !funcs[existing].is_default || cur_grp == 0 || funcs[existing].req_group != cur_grp) {
+        FuncSig *ex = funcs.data[existing];
+        if (!ex->is_defined || ex->is_extern || !ex->is_default || cur_grp == 0 ||
+            ex->req_group != cur_grp) {
             ir4_die("duplicate function definition");
         }
-        if (!next_tok(tok) || strcmp(tok, "(") != 0)
+        tok = next_tok();
+        if (!tok || strcmp(tok, "(") != 0)
             ir4_die("expected '(' after 'code' name");
-        fidx = (u8)existing;
+        fidx = (size_t)existing;
         memset(&code_sig, 0, sizeof(FuncSig));
-        memcpy(code_sig.name, name, strlen(name) + 1);
+        code_sig.name = name;
         parse_sig_body(&code_sig, NULL, 0);
-        if (!sigs_match(&code_sig, &funcs[fidx])) {
+        if (!sigs_match(&code_sig, ex)) {
             ir4_die("override signature does not match 'default' declaration");
         }
-        funcs[fidx] = code_sig;
-        funcs[fidx].is_defined = 1;
-        funcs[fidx].is_default = 0;
-        funcs[fidx].req_group = cur_grp;
-        sig = &funcs[fidx];
-        w = &words[fidx];
+        *ex = code_sig;
+        ex->is_defined = 1;
+        ex->is_default = 0;
+        ex->req_group = cur_grp;
+        sig = ex;
+        w = words.data[fidx];
         memset(w, 0, sizeof(WordIR));
     } else {
-        if (!next_tok(tok) || strcmp(tok, "(") != 0)
+        tok = next_tok();
+        if (!tok || strcmp(tok, "(") != 0)
             ir4_die("expected '(' after 'code' name");
-        if (func_count >= MAX_SYMS)
-            ir4_die("too many word definitions");
-
-        fidx = func_count++;
-        sig = &funcs[fidx];
-        w = &words[fidx];
-        memset(sig, 0, sizeof(FuncSig));
-        memset(w, 0, sizeof(WordIR));
-        memcpy(sig->name, name, strlen(name) + 1);
+        fidx = alloc_func(&sig, &w);
+        sig->name = name;
         sig->is_defined = 1;
         sig->req_group = cur_grp;
         parse_sig_body(sig, NULL, 0);
     }
 
     w->is_code = 1;
-    w->ir_start = raw_code_len;
+    w->ir_start = raw_code_buf.len;
     w->ir_len = 0;
-    w->reloc_start = code_reloc_count;
+    w->reloc_start = code_relocs.len;
     w->reloc_cnt = 0;
 
-    while (next_tok(tok)) {
+    while ((tok = next_tok()) != NULL) {
         if (strcmp(tok, "end") == 0) {
             if (has_pending)
                 ir4_die("missing width (:i8, :i16, :i32) in 'code'");
@@ -1410,9 +1396,7 @@ static void compile_code(void) {
                 ir4_die("expected offset before ':ar' or ':as'");
             if (pending < 0 || pending > 0xFFFF)
                 ir4_die("relocation offset out of range");
-            if (code_reloc_count >= MAX_CODE_RELOCS)
-                ir4_die("too many code relocations");
-            rel = &code_relocs[code_reloc_count++];
+            rel = VEC_ADD(code_relocs);
             rel->ir_off = w->ir_len;
             rel->addend = (u16)pending;
             rel->kind = (strcmp(tok, ":ar") == 0) ? CODE_REL_SELF : CODE_REL_STACK;
@@ -1438,39 +1422,35 @@ static void compile_code(void) {
 static void compile_init(void) {
     FuncSig *sig;
     WordIR *w;
-    u8 fidx;
+    size_t fidx;
+    char iname[32];
 
-    if (func_count >= MAX_SYMS)
-        ir4_die("too many word definitions");
-    fidx = func_count++;
-    sig = &funcs[fidx];
-    w = &words[fidx];
-    memset(sig, 0, sizeof(FuncSig));
-    memset(w, 0, sizeof(WordIR));
-    sprintf(sig->name, "__init_%u", (unsigned)init_count);
+    fidx = alloc_func(&sig, &w);
+    sprintf(iname, "__init_%u", (unsigned)init_funcs.len);
+    sig->name = intern_str(iname);
     sig->is_defined = 1;
-    init_funcs[init_count++] = fidx;
+    VEC_PUSH(init_funcs, fidx);
 
-    tsp = 0;
-    bsp = 0;
+    tstack.len = 0;
+    blocks.len = 0;
     cur_out_count = 0;
     local_count = 0;
     compile_body(w);
 }
 
-#define MAX_LABELS 64
-#define MAX_LABEL_REFS 256
-
 typedef struct {
-    char name[MAX_TOK];
-    u16 target_ir;
+    const char *name;
+    size_t target_ir;
     u8 defined;
 } LabelInfo;
 
 typedef struct {
-    u16 ir_idx;
-    u16 label_idx;
+    size_t ir_idx;
+    size_t label_idx;
 } LabelRef;
+
+VEC_OF(LabelVec, LabelInfo);
+VEC_OF(LabelRefVec, LabelRef);
 
 static IrOp global_fetch_op(u8 ty) {
     if (ty == TY_A)
@@ -1502,67 +1482,114 @@ static u16 global_type_bytes(u8 ty) {
     return be->word_bytes;
 }
 
-static int find_or_add_label(LabelInfo *labels, u16 *label_count, const char *name) {
-    u16 i;
-    for (i = 0; i < *label_count; i++) {
-        if (strcmp(labels[i].name, name) == 0)
-            return (int)i;
+static size_t find_or_add_label(LabelVec *labels, const char *name) {
+    size_t i;
+    const char *p = intern_str(name);
+    LabelInfo *li;
+    for (i = 0; i < labels->len; i++) {
+        if (labels->data[i].name == p)
+            return i;
     }
-    if (*label_count >= MAX_LABELS)
-        ir4_die("too many labels in function");
-    strcpy(labels[*label_count].name, name);
-    labels[*label_count].target_ir = 0;
-    labels[*label_count].defined = 0;
-    return (int)(*label_count)++;
+    li = VEC_ADD(*labels);
+    li->name = p;
+    li->target_ir = 0;
+    li->defined = 0;
+    return labels->len - 1;
 }
 
-static void emit_label_br(WordIR *w, LabelInfo *labels, LabelRef *refs, u16 *ref_count, u16 lidx,
+static void emit_label_br(WordIR *w, LabelVec *labels, LabelRefVec *refs, size_t lidx,
                           BranchCond cond) {
     IrInstr *ins;
-    if (labels[lidx].defined) {
+    if (labels->data[lidx].defined) {
         ins = emit_ir(IR_BR_BACK, w);
         ins->u.br.cond = cond;
-        ins->u.br.target = labels[lidx].target_ir;
+        ins->u.br.target = labels->data[lidx].target_ir;
     } else {
-        if (*ref_count >= MAX_LABEL_REFS)
-            ir4_die("too many label references");
-        refs[*ref_count].ir_idx = w->ir_len;
-        refs[*ref_count].label_idx = lidx;
-        (*ref_count)++;
+        LabelRef *ref = VEC_ADD(*refs);
+        ref->ir_idx = w->ir_len;
+        ref->label_idx = lidx;
         ins = emit_ir(IR_BR_FWD, w);
         ins->u.br.cond = cond;
     }
     fold_fence = w->ir_len;
 }
 
+/* Parse a local 'var <name> :<type>' declaration and return its local slot. */
+static int parse_local_var(int allow_bytes) {
+    const char *vname, *vtype;
+    u8 ty;
+    int slot;
+    vname = next_tok_intern();
+    if (!vname)
+        ir4_die("expected local variable name after 'var'");
+    if (parse_type_tok(vname) != TY_NONE)
+        ir4_die("expected identifier after 'var'");
+    if (find_local(vname) >= 0)
+        ir4_die("duplicate local variable name");
+    if (local_count >= MAX_LOCALS)
+        ir4_die("too many parameters/locals");
+    vtype = next_tok();
+    if (!vtype)
+        ir4_die("expected type after local 'var' name");
+    slot = local_count;
+    locals[slot].name = vname;
+    locals[slot].slot = (u8)slot;
+    if (strcmp(vtype, ":bytes") == 0) {
+        i32 sz = 0;
+        if (!allow_bytes)
+            ir4_die("cannot assign to ':bytes' local");
+        vtype = next_tok();
+        if (!vtype || !parse_int(vtype, &sz) || sz <= 0 || sz > 0xFFFF)
+            ir4_die("invalid byte count after ':bytes'");
+        locals[slot].type = TY_A;
+        locals[slot].size = (u16)sz;
+    } else {
+        ty = parse_type_tok(vtype);
+        if (ty == TY_NONE)
+            ir4_die("expected type token (:i, :i32, :a, :f, :bytes) after 'var'");
+        locals[slot].type = ty;
+        locals[slot].size = 0;
+    }
+    local_count++;
+    return slot;
+}
+
 static void compile_body(WordIR *w) {
-    char tok[MAX_TOK];
+    const char *tok;
     IrInstr *ins;
     u8 unreachable = 0;
     i32 num_val;
-    LabelInfo labels[MAX_LABELS];
-    LabelRef label_refs[MAX_LABEL_REFS];
-    u16 label_count = 0;
-    u16 label_ref_count = 0;
+    LabelVec labels;
+    LabelRefVec label_refs;
 
-    w->ir_start = ir_count;
+    labels.data = NULL;
+    labels.len = 0;
+    labels.cap = 0;
+    label_refs.data = NULL;
+    label_refs.len = 0;
+    label_refs.cap = 0;
+
+    w->ir_start = ir_buf.len;
     w->ir_len = 0;
     fold_fence = 0;
 
     /* Parse, type-check, and record IR for word body (Pass 1) */
-    while (next_tok(tok)) {
+    while ((tok = next_tok()) != NULL) {
         int idx;
 
         if (strcmp(tok, "end") == 0) {
-            u16 r;
-            if (bsp != 0)
+            size_t r;
+            if (blocks.len != 0)
                 ir4_die("unclosed control block at 'end'");
-            for (r = 0; r < label_ref_count; r++) {
-                u16 lidx = label_refs[r].label_idx;
-                if (!labels[lidx].defined)
+            for (r = 0; r < label_refs.len; r++) {
+                size_t lidx = label_refs.data[r].label_idx;
+                if (!labels.data[lidx].defined)
                     ir4_die("undefined label");
-                ir_buf[w->ir_start + label_refs[r].ir_idx].u.br.target = labels[lidx].target_ir;
+                ir_buf.data[w->ir_start + label_refs.data[r].ir_idx].u.br.target =
+                    labels.data[lidx].target_ir;
             }
+            free(labels.data);
+            free(label_refs.data);
             if (!unreachable) {
                 check_return_stack();
                 emit_ir(IR_FN_END, w);
@@ -1575,35 +1602,7 @@ static void compile_body(WordIR *w) {
         }
 
         if (strcmp(tok, "var") == 0) {
-            char vname[MAX_TOK], vtype[MAX_TOK];
-            u8 ty;
-            if (!next_tok(vname))
-                ir4_die("expected local variable name after 'var'");
-            if (parse_type_tok(vname) != TY_NONE)
-                ir4_die("expected identifier after 'var'");
-            if (find_local(vname) >= 0)
-                ir4_die("duplicate local variable name");
-            if (local_count >= MAX_LOCALS)
-                ir4_die("too many parameters/locals");
-            if (!next_tok(vtype))
-                ir4_die("expected type after local 'var' name");
-            memcpy(locals[local_count].name, vname, strlen(vname) + 1);
-            locals[local_count].slot = local_count;
-            if (strcmp(vtype, ":bytes") == 0) {
-                i32 sz = 0;
-                if (!next_tok(vtype) || !parse_int(vtype, &sz) || sz <= 0 || sz > MAX_DATA) {
-                    ir4_die("invalid byte count after ':bytes'");
-                }
-                locals[local_count].type = TY_A;
-                locals[local_count].size = (u16)sz;
-            } else {
-                ty = parse_type_tok(vtype);
-                if (ty == TY_NONE)
-                    ir4_die("expected type token (:i, :i32, :a, :f, :bytes) after 'var'");
-                locals[local_count].type = ty;
-                locals[local_count].size = 0;
-            }
-            local_count++;
+            parse_local_var(1);
             continue;
         }
 
@@ -1635,7 +1634,8 @@ static void compile_body(WordIR *w) {
 
         /* Address of local or typed global: & <ident> */
         if (strcmp(tok, "&") == 0) {
-            if (!next_tok(tok))
+            tok = next_tok();
+            if (!tok)
                 ir4_die("expected identifier after '&'");
             idx = find_local(tok);
             if (idx >= 0) {
@@ -1651,19 +1651,20 @@ static void compile_body(WordIR *w) {
             }
             idx = find_buffer(tok);
             if (idx >= 0) {
-                if (buffers[idx].type == TY_NONE)
+                BufferSym *bs = buffers.data[idx];
+                if (bs->type == TY_NONE)
                     ir4_die("':bytes' or 'data' symbol is already an address");
                 ins = emit_ir(IR_PUSH_DATA, w);
-                ins->u.offset = buffers[idx].offset;
+                ins->u.offset = bs->offset;
                 tpush(TY_A);
                 continue;
             }
             idx = ir4_find_func(tok);
             if (idx >= 0) {
-                if (funcs[idx].is_extern)
+                if (funcs.data[idx]->is_extern)
                     ir4_die("cannot take address of 'extern' function");
                 ins = emit_ir(IR_PUSH_FN, w);
-                ins->u.func_idx = (u8)idx;
+                ins->u.func_idx = (size_t)idx;
                 tpush(TY_A);
                 continue;
             }
@@ -1688,9 +1689,10 @@ static void compile_body(WordIR *w) {
 
         /* Local or typed global assignment: -> <ident> */
         if (strcmp(tok, "->") == 0) {
-            if (!next_tok(tok))
+            tok = next_tok();
+            if (!tok)
                 ir4_die("expected identifier after '->'");
-            idx = find_local(tok);
+            idx = (strcmp(tok, "var") == 0) ? parse_local_var(0) : find_local(tok);
             if (idx >= 0) {
                 if (locals[idx].size > 0)
                     ir4_die("cannot assign to ':bytes' local");
@@ -1705,29 +1707,30 @@ static void compile_body(WordIR *w) {
             idx = find_buffer(tok);
             if (idx < 0)
                 ir4_die("unknown variable in '->'");
-            if (buffers[idx].type == TY_NONE)
-                ir4_die("cannot assign to ':bytes' or 'data' symbol");
-            tpop_expect(buffers[idx].type);
-            ins = emit_ir(IR_PUSH_DATA, w);
-            ins->u.offset = buffers[idx].offset;
-            ins = emit_ir(IR_ALU_OP, w);
-            ins->u.op = global_store_op(buffers[idx].type);
+            {
+                BufferSym *bs = buffers.data[idx];
+                if (bs->type == TY_NONE)
+                    ir4_die("cannot assign to ':bytes' or 'data' symbol");
+                tpop_expect(bs->type);
+                ins = emit_ir(IR_PUSH_DATA, w);
+                ins->u.offset = bs->offset;
+                ins = emit_ir(IR_ALU_OP, w);
+                ins->u.op = global_store_op(bs->type);
+            }
             continue;
         }
 
         /* Control flow */
         if (strcmp(tok, "if") == 0) {
             BlockInfo *b;
-            if (bsp >= MAX_BLOCKS)
-                ir4_die("block nesting overflow");
             tpop_expect(TY_W);
-            b = &blocks[bsp++];
+            b = NEW(BlockInfo);
+            VEC_PUSH(blocks, b);
             b->kind = BLOCK_IF;
             b->has_else = 0;
             b->saved_unreach = unreachable;
             b->if_unreach = 0;
-            b->saved_sp = tsp;
-            memcpy(b->saved_stack, tstack, tsp);
+            stack_copy(&b->saved_stack, &tstack);
             b->patch_else = w->ir_len;
             ins = emit_ir(IR_BR_FWD, w);
             ins->u.br.cond = BR_JZ;
@@ -1735,70 +1738,60 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "else") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_IF)
+            if (blocks.len == 0 || blocks.data[blocks.len - 1]->kind != BLOCK_IF)
                 ir4_die("'else' without 'if'");
-            b = &blocks[bsp - 1];
+            b = blocks.data[blocks.len - 1];
             b->has_else = 1;
             b->if_unreach = unreachable;
-            b->else_sp = tsp;
-            memcpy(b->else_stack, tstack, tsp);
-            tsp = b->saved_sp;
-            memcpy(tstack, b->saved_stack, tsp);
+            stack_copy(&b->else_stack, &tstack);
+            stack_copy(&tstack, &b->saved_stack);
             unreachable = b->saved_unreach;
             b->patch_end = w->ir_len;
             ins = emit_ir(IR_BR_FWD, w);
             ins->u.br.cond = BR_JMP;
-            ir_buf[w->ir_start + b->patch_else].u.br.target = w->ir_len;
+            ir_buf.data[w->ir_start + b->patch_else].u.br.target = w->ir_len;
             fold_fence = w->ir_len;
             continue;
         }
         if (strcmp(tok, "then") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_IF)
+            if (blocks.len == 0 || blocks.data[blocks.len - 1]->kind != BLOCK_IF)
                 ir4_die("'then' without 'if'");
-            b = &blocks[--bsp];
+            b = blocks.data[--blocks.len];
             if (!b->has_else) {
-                if (!unreachable) {
-                    if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
-                        ir4_die("unbalanced stack in 'if ... then'");
-                }
-                tsp = b->saved_sp;
-                memcpy(tstack, b->saved_stack, tsp);
+                if (!unreachable && !stack_eq(&tstack, &b->saved_stack))
+                    ir4_die("unbalanced stack in 'if ... then'");
+                stack_copy(&tstack, &b->saved_stack);
                 unreachable = b->saved_unreach;
-                ir_buf[w->ir_start + b->patch_else].u.br.target = w->ir_len;
-                fold_fence = w->ir_len;
+                ir_buf.data[w->ir_start + b->patch_else].u.br.target = w->ir_len;
             } else {
                 if (!b->if_unreach && !unreachable) {
-                    if (tsp != b->else_sp || memcmp(tstack, b->else_stack, tsp) != 0)
+                    if (!stack_eq(&tstack, &b->else_stack))
                         ir4_die("branch stack mismatch between 'if' and 'else'");
                 } else if (!b->if_unreach && unreachable) {
-                    tsp = b->else_sp;
-                    memcpy(tstack, b->else_stack, tsp);
+                    stack_copy(&tstack, &b->else_stack);
                     unreachable = 0;
                 }
-                ir_buf[w->ir_start + b->patch_end].u.br.target = w->ir_len;
-                fold_fence = w->ir_len;
+                ir_buf.data[w->ir_start + b->patch_end].u.br.target = w->ir_len;
             }
+            free_block(b);
             fold_fence = w->ir_len;
             continue;
         }
         if (strcmp(tok, "begin") == 0) {
-            BlockInfo *b;
-            if (bsp >= MAX_BLOCKS)
-                ir4_die("block nesting overflow");
-            b = &blocks[bsp++];
+            BlockInfo *b = NEW(BlockInfo);
+            VEC_PUSH(blocks, b);
             b->kind = BLOCK_BEGIN;
             b->loop_addr = w->ir_len;
             fold_fence = w->ir_len;
-            b->saved_sp = tsp;
-            memcpy(b->saved_stack, tstack, tsp);
+            stack_copy(&b->saved_stack, &tstack);
             continue;
         }
         if (strcmp(tok, "while") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN)
+            if (blocks.len == 0 || blocks.data[blocks.len - 1]->kind != BLOCK_BEGIN)
                 ir4_die("'while' without 'begin'");
-            b = &blocks[bsp - 1];
+            b = blocks.data[blocks.len - 1];
             tpop_expect(TY_W);
             b->patch_end = w->ir_len;
             ins = emit_ir(IR_BR_FWD, w);
@@ -1807,59 +1800,63 @@ static void compile_body(WordIR *w) {
         }
         if (strcmp(tok, "repeat") == 0) {
             BlockInfo *b;
-            if (bsp == 0 || blocks[bsp - 1].kind != BLOCK_BEGIN)
+            if (blocks.len == 0 || blocks.data[blocks.len - 1]->kind != BLOCK_BEGIN)
                 ir4_die("'repeat' without 'begin'");
-            b = &blocks[--bsp];
-            if (tsp != b->saved_sp || memcmp(tstack, b->saved_stack, tsp) != 0)
+            b = blocks.data[--blocks.len];
+            if (!stack_eq(&tstack, &b->saved_stack))
                 ir4_die("loop body must leave stack even at 'repeat'");
             ins = emit_ir(IR_BR_BACK, w);
             ins->u.br.cond = BR_JMP;
             ins->u.br.target = b->loop_addr;
-            ir_buf[w->ir_start + b->patch_end].u.br.target = w->ir_len;
+            ir_buf.data[w->ir_start + b->patch_end].u.br.target = w->ir_len;
+            free_block(b);
             fold_fence = w->ir_len;
             continue;
         }
         if (strcmp(tok, "::") == 0) {
-            int lidx;
-            if (bsp != 0)
+            size_t lidx;
+            if (blocks.len != 0)
                 ir4_die("'::' inside control block");
-            if (!next_tok(tok))
+            tok = next_tok();
+            if (!tok)
                 ir4_die("expected label name after '::'");
-            if (!unreachable && tsp != 0)
+            if (!unreachable && tstack.len != 0)
                 ir4_die("stack must be empty at '::'");
-            tsp = 0;
+            tstack.len = 0;
             unreachable = 0;
-            lidx = find_or_add_label(labels, &label_count, tok);
-            if (labels[lidx].defined)
+            lidx = find_or_add_label(&labels, tok);
+            if (labels.data[lidx].defined)
                 ir4_die("duplicate label");
-            labels[lidx].defined = 1;
-            labels[lidx].target_ir = w->ir_len;
+            labels.data[lidx].defined = 1;
+            labels.data[lidx].target_ir = w->ir_len;
             fold_fence = w->ir_len;
             continue;
         }
         if (strcmp(tok, "jmp") == 0) {
-            int lidx;
-            if (!next_tok(tok))
+            size_t lidx;
+            tok = next_tok();
+            if (!tok)
                 ir4_die("expected label name after 'jmp'");
-            if (!unreachable && tsp != 0)
+            if (!unreachable && tstack.len != 0)
                 ir4_die("stack must be empty at 'jmp'");
-            lidx = find_or_add_label(labels, &label_count, tok);
+            lidx = find_or_add_label(&labels, tok);
             if (!unreachable) {
-                emit_label_br(w, labels, label_refs, &label_ref_count, (u16)lidx, BR_JMP);
+                emit_label_br(w, &labels, &label_refs, lidx, BR_JMP);
                 unreachable = 1;
             }
             continue;
         }
         if (strcmp(tok, "jz") == 0) {
-            int lidx;
-            if (!next_tok(tok))
+            size_t lidx;
+            tok = next_tok();
+            if (!tok)
                 ir4_die("expected label name after 'jz'");
             tpop_expect(TY_W);
-            if (!unreachable && tsp != 0)
+            if (!unreachable && tstack.len != 0)
                 ir4_die("stack must be empty after condition at 'jz'");
-            lidx = find_or_add_label(labels, &label_count, tok);
+            lidx = find_or_add_label(&labels, tok);
             if (!unreachable) {
-                emit_label_br(w, labels, label_refs, &label_ref_count, (u16)lidx, BR_JZ);
+                emit_label_br(w, &labels, &label_refs, lidx, BR_JZ);
             }
             continue;
         }
@@ -1890,16 +1887,17 @@ static void compile_body(WordIR *w) {
         /* Buffer address or typed global read */
         idx = find_buffer(tok);
         if (idx >= 0) {
-            if (buffers[idx].type == TY_NONE) {
+            BufferSym *bs = buffers.data[idx];
+            if (bs->type == TY_NONE) {
                 tpush(TY_A);
                 ins = emit_ir(IR_PUSH_DATA, w);
-                ins->u.offset = buffers[idx].offset;
+                ins->u.offset = bs->offset;
             } else {
-                tpush(buffers[idx].type);
+                tpush(bs->type);
                 ins = emit_ir(IR_PUSH_DATA, w);
-                ins->u.offset = buffers[idx].offset;
+                ins->u.offset = bs->offset;
                 ins = emit_ir(IR_ALU_OP, w);
-                ins->u.op = global_fetch_op(buffers[idx].type);
+                ins->u.op = global_fetch_op(bs->type);
             }
             continue;
         }
@@ -1907,7 +1905,7 @@ static void compile_body(WordIR *w) {
         /* User word call */
         idx = ir4_find_func(tok);
         if (idx >= 0) {
-            FuncSig *callee = &funcs[idx];
+            FuncSig *callee = funcs.data[idx];
             u8 i;
             for (i = callee->in_count; i > 0; i--) {
                 tpop_expect(callee->in_types[i - 1]);
@@ -1920,12 +1918,12 @@ static void compile_body(WordIR *w) {
             } else {
                 ins = emit_ir(IR_CALL, w);
             }
-            ins->u.func_idx = (u8)idx;
+            ins->u.func_idx = (size_t)idx;
             continue;
         }
 
         {
-            const SrcFile *cur = &src_stack[src_depth - 1];
+            const SrcFile *cur = &src_stack.data[src_stack.len - 1];
             fprintf(stderr, "ir4c error (%s:%u): unknown word '%s'\n", cur->path, cur->line_num,
                     tok);
         }
@@ -1935,15 +1933,15 @@ static void compile_body(WordIR *w) {
     ir4_die("unexpected EOF inside word definition (missing ';')");
 }
 
-static u8 can_reach_func(u8 cur, u8 target, u8 *visited) {
-    WordIR *w = &words[cur];
-    u16 i;
-    if (funcs[cur].is_extern || w->is_code)
+static u8 can_reach_func(size_t cur, size_t target, u8 *visited) {
+    WordIR *w = words.data[cur];
+    size_t i;
+    if (funcs.data[cur]->is_extern || w->is_code)
         return 0;
     for (i = 0; i < w->ir_len; i++) {
-        const IrInstr *ins = &ir_buf[w->ir_start + i];
+        const IrInstr *ins = &ir_buf.data[w->ir_start + i];
         if (ins->kind == IR_CALL) {
-            u8 callee = ins->u.func_idx;
+            size_t callee = ins->u.func_idx;
             if (callee == target)
                 return 1;
             if (!visited[callee]) {
@@ -1956,12 +1954,12 @@ static u8 can_reach_func(u8 cur, u8 target, u8 *visited) {
     return 0;
 }
 
-static void mark_reachable(u8 fidx) {
-    WordIR *w = &words[fidx];
-    u16 i;
-    if (funcs[fidx].is_extern)
+static void mark_reachable(size_t fidx) {
+    WordIR *w = words.data[fidx];
+    size_t i;
+    if (funcs.data[fidx]->is_extern)
         return;
-    if (!funcs[fidx].is_defined)
+    if (!funcs.data[fidx]->is_defined)
         ir4_die("called 'fwd' function was never defined");
     if (w->reachable)
         return;
@@ -1969,7 +1967,7 @@ static void mark_reachable(u8 fidx) {
     if (w->is_code)
         return;
     for (i = 0; i < w->ir_len; i++) {
-        const IrInstr *ins = &ir_buf[w->ir_start + i];
+        const IrInstr *ins = &ir_buf.data[w->ir_start + i];
         if (ins->kind == IR_CALL) {
             mark_reachable(ins->u.func_idx);
         } else if (ins->kind == IR_PUSH_FN) {
@@ -1980,38 +1978,43 @@ static void mark_reachable(u8 fidx) {
 
 typedef struct {
     u16 patch_offset;
-    u16 target_ir;
+    size_t target_ir;
 } PendingBr;
 
-#define MAX_FWD_CALLS 1024
 typedef struct {
     u16 call_pc;
     u16 call_addr;
-    u8 func_idx;
+    size_t func_idx;
     u8 is_fn_ptr;
 } FwdCall;
 
-static FwdCall fwd_calls[MAX_FWD_CALLS];
-static u16 fwd_call_count = 0;
+VEC_OF(FwdCallVec, FwdCall);
+VEC_OF(U16Vec, u16);
+VEC_OF(PendingBrVec, PendingBr);
+
+static FwdCallVec fwd_calls;
 static u16 heap_start_off = 0;
 
-static void emit_word(u8 fidx) {
-    static u16 ir_addr[MAX_IR];
-    FuncSig *sig = &funcs[fidx];
-    WordIR *w = &words[fidx];
-    PendingBr pending[MAX_BLOCKS * 4];
-    u16 pend_cnt = 0;
-    u16 i, p;
+static void emit_word(size_t fidx) {
+    static U16Vec ir_addr;
+    FuncSig *sig = funcs.data[fidx];
+    WordIR *w = words.data[fidx];
+    PendingBrVec pending;
+    size_t i, p;
+
+    pending.data = NULL;
+    pending.len = 0;
+    pending.cap = 0;
 
     if (w->is_code) {
         u16 base_pc = cb_pc();
         sig->addr = be->cur_addr();
         sig->has_addr = 1;
         for (i = 0; i < w->ir_len; i++) {
-            emit8(raw_code_buf[w->ir_start + i]);
+            emit8(raw_code_buf.data[w->ir_start + i]);
         }
         for (i = 0; i < w->reloc_cnt; i++) {
-            const CodeReloc *rel = &code_relocs[w->reloc_start + i];
+            const CodeReloc *rel = &code_relocs.data[w->reloc_start + i];
             u16 pc = (u16)(base_pc + rel->ir_off);
             if (rel->kind == CODE_REL_SELF) {
                 patch16(pc, (u16)(sig->addr + rel->addend));
@@ -2026,32 +2029,31 @@ static void emit_word(u8 fidx) {
         return;
     }
 
-    if (w->ir_len >= MAX_IR)
-        ir4_die("word IR length overflow");
+    VEC_ENSURE(ir_addr, w->ir_len + 1);
     sig->addr = be->cur_addr();
     sig->has_addr = 1;
     be->fn_begin(sig->name, w->param_cnt, w->locals, w->local_count, sig->is_recursive);
 
     for (i = 0; i <= w->ir_len; i++) {
-        for (p = 0; p < pend_cnt; p++) {
-            if (pending[p].target_ir == i) {
-                be->patch_fwd(pending[p].patch_offset);
+        for (p = 0; p < pending.len; p++) {
+            if (pending.data[p].target_ir == i) {
+                be->patch_fwd(pending.data[p].patch_offset);
             }
         }
         if (i == w->ir_len)
             break;
-        ir_addr[i] = be->cur_addr();
+        ir_addr.data[i] = be->cur_addr();
         {
-            const IrInstr *ins = &ir_buf[w->ir_start + i];
+            const IrInstr *ins = &ir_buf.data[w->ir_start + i];
             switch (ins->kind) {
             case IR_FN_END:
                 be->fn_end(sig, w->locals, w->local_count);
                 break;
             case IR_PUSH_W:
-                if (i + 2 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
-                    ir_buf[w->ir_start + i + 2].kind == IR_ALU_OP) {
-                    IrOp aop = ir_buf[w->ir_start + i + 1].u.op;
-                    IrOp mop = ir_buf[w->ir_start + i + 2].u.op;
+                if (i + 2 < w->ir_len && ir_buf.data[w->ir_start + i + 1].kind == IR_ALU_OP &&
+                    ir_buf.data[w->ir_start + i + 2].kind == IR_ALU_OP) {
+                    IrOp aop = ir_buf.data[w->ir_start + i + 1].u.op;
+                    IrOp mop = ir_buf.data[w->ir_start + i + 2].u.op;
                     if ((aop == OP_AADD || aop == OP_ASUB) && mop >= OP_I8FETCH &&
                         mop <= OP_FSTORE && be->mem_imm) {
                         i32 off = (aop == OP_ASUB) ? (i32)(0UL - (u32)ins->u.w) : ins->u.w;
@@ -2061,8 +2063,8 @@ static void emit_word(u8 fidx) {
                         }
                     }
                 }
-                if (i + 1 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP) {
-                    IrOp aop = ir_buf[w->ir_start + i + 1].u.op;
+                if (i + 1 < w->ir_len && ir_buf.data[w->ir_start + i + 1].kind == IR_ALU_OP) {
+                    IrOp aop = ir_buf.data[w->ir_start + i + 1].u.op;
                     i32 imm = ins->u.w;
                     if (aop == OP_ADD || aop == OP_SUB || aop == OP_AADD || aop == OP_ASUB) {
                         i32 delta = (aop == OP_SUB || aop == OP_ASUB) ? (i32)(0UL - (u32)imm) : imm;
@@ -2099,8 +2101,9 @@ static void emit_word(u8 fidx) {
                 be->push_i32(ins->u.w);
                 break;
             case IR_PUSH_DATA:
-                if (i + 1 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP &&
-                    be->data_mem && be->data_mem(ir_buf[w->ir_start + i + 1].u.op, ins->u.offset)) {
+                if (i + 1 < w->ir_len && ir_buf.data[w->ir_start + i + 1].kind == IR_ALU_OP &&
+                    be->data_mem &&
+                    be->data_mem(ir_buf.data[w->ir_start + i + 1].u.op, ins->u.offset)) {
                     i++;
                     break;
                 }
@@ -2111,22 +2114,23 @@ static void emit_word(u8 fidx) {
                 break;
             case IR_LOCAL_OP:
                 if (ins->u.loc.op == LOCAL_ADDR && be->local_mem) {
-                    if (i + 3 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_PUSH_W &&
-                        ir_buf[w->ir_start + i + 2].kind == IR_ALU_OP &&
-                        ir_buf[w->ir_start + i + 3].kind == IR_ALU_OP) {
-                        IrOp aop = ir_buf[w->ir_start + i + 2].u.op;
-                        IrOp mop = ir_buf[w->ir_start + i + 3].u.op;
+                    if (i + 3 < w->ir_len && ir_buf.data[w->ir_start + i + 1].kind == IR_PUSH_W &&
+                        ir_buf.data[w->ir_start + i + 2].kind == IR_ALU_OP &&
+                        ir_buf.data[w->ir_start + i + 3].kind == IR_ALU_OP) {
+                        IrOp aop = ir_buf.data[w->ir_start + i + 2].u.op;
+                        IrOp mop = ir_buf.data[w->ir_start + i + 3].u.op;
                         if ((aop == OP_AADD || aop == OP_ASUB) && mop >= OP_I8FETCH &&
                             mop <= OP_FSTORE) {
-                            i32 imm = ir_buf[w->ir_start + i + 1].u.w;
+                            i32 imm = ir_buf.data[w->ir_start + i + 1].u.w;
                             i32 off = (aop == OP_ASUB) ? (i32)(0UL - (u32)imm) : imm;
                             if (be->local_mem(ins->u.loc.slot, off, mop, ins->u.loc.stack_bytes)) {
                                 i += 3;
                                 break;
                             }
                         }
-                    } else if (i + 1 < w->ir_len && ir_buf[w->ir_start + i + 1].kind == IR_ALU_OP) {
-                        IrOp mop = ir_buf[w->ir_start + i + 1].u.op;
+                    } else if (i + 1 < w->ir_len &&
+                               ir_buf.data[w->ir_start + i + 1].kind == IR_ALU_OP) {
+                        IrOp mop = ir_buf.data[w->ir_start + i + 1].u.op;
                         if (mop >= OP_I8FETCH && mop <= OP_FSTORE &&
                             be->local_mem(ins->u.loc.slot, 0, mop, ins->u.loc.stack_bytes)) {
                             i += 1;
@@ -2144,33 +2148,29 @@ static void emit_word(u8 fidx) {
                 be->op(ins->u.op);
                 break;
             case IR_CALL: {
-                u8 target = ins->u.func_idx;
+                size_t target = ins->u.func_idx;
                 u16 call_addr = be->cur_addr();
                 u16 call_pc = cb_pc();
-                be->call(funcs[target].addr);
-                if (!funcs[target].has_addr) {
-                    if (fwd_call_count >= MAX_FWD_CALLS)
-                        ir4_die("too many forward calls");
-                    fwd_calls[fwd_call_count].call_pc = call_pc;
-                    fwd_calls[fwd_call_count].call_addr = call_addr;
-                    fwd_calls[fwd_call_count].func_idx = target;
-                    fwd_calls[fwd_call_count].is_fn_ptr = 0;
-                    fwd_call_count++;
+                be->call(funcs.data[target]->addr);
+                if (!funcs.data[target]->has_addr) {
+                    FwdCall *fc = VEC_ADD(fwd_calls);
+                    fc->call_pc = call_pc;
+                    fc->call_addr = call_addr;
+                    fc->func_idx = target;
+                    fc->is_fn_ptr = 0;
                 }
                 break;
             }
             case IR_PUSH_FN: {
-                u8 target = ins->u.func_idx;
+                size_t target = ins->u.func_idx;
                 u16 fn_addr = be->cur_addr();
-                u16 fn_pc = be->push_fn(funcs[target].addr);
-                if (!funcs[target].has_addr) {
-                    if (fwd_call_count >= MAX_FWD_CALLS)
-                        ir4_die("too many forward calls");
-                    fwd_calls[fwd_call_count].call_pc = fn_pc;
-                    fwd_calls[fwd_call_count].call_addr = fn_addr;
-                    fwd_calls[fwd_call_count].func_idx = target;
-                    fwd_calls[fwd_call_count].is_fn_ptr = 1;
-                    fwd_call_count++;
+                u16 fn_pc = be->push_fn(funcs.data[target]->addr);
+                if (!funcs.data[target]->has_addr) {
+                    FwdCall *fc = VEC_ADD(fwd_calls);
+                    fc->call_pc = fn_pc;
+                    fc->call_addr = fn_addr;
+                    fc->func_idx = target;
+                    fc->is_fn_ptr = 1;
                 }
                 break;
             }
@@ -2178,21 +2178,21 @@ static void emit_word(u8 fidx) {
                 be->icall();
                 break;
             case IR_CALL_EXTERN:
-                be->call_extern(&funcs[ins->u.func_idx]);
+                be->call_extern(funcs.data[ins->u.func_idx]);
                 break;
-            case IR_BR_FWD:
-                if (pend_cnt >= MAX_BLOCKS * 4)
-                    ir4_die("too many pending branches");
-                pending[pend_cnt].patch_offset = be->emit_br_fwd(ins->u.br.cond);
-                pending[pend_cnt].target_ir = ins->u.br.target;
-                pend_cnt++;
+            case IR_BR_FWD: {
+                PendingBr *pb = VEC_ADD(pending);
+                pb->patch_offset = be->emit_br_fwd(ins->u.br.cond);
+                pb->target_ir = ins->u.br.target;
                 break;
+            }
             case IR_BR_BACK:
-                be->emit_br_back(ins->u.br.cond, ir_addr[ins->u.br.target]);
+                be->emit_br_back(ins->u.br.cond, ir_addr.data[ins->u.br.target]);
                 break;
             }
         }
     }
+    free(pending.data);
 }
 
 static void flush_vals_word(i32 val) {
@@ -2203,7 +2203,7 @@ static void flush_vals_word(i32 val) {
 }
 
 static void emit_vals_string(void) {
-    SrcFile *cur = &src_stack[src_depth - 1];
+    SrcFile *cur = &src_stack.data[src_stack.len - 1];
     for (;;) {
         int c = fgetc(cur->fp);
         if (c == EOF || c == '\n')
@@ -2242,23 +2242,26 @@ static void emit_vals_string(void) {
 }
 
 static void compile_data(void) {
-    char tok[MAX_TOK];
+    const char *tok;
+    const char *name;
     i32 num_val;
     i32 pending = 0;
     int has_pending = 0;
     int ch;
 
-    if (buffer_count >= MAX_SYMS)
-        ir4_die("too many buffers");
-    if (!next_tok(buffers[buffer_count].name)) {
+    BufferSym *bs;
+    name = next_tok_intern();
+    if (!name) {
         ir4_die("expected name after 'data'");
     }
-    if (find_buffer(buffers[buffer_count].name) >= 0) {
+    if (find_buffer(name) >= 0) {
         ir4_die("duplicate global/data name");
     }
-    buffers[buffer_count].offset = cb_alloc_data(0, be->word_bytes);
-    buffers[buffer_count].type = TY_NONE;
-    buffer_count++;
+    bs = NEW(BufferSym);
+    bs->name = name;
+    bs->offset = cb_alloc_data(0, be->word_bytes);
+    bs->type = TY_NONE;
+    VEC_PUSH(buffers, bs);
 
     while ((ch = skip_ws_and_comments()) != EOF) {
         if (ch == '"') {
@@ -2269,8 +2272,9 @@ static void compile_data(void) {
             emit_vals_string();
             continue;
         }
-        ungetc(ch, src_stack[src_depth - 1].fp);
-        if (!next_tok(tok))
+        ungetc(ch, src_stack.data[src_stack.len - 1].fp);
+        tok = next_tok();
+        if (!tok)
             break;
         if (strcmp(tok, "end") == 0) {
             if (has_pending)
@@ -2289,18 +2293,19 @@ static void compile_data(void) {
                 flush_vals_word(pending);
                 has_pending = 0;
             }
-            if (!next_tok(tok))
+            tok = next_tok();
+            if (!tok)
                 ir4_die("expected identifier after '&' in 'data'");
             patch_off = cb_data_size();
             idx = find_buffer(tok);
             if (idx >= 0) {
                 cb_emit_data_word(0, be->addr_bytes);
-                cb_add_data_init_reloc(patch_off, buffers[idx].offset, be->addr_bytes, 0);
+                cb_add_data_init_reloc(patch_off, buffers.data[idx]->offset, be->addr_bytes, 0);
             } else {
                 idx = ir4_find_func(tok);
                 if (idx < 0)
                     ir4_die("unknown variable or function in '&' inside 'data'");
-                if (funcs[idx].is_extern)
+                if (funcs.data[idx]->is_extern)
                     ir4_die("cannot take address of 'extern' function in 'data'");
                 cb_emit_data_word(0, be->addr_bytes);
                 cb_add_data_init_reloc(patch_off, (u16)idx, be->addr_bytes, 1);
@@ -2344,42 +2349,43 @@ static void compile_data(void) {
 
 void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                         const char *platform) {
-    char tok[MAX_TOK];
+    const char *tok;
     i32 num_val;
-    const char *root_path = (path != NULL) ? path : "<stdin>";
-    size_t plen = strlen(root_path);
+    const char *root_path = intern_str((path != NULL) ? path : "<stdin>");
+    SrcFile *sf;
 
-    if (plen >= MAX_PATH)
-        ir4_die("input file path too long");
-    src_depth = 1;
-    src_stack[0].fp = in;
-    memcpy(src_stack[0].path, root_path, plen + 1);
-    src_stack[0].line_num = 1;
-    src_stack[0].req_group = 0;
+    src_stack.len = 0;
+    sf = VEC_ADD(src_stack);
+    sf->fp = in;
+    sf->path = root_path;
+    sf->line_num = 1;
+    sf->req_group = 0;
     next_req_group = 1;
 
-    seen_count = 1;
-    memcpy(seen_files[0], root_path, plen + 1);
+    seen_files.len = 0;
+    VEC_PUSH(seen_files, root_path);
 
     be = target_be;
     platform_name = platform;
-    func_count = 0;
-    buffer_count = 0;
-    ir_count = 0;
-    raw_code_len = 0;
-    code_reloc_count = 0;
-    fwd_call_count = 0;
-    init_count = 0;
+    funcs.len = 0;
+    words.len = 0;
+    buffers.len = 0;
+    ir_buf.len = 0;
+    raw_code_buf.len = 0;
+    code_relocs.len = 0;
+    fwd_calls.len = 0;
+    init_funcs.len = 0;
 
     if (be->word_bytes == 2) {
         push_require_ex("i32.ir4", 1);
     }
 
-    while (next_tok(tok)) {
+    while ((tok = next_tok()) != NULL) {
         if (strcmp(tok, "fn") == 0) {
             compile_word(0);
         } else if (strcmp(tok, "default") == 0) {
-            if (!next_tok(tok) || strcmp(tok, "fn") != 0) {
+            tok = next_tok();
+            if (!tok || strcmp(tok, "fn") != 0) {
                 ir4_die("expected 'fn' after 'default'");
             }
             compile_word(1);
@@ -2389,30 +2395,29 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             compile_init();
         } else if (strcmp(tok, "fwd") == 0) {
             FuncSig *sig;
-            char name[MAX_TOK];
-            if (!next_tok(name))
+            const char *name = next_tok_intern();
+            if (!name)
                 ir4_die("expected word name after 'fwd'");
             if (ir4_find_func(name) >= 0)
                 ir4_die("duplicate 'fwd' declaration");
-            if (func_count >= MAX_SYMS)
-                ir4_die("too many word definitions");
-            sig = &funcs[func_count++];
-            memset(sig, 0, sizeof(FuncSig));
-            memcpy(sig->name, name, strlen(name) + 1);
-            if (!next_tok(tok) || strcmp(tok, "(") != 0)
+            alloc_func(&sig, NULL);
+            sig->name = name;
+            tok = next_tok();
+            if (!tok || strcmp(tok, "(") != 0)
                 ir4_die("expected '(' after 'fwd' name");
             parse_sig_body(sig, NULL, 0);
         } else if (strcmp(tok, "extern") == 0) {
             FuncSig *sig;
-            if (func_count >= MAX_SYMS)
-                ir4_die("too many word definitions");
-            sig = &funcs[func_count++];
-            memset(sig, 0, sizeof(FuncSig));
+            const char *name;
+            alloc_func(&sig, NULL);
             sig->is_extern = 1;
             sig->is_defined = 1;
-            if (!next_tok(sig->name))
+            name = next_tok_intern();
+            if (!name)
                 ir4_die("expected word name after 'extern'");
-            if (!next_tok(tok))
+            sig->name = name;
+            tok = next_tok();
+            if (!tok)
                 ir4_die("expected address or '(' after extern name");
             if (strcmp(tok, "(") == 0) {
                 sig->has_addr = 0;
@@ -2421,7 +2426,8 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                     ir4_die("invalid extern address");
                 sig->addr = (u16)num_val;
                 sig->has_addr = 1;
-                if (!next_tok(tok) || strcmp(tok, "(") != 0) {
+                tok = next_tok();
+                if (!tok || strcmp(tok, "(") != 0) {
                     ir4_die("expected '(' after extern address");
                 }
             } else {
@@ -2431,31 +2437,32 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             if (sig->out_count > 1)
                 ir4_die("extern supports at most 1 return value");
         } else if (strcmp(tok, "require") == 0) {
-            char req_path[MAX_PATH];
-            read_require_path(req_path, sizeof(req_path));
-            push_require(req_path);
+            push_require(read_require_path());
         } else if (strcmp(tok, "data") == 0) {
             compile_data();
         } else if (strcmp(tok, "var") == 0) {
+            const char *name = next_tok_intern();
             u8 ty;
-            if (buffer_count >= MAX_SYMS)
-                ir4_die("too many buffers");
-            if (!next_tok(buffers[buffer_count].name)) {
+            BufferSym *bs;
+            if (!name) {
                 ir4_die("expected var name after 'var'");
             }
-            if (find_buffer(buffers[buffer_count].name) >= 0) {
+            if (find_buffer(name) >= 0) {
                 ir4_die("duplicate global/data name");
             }
-            if (!next_tok(tok)) {
+            bs = NEW(BufferSym);
+            bs->name = name;
+            tok = next_tok();
+            if (!tok) {
                 ir4_die("expected type (:i, :a, :f) or ':bytes' after var name");
             }
             if (strcmp(tok, ":bytes") == 0) {
-                if (!next_tok(tok) || !parse_int(tok, &num_val) || num_val <= 0 ||
-                    num_val > MAX_DATA) {
+                tok = next_tok();
+                if (!tok || !parse_int(tok, &num_val) || num_val <= 0 || num_val > 0xFFFF) {
                     ir4_die("invalid byte count after ':bytes'");
                 }
-                buffers[buffer_count].offset = cb_alloc_data((u16)num_val, be->word_bytes);
-                buffers[buffer_count].type = TY_NONE;
+                bs->offset = cb_alloc_data((u16)num_val, be->word_bytes);
+                bs->type = TY_NONE;
             } else {
                 u16 sz;
                 ty = parse_type_tok(tok);
@@ -2463,10 +2470,10 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                     ir4_die("expected ':i', ':a', ':f', or ':bytes' after var name");
                 }
                 sz = global_type_bytes(ty);
-                buffers[buffer_count].offset = cb_alloc_data(sz, sz);
-                buffers[buffer_count].type = ty;
+                bs->offset = cb_alloc_data(sz, sz);
+                bs->type = ty;
             }
-            buffer_count++;
+            VEC_PUSH(buffers, bs);
         } else {
             ir4_die("expected top-level 'fn', 'var', 'data', 'extern', or 'require'");
         }
@@ -2475,57 +2482,54 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     /* Pass 1.5: Reachability / Dead-Code Elimination from 'main' */
     {
         int main_idx = ir4_find_func("main");
-        u8 f;
-        if (main_idx >= 0 && init_count > 0) {
-            u8 wrap_idx;
+        size_t f;
+        if (main_idx >= 0 && init_funcs.len > 0) {
+            size_t wrap_idx;
             FuncSig *wsig;
             WordIR *ww;
             IrInstr *ins;
-            u8 k;
-            if (func_count >= MAX_SYMS)
-                ir4_die("too many word definitions");
-            strcpy(funcs[main_idx].name, "__main_body");
-            wrap_idx = func_count++;
-            wsig = &funcs[wrap_idx];
-            ww = &words[wrap_idx];
-            memset(wsig, 0, sizeof(FuncSig));
-            memset(ww, 0, sizeof(WordIR));
-            strcpy(wsig->name, "main");
+            size_t k;
+            funcs.data[main_idx]->name = intern_str("__main_body");
+            wrap_idx = alloc_func(&wsig, &ww);
+            wsig->name = intern_str("main");
             wsig->is_defined = 1;
-            wsig->out_count = funcs[main_idx].out_count;
-            memcpy(wsig->out_types, funcs[main_idx].out_types, wsig->out_count);
-            ww->ir_start = ir_count;
-            for (k = 0; k < init_count; k++) {
+            wsig->out_count = funcs.data[main_idx]->out_count;
+            memcpy(wsig->out_types, funcs.data[main_idx]->out_types, wsig->out_count);
+            ww->ir_start = ir_buf.len;
+            for (k = 0; k < init_funcs.len; k++) {
                 ins = emit_ir(IR_CALL, ww);
-                ins->u.func_idx = init_funcs[k];
+                ins->u.func_idx = init_funcs.data[k];
             }
             ins = emit_ir(IR_CALL, ww);
-            ins->u.func_idx = (u8)main_idx;
+            ins->u.func_idx = (size_t)main_idx;
             emit_ir(IR_FN_END, ww);
-            main_idx = wrap_idx;
+            main_idx = (int)wrap_idx;
         }
         if (main_idx >= 0) {
             u16 di;
-            mark_reachable((u8)main_idx);
+            mark_reachable((size_t)main_idx);
             for (di = 0; di < cb_data_init_reloc_count(); di++) {
                 u16 po, tv;
                 u8 ab, is_c;
                 cb_get_data_init_reloc(di, &po, &tv, &ab, &is_c);
                 if (is_c)
-                    mark_reachable((u8)tv);
+                    mark_reachable((size_t)tv);
             }
         } else {
-            for (f = 0; f < func_count; f++) {
-                if (!funcs[f].is_extern && funcs[f].is_defined)
-                    words[f].reachable = 1;
+            for (f = 0; f < funcs.len; f++) {
+                if (!funcs.data[f]->is_extern && funcs.data[f]->is_defined)
+                    words.data[f]->reachable = 1;
             }
         }
-        for (f = 0; f < func_count; f++) {
-            if (words[f].reachable) {
-                u8 visited[MAX_SYMS];
-                memset(visited, 0, sizeof(visited));
-                funcs[f].is_recursive = can_reach_func(f, f, visited);
+        {
+            u8 *visited = (u8 *)vec_calloc(funcs.len ? funcs.len : 1, 1);
+            for (f = 0; f < funcs.len; f++) {
+                if (words.data[f]->reachable) {
+                    memset(visited, 0, funcs.len);
+                    funcs.data[f]->is_recursive = can_reach_func(f, f, visited);
+                }
             }
+            free(visited);
         }
 
         if (be == &be_6502)
@@ -2533,28 +2537,28 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
         heap_start_off = cb_alloc_data(0, be->word_bytes);
 
         /* Pass 2: Emit reachable words and patch forward calls */
-        for (f = 0; f < func_count; f++) {
-            if (!funcs[f].is_extern && words[f].reachable) {
+        for (f = 0; f < funcs.len; f++) {
+            if (!funcs.data[f]->is_extern && words.data[f]->reachable) {
                 emit_word(f);
             }
         }
         {
-            u16 c;
-            for (c = 0; c < fwd_call_count; c++) {
-                if (fwd_calls[c].is_fn_ptr) {
-                    be->patch_fn(fwd_calls[c].call_pc, fwd_calls[c].call_addr,
-                                 funcs[fwd_calls[c].func_idx].addr);
+            size_t c;
+            for (c = 0; c < fwd_calls.len; c++) {
+                if (fwd_calls.data[c].is_fn_ptr) {
+                    be->patch_fn(fwd_calls.data[c].call_pc, fwd_calls.data[c].call_addr,
+                                 funcs.data[fwd_calls.data[c].func_idx]->addr);
                 } else {
-                    be->patch_call(fwd_calls[c].call_pc, fwd_calls[c].call_addr,
-                                   funcs[fwd_calls[c].func_idx].addr);
+                    be->patch_call(fwd_calls.data[c].call_pc, fwd_calls.data[c].call_addr,
+                                   funcs.data[fwd_calls.data[c].func_idx]->addr);
                 }
             }
             for (c = 0; c < cb_data_init_reloc_count(); c++) {
                 u16 po, tv;
                 u8 ab, is_c;
-                cb_get_data_init_reloc(c, &po, &tv, &ab, &is_c);
+                cb_get_data_init_reloc((u16)c, &po, &tv, &ab, &is_c);
                 if (is_c) {
-                    cb_patch_data_init_reloc(c, funcs[tv].addr);
+                    cb_patch_data_init_reloc((u16)c, funcs.data[tv]->addr);
                 }
             }
         }

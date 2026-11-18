@@ -59,68 +59,71 @@ static void arm64_run_jit(u8 main_idx) {
     emit16(0x03C0);
     emit16(0xD65F); /* RET */
 
-    mem = mmap(NULL, MAX_CODE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT,
-               -1, 0);
-    if (mem == MAP_FAILED) {
-        perror("mmap MAP_JIT");
-        exit(1);
-    }
-
-    if (cb_data_size() > 0) {
-        data_mem = calloc(1, cb_data_size());
-        if (!data_mem) {
-            perror("calloc data");
-            munmap(mem, MAX_CODE);
+    {
+        size_t map_sz = cb_pc() ? cb_pc() : 1;
+        mem = mmap(NULL, map_sz, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT,
+                   -1, 0);
+        if (mem == MAP_FAILED) {
+            perror("mmap MAP_JIT");
             exit(1);
         }
-        if (cb_init_data_size() > 0) {
-            memcpy(data_mem, cb_init_data(), cb_init_data_size());
-        }
-        {
-            u16 i;
-            for (i = 0; i < cb_data_init_reloc_count(); i++) {
-                u16 patch_off, target_val;
-                u8 addr_bytes, is_code;
-                unsigned long addr;
-                cb_get_data_init_reloc(i, &patch_off, &target_val, &addr_bytes, &is_code);
-                addr = (unsigned long)((u8 *)(is_code ? mem : data_mem) + target_val);
-                if (addr_bytes == 8) {
-                    memcpy((u8 *)data_mem + patch_off, &addr, 8);
+
+        if (cb_data_size() > 0) {
+            data_mem = calloc(1, cb_data_size());
+            if (!data_mem) {
+                perror("calloc data");
+                munmap(mem, map_sz);
+                exit(1);
+            }
+            if (cb_init_data_size() > 0) {
+                memcpy(data_mem, cb_init_data(), cb_init_data_size());
+            }
+            {
+                u16 i;
+                for (i = 0; i < cb_data_init_reloc_count(); i++) {
+                    u16 patch_off, target_val;
+                    u8 addr_bytes, is_code;
+                    unsigned long addr;
+                    cb_get_data_init_reloc(i, &patch_off, &target_val, &addr_bytes, &is_code);
+                    addr = (unsigned long)((u8 *)(is_code ? mem : data_mem) + target_val);
+                    if (addr_bytes == 8) {
+                        memcpy((u8 *)data_mem + patch_off, &addr, 8);
+                    }
                 }
             }
         }
-    }
 
-    {
-        u16 i;
-        for (i = 0; i < cb_extern_reloc_count(); i++) {
-            u16 off;
-            const char *name = cb_extern_reloc_name(i, &off);
-            void *sym = dlsym(RTLD_DEFAULT, name);
-            unsigned long addr;
-            if (!sym) {
-                fprintf(stderr, "JIT: unresolved extern '%s'\n", name);
-                exit(1);
+        {
+            u16 i;
+            for (i = 0; i < cb_extern_reloc_count(); i++) {
+                u16 off;
+                const char *name = cb_extern_reloc_name(i, &off);
+                void *sym = dlsym(RTLD_DEFAULT, name);
+                unsigned long addr;
+                if (!sym) {
+                    fprintf(stderr, "JIT: unresolved extern '%s'\n", name);
+                    exit(1);
+                }
+                addr = (unsigned long)sym;
+                patch32(off, (u32)(0xD2800009UL | (((addr >> 0) & 0xFFFFUL) << 5)));
+                patch32(off + 4, (u32)(0xF2A00009UL | (((addr >> 16) & 0xFFFFUL) << 5)));
+                patch32(off + 8, (u32)(0xF2C00009UL | (((addr >> 32) & 0xFFFFUL) << 5)));
+                patch32(off + 12, (u32)(0xF2E00009UL | (((addr >> 48) & 0xFFFFUL) << 5)));
             }
-            addr = (unsigned long)sym;
-            patch32(off, (u32)(0xD2800009UL | (((addr >> 0) & 0xFFFFUL) << 5)));
-            patch32(off + 4, (u32)(0xF2A00009UL | (((addr >> 16) & 0xFFFFUL) << 5)));
-            patch32(off + 8, (u32)(0xF2C00009UL | (((addr >> 32) & 0xFFFFUL) << 5)));
-            patch32(off + 12, (u32)(0xF2E00009UL | (((addr >> 48) & 0xFFFFUL) << 5)));
         }
+
+        pthread_jit_write_protect_np(0);
+        memcpy(mem, cb_data(), cb_pc());
+        pthread_jit_write_protect_np(1);
+        sys_icache_invalidate(mem, cb_pc());
+
+        jit_fn = (long (*)(void *))((u8 *)mem + entry_pc);
+        result = jit_fn(data_mem);
+        printf("JIT main() returned: %ld\n", result);
+
+        free(data_mem);
+        munmap(mem, map_sz);
     }
-
-    pthread_jit_write_protect_np(0);
-    memcpy(mem, cb_data(), cb_pc());
-    pthread_jit_write_protect_np(1);
-    sys_icache_invalidate(mem, cb_pc());
-
-    jit_fn = (long (*)(void *))((u8 *)mem + entry_pc);
-    result = jit_fn(data_mem);
-    printf("JIT main() returned: %ld\n", result);
-
-    free(data_mem);
-    munmap(mem, MAX_CODE);
 }
 #else
 static void arm64_run_jit(u8 main_idx) {

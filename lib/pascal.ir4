@@ -16,8 +16,7 @@ fn pas_prints ( s :a )
 end
 
 fn pas_prints_w ( s :a w :i )
-  var len :i
-  s u8@ -> len
+  s u8@ -> var len :i
   begin
     w len >
   while
@@ -34,25 +33,20 @@ fn pas_char2str ( c :i dst :a -> :a )
 end
 
 fn pas_strcopy ( dst :a src :a )
-  var len :i
-  src u8@ -> len
+  src u8@ -> var len :i
   dst src len 1 + memcpy
 end
 
 fn pas_streq ( a :a b :a -> :i )
-  var la :i
-  var lb :i
-  a u8@ -> la
-  b u8@ -> lb
+  a u8@ -> var la :i
+  b u8@ -> var lb :i
   la lb != if 0 return then
   a 1 a+ b 1 a+ la memcmp 0 ==
 end
 
 fn pas_strconcat ( dst :a a :a b :a )
-  var la :i
-  var lb :i
-  a u8@ -> la
-  b u8@ -> lb
+  a u8@ -> var la :i
+  b u8@ -> var lb :i
   la lb + 255 > if 255 la - -> lb then
   la lb + dst i8!
   dst 1 a+ a 1 a+ la memcpy

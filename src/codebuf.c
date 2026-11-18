@@ -1,5 +1,7 @@
 /* codebuf.c - Shared binary code & data emission buffer for IR4th (Strict C89) */
 #include "codebuf.h"
+#include "strpool.h"
+#include "vec.h"
 
 typedef struct {
     u8 split;
@@ -10,7 +12,7 @@ typedef struct {
 
 typedef struct {
     u16 patch_offset;
-    char name[MAX_TOK];
+    const char *name;
 } ExternReloc;
 
 typedef struct {
@@ -20,42 +22,36 @@ typedef struct {
     u8 is_code;
 } DataInitReloc;
 
-static u8 code_buf[MAX_CODE];
-static u16 code_pc = 0;
+VEC_OF(ByteVec, u8);
+VEC_OF(DataRelocVec, DataReloc);
+VEC_OF(DataInitRelocVec, DataInitReloc);
+VEC_OF(ExternRelocVec, ExternReloc);
+
+static ByteVec code_buf;
 static u16 base_addr = 0x0100; /* Default: CP/M .COM load address */
-static u8 data_buf[MAX_DATA];
-static u16 data_size = 0;
+static ByteVec data_buf;
 static u16 data_init_size = 0;
-static DataReloc relocs[MAX_RELOCS];
-static u16 reloc_cnt = 0;
-static DataInitReloc data_init_relocs[MAX_RELOCS];
-static u16 data_init_reloc_cnt = 0;
-static ExternReloc ext_relocs[MAX_RELOCS];
-static u16 ext_reloc_cnt = 0;
+static DataRelocVec relocs;
+static DataInitRelocVec data_init_relocs;
+static ExternRelocVec ext_relocs;
 
 void cb_reset(u16 base) {
-    code_pc = 0;
+    code_buf.len = 0;
     base_addr = base;
-    data_size = 0;
+    data_buf.len = 0;
     data_init_size = 0;
-    reloc_cnt = 0;
-    data_init_reloc_cnt = 0;
-    ext_reloc_cnt = 0;
-    memset(data_buf, 0, sizeof(data_buf));
+    relocs.len = 0;
+    data_init_relocs.len = 0;
+    ext_relocs.len = 0;
 }
 
-u16 cb_pc(void) { return code_pc; }
+u16 cb_pc(void) { return (u16)code_buf.len; }
 
-u16 cb_cur_addr(void) { return (u16)(base_addr + code_pc); }
+u16 cb_cur_addr(void) { return (u16)(base_addr + code_buf.len); }
 
-const u8 *cb_data(void) { return code_buf; }
+const u8 *cb_data(void) { return code_buf.data; }
 
-void emit8(u8 b) {
-    if (code_pc >= MAX_CODE) {
-        ir4_die("code buffer overflow");
-    }
-    code_buf[code_pc++] = b;
-}
+void emit8(u8 b) { VEC_PUSH(code_buf, b); }
 
 void emit16(u16 w) {
     emit8((u8)(w & 0xFF));        /* Little-endian low byte */
@@ -84,25 +80,25 @@ void emit8_8_8(u8 a, u8 b, u8 c) {
 }
 
 void cb_rewind(u16 n) {
-    if (n > code_pc) {
+    if (n > code_buf.len) {
         ir4_die("code buffer underflow");
     }
-    code_pc = (u16)(code_pc - n);
+    code_buf.len -= n;
 }
 
 void patch8(u16 patch_offset, u8 val) {
-    if (patch_offset >= MAX_CODE) {
+    if (patch_offset >= code_buf.len) {
         ir4_die("patch offset out of bounds");
     }
-    code_buf[patch_offset] = val;
+    code_buf.data[patch_offset] = val;
 }
 
 void patch16(u16 patch_offset, u16 target_addr) {
-    if ((u32)patch_offset + 1 >= MAX_CODE) {
+    if ((size_t)patch_offset + 1 >= code_buf.len) {
         ir4_die("patch offset out of bounds");
     }
-    code_buf[patch_offset] = (u8)(target_addr & 0xFF);
-    code_buf[patch_offset + 1] = (u8)((target_addr >> 8) & 0xFF);
+    code_buf.data[patch_offset] = (u8)(target_addr & 0xFF);
+    code_buf.data[patch_offset + 1] = (u8)((target_addr >> 8) & 0xFF);
 }
 
 void patch32(u16 patch_offset, u32 val) {
@@ -123,37 +119,37 @@ void put_le32(u8 *p, u32 v) {
 }
 
 int cb_write_raw(FILE *fp, int include_data) {
-    if (code_pc > 0 && fwrite(code_buf, 1, code_pc, fp) != (size_t)code_pc) {
+    if (code_buf.len > 0 && fwrite(code_buf.data, 1, code_buf.len, fp) != code_buf.len) {
         return 0;
     }
     if (include_data && data_init_size > 0 &&
-        fwrite(data_buf, 1, data_init_size, fp) != (size_t)data_init_size) {
+        fwrite(data_buf.data, 1, data_init_size, fp) != (size_t)data_init_size) {
         return 0;
     }
     return 1;
 }
 
 u16 cb_alloc_data(u16 size, u8 align) {
-    u16 aligned = data_size;
-    u16 mask = (u16)(align > 1 ? align - 1 : 0);
+    size_t aligned = data_buf.len;
+    size_t mask = (size_t)(align > 1 ? align - 1 : 0);
+    size_t new_len;
     if (mask > 0) {
-        aligned = (u16)((aligned + mask) & ~mask);
+        aligned = (aligned + mask) & ~mask;
     }
-    if ((u32)aligned + size > MAX_DATA) {
-        ir4_die("data segment overflow");
+    new_len = aligned + size;
+    if (new_len > data_buf.len) {
+        VEC_ENSURE(data_buf, new_len);
+        memset(data_buf.data + data_buf.len, 0, new_len - data_buf.len);
+        data_buf.len = new_len;
     }
-    data_size = (u16)(aligned + size);
-    return aligned;
+    return (u16)aligned;
 }
 
-u16 cb_data_size(void) { return data_size; }
+u16 cb_data_size(void) { return (u16)data_buf.len; }
 
 void cb_emit_data_u8(u8 b) {
-    if (data_size >= MAX_DATA) {
-        ir4_die("data segment overflow");
-    }
-    data_buf[data_size++] = b;
-    data_init_size = data_size;
+    VEC_PUSH(data_buf, b);
+    data_init_size = (u16)data_buf.len;
 }
 
 void cb_emit_data_u16(u16 w) {
@@ -178,102 +174,86 @@ void cb_emit_data_word(i32 val, u8 word_bytes) {
     }
 }
 
-const u8 *cb_init_data(void) { return data_buf; }
+const u8 *cb_init_data(void) { return data_buf.data; }
 
 u16 cb_init_data_size(void) { return data_init_size; }
 
 void cb_add_data_reloc(u16 patch_offset, u16 data_offset) {
-    if (reloc_cnt >= MAX_RELOCS) {
-        ir4_die("too many data relocations");
-    }
-    relocs[reloc_cnt].split = 0;
-    relocs[reloc_cnt].off1 = patch_offset;
-    relocs[reloc_cnt].off2 = 0;
-    relocs[reloc_cnt].data_offset = data_offset;
-    reloc_cnt++;
+    DataReloc *r = VEC_ADD(relocs);
+    r->split = 0;
+    r->off1 = patch_offset;
+    r->off2 = 0;
+    r->data_offset = data_offset;
 }
 
 void cb_add_data_reloc_split(u16 lo_offset, u16 hi_offset, u16 data_offset) {
-    if (reloc_cnt >= MAX_RELOCS) {
-        ir4_die("too many data relocations");
-    }
-    relocs[reloc_cnt].split = 1;
-    relocs[reloc_cnt].off1 = lo_offset;
-    relocs[reloc_cnt].off2 = hi_offset;
-    relocs[reloc_cnt].data_offset = data_offset;
-    reloc_cnt++;
+    DataReloc *r = VEC_ADD(relocs);
+    r->split = 1;
+    r->off1 = lo_offset;
+    r->off2 = hi_offset;
+    r->data_offset = data_offset;
 }
 
 void cb_patch_data_init_relocs_base(u32 code_base, u32 data_base) {
-    u16 i;
-    for (i = 0; i < data_init_reloc_cnt; i++) {
-        u32 val = data_init_relocs[i].is_code ? (code_base + (u32)data_init_relocs[i].target_val)
-                                              : (data_base + (u32)data_init_relocs[i].target_val);
-        u16 off = data_init_relocs[i].patch_data_off;
+    size_t i;
+    for (i = 0; i < data_init_relocs.len; i++) {
+        u32 val = data_init_relocs.data[i].is_code
+                      ? (code_base + (u32)data_init_relocs.data[i].target_val)
+                      : (data_base + (u32)data_init_relocs.data[i].target_val);
+        u16 off = data_init_relocs.data[i].patch_data_off;
         u8 b;
-        for (b = 0; b < data_init_relocs[i].addr_bytes; b++) {
-            data_buf[off + b] = (u8)(val & 0xFF);
+        for (b = 0; b < data_init_relocs.data[i].addr_bytes; b++) {
+            data_buf.data[off + b] = (u8)(val & 0xFF);
             val >>= 8;
         }
     }
 }
 
 void cb_patch_data_relocs(u16 data_base) {
-    u16 i;
-    for (i = 0; i < reloc_cnt; i++) {
-        u16 addr = (u16)(data_base + relocs[i].data_offset);
-        if (relocs[i].split) {
-            code_buf[relocs[i].off1] = (u8)(addr & 0xFF);
-            code_buf[relocs[i].off2] = (u8)((addr >> 8) & 0xFF);
+    size_t i;
+    for (i = 0; i < relocs.len; i++) {
+        u16 addr = (u16)(data_base + relocs.data[i].data_offset);
+        if (relocs.data[i].split) {
+            code_buf.data[relocs.data[i].off1] = (u8)(addr & 0xFF);
+            code_buf.data[relocs.data[i].off2] = (u8)((addr >> 8) & 0xFF);
         } else {
-            patch16(relocs[i].off1, addr);
+            patch16(relocs.data[i].off1, addr);
         }
     }
     cb_patch_data_init_relocs_base(0, (u32)data_base);
 }
 
 void cb_add_data_init_reloc(u16 patch_data_off, u16 target_val, u8 addr_bytes, u8 is_code) {
-    if (data_init_reloc_cnt >= MAX_RELOCS) {
-        ir4_die("too many data address relocations");
-    }
-    data_init_relocs[data_init_reloc_cnt].patch_data_off = patch_data_off;
-    data_init_relocs[data_init_reloc_cnt].target_val = target_val;
-    data_init_relocs[data_init_reloc_cnt].addr_bytes = addr_bytes;
-    data_init_relocs[data_init_reloc_cnt].is_code = is_code;
-    data_init_reloc_cnt++;
+    DataInitReloc *r = VEC_ADD(data_init_relocs);
+    r->patch_data_off = patch_data_off;
+    r->target_val = target_val;
+    r->addr_bytes = addr_bytes;
+    r->is_code = is_code;
 }
 
-u16 cb_data_init_reloc_count(void) { return data_init_reloc_cnt; }
+u16 cb_data_init_reloc_count(void) { return (u16)data_init_relocs.len; }
 
 void cb_get_data_init_reloc(u16 idx, u16 *patch_data_off, u16 *target_val, u8 *addr_bytes,
                             u8 *is_code) {
-    *patch_data_off = data_init_relocs[idx].patch_data_off;
-    *target_val = data_init_relocs[idx].target_val;
-    *addr_bytes = data_init_relocs[idx].addr_bytes;
-    *is_code = data_init_relocs[idx].is_code;
+    *patch_data_off = data_init_relocs.data[idx].patch_data_off;
+    *target_val = data_init_relocs.data[idx].target_val;
+    *addr_bytes = data_init_relocs.data[idx].addr_bytes;
+    *is_code = data_init_relocs.data[idx].is_code;
 }
 
 void cb_patch_data_init_reloc(u16 idx, u16 code_addr) {
-    data_init_relocs[idx].target_val = code_addr;
+    data_init_relocs.data[idx].target_val = code_addr;
 }
 
 void cb_add_extern_reloc(u16 patch_offset, const char *name) {
-    size_t len;
-    if (ext_reloc_cnt >= MAX_RELOCS) {
-        ir4_die("too many extern relocations");
-    }
-    len = strlen(name);
-    if (len >= MAX_TOK) {
-        ir4_die("extern name too long");
-    }
-    ext_relocs[ext_reloc_cnt].patch_offset = patch_offset;
-    memcpy(ext_relocs[ext_reloc_cnt].name, name, len + 1);
-    ext_reloc_cnt++;
+    ExternReloc *r = VEC_ADD(ext_relocs);
+    r->patch_offset = patch_offset;
+    r->name = intern_str(name);
 }
 
-u16 cb_extern_reloc_count(void) { return ext_reloc_cnt; }
+u16 cb_extern_reloc_count(void) { return (u16)ext_relocs.len; }
 
 const char *cb_extern_reloc_name(u16 idx, u16 *patch_offset) {
-    *patch_offset = ext_relocs[idx].patch_offset;
-    return ext_relocs[idx].name;
+    *patch_offset = ext_relocs.data[idx].patch_offset;
+    return ext_relocs.data[idx].name;
 }
