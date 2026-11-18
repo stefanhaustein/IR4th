@@ -17,7 +17,7 @@ typedef struct {
 
 typedef struct {
     u16 patch_data_off;
-    u16 target_val;
+    size_t target_val;
     u8 addr_bytes;
     u8 is_code;
 } DataInitReloc;
@@ -223,7 +223,7 @@ void cb_patch_data_relocs(u16 data_base) {
     cb_patch_data_init_relocs_base(0, (u32)data_base);
 }
 
-void cb_add_data_init_reloc(u16 patch_data_off, u16 target_val, u8 addr_bytes, u8 is_code) {
+void cb_add_data_init_reloc(u16 patch_data_off, size_t target_val, u8 addr_bytes, u8 is_code) {
     DataInitReloc *r = VEC_ADD(data_init_relocs);
     r->patch_data_off = patch_data_off;
     r->target_val = target_val;
@@ -231,9 +231,9 @@ void cb_add_data_init_reloc(u16 patch_data_off, u16 target_val, u8 addr_bytes, u
     r->is_code = is_code;
 }
 
-u16 cb_data_init_reloc_count(void) { return (u16)data_init_relocs.len; }
+size_t cb_data_init_reloc_count(void) { return data_init_relocs.len; }
 
-void cb_get_data_init_reloc(u16 idx, u16 *patch_data_off, u16 *target_val, u8 *addr_bytes,
+void cb_get_data_init_reloc(size_t idx, u16 *patch_data_off, size_t *target_val, u8 *addr_bytes,
                             u8 *is_code) {
     *patch_data_off = data_init_relocs.data[idx].patch_data_off;
     *target_val = data_init_relocs.data[idx].target_val;
@@ -241,7 +241,7 @@ void cb_get_data_init_reloc(u16 idx, u16 *patch_data_off, u16 *target_val, u8 *a
     *is_code = data_init_relocs.data[idx].is_code;
 }
 
-void cb_patch_data_init_reloc(u16 idx, u16 code_addr) {
+void cb_patch_data_init_reloc(size_t idx, u16 code_addr) {
     data_init_relocs.data[idx].target_val = code_addr;
 }
 
@@ -251,9 +251,9 @@ void cb_add_extern_reloc(u16 patch_offset, const char *name) {
     r->name = intern_str(name);
 }
 
-u16 cb_extern_reloc_count(void) { return (u16)ext_relocs.len; }
+size_t cb_extern_reloc_count(void) { return ext_relocs.len; }
 
-const char *cb_extern_reloc_name(u16 idx, u16 *patch_offset) {
+const char *cb_extern_reloc_name(size_t idx, u16 *patch_offset) {
     *patch_offset = ext_relocs.data[idx].patch_offset;
     return ext_relocs.data[idx].name;
 }

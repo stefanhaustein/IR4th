@@ -25,8 +25,6 @@ typedef unsigned long u32;
 typedef signed long i32;
 #endif
 
-#define MAX_LOCALS 64
-
 /* Stack types (v0.3) */
 typedef enum { TY_NONE = 0, TY_W, TY_A, TY_F, TY_I32 } StackType;
 
@@ -142,7 +140,7 @@ typedef enum {
 typedef struct {
     const char *name;
     u8 type;
-    u8 slot;
+    size_t slot;
     u16 size;
 } LocalVar;
 
@@ -171,9 +169,9 @@ typedef struct {
     u8 float_bytes;
 
     u16 (*cur_addr)(void);
-    void (*fn_begin)(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals,
-                     u8 is_recursive);
-    void (*fn_end)(const FuncSig *sig, const LocalVar *locals, u8 total_locals);
+    void (*fn_begin)(const char *name, size_t param_cnt, const LocalVar *locals,
+                     size_t total_locals, u8 is_recursive);
+    void (*fn_end)(const FuncSig *sig, const LocalVar *locals, size_t total_locals);
     void (*call)(u16 target_addr);
     void (*call_extern)(const FuncSig *sig);
 
@@ -182,7 +180,7 @@ typedef struct {
     void (*push_f)(double val);
     void (*push_i32)(i32 val);
     void (*push_data)(u16 data_offset);
-    void (*local_op)(LocalOp op, u8 slot, StackType type, u16 stack_bytes);
+    void (*local_op)(LocalOp op, size_t slot, StackType type, u16 stack_bytes);
 
     void (*stack_op)(StackOp op, StackType t1, StackType t2);
     void (*op)(IrOp op);
@@ -191,7 +189,7 @@ typedef struct {
     int (*shift_imm)(IrOp op, u8 count);
     int (*mem_imm)(IrOp op, i32 off);
     int (*data_mem)(IrOp op, u16 data_offset);
-    int (*local_mem)(u8 slot, i32 off, IrOp op, u16 stack_bytes);
+    int (*local_mem)(size_t slot, i32 off, IrOp op, u16 stack_bytes);
 
     u16 (*emit_br_fwd)(BranchCond cond);
     void (*emit_br_back)(BranchCond cond, u16 target_addr);

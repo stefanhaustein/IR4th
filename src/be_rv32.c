@@ -10,6 +10,7 @@
  */
 #include "codebuf.h"
 #include "be_rv32.h"
+#include "vec.h"
 #include "be_rv32_fp.h"
 
 #define RV_LOAD_BASE 0x80000000UL
@@ -135,19 +136,21 @@ static void pop_reg(u32 reg) {
 /* --- Backend Interface --- */
 static u16 rv_cur_addr(void) { return cb_cur_addr(); }
 
-static i32 rv_local_off[MAX_LOCALS];
+VEC_OF(I32Vec, i32);
+static I32Vec rv_local_off;
 
-static void rv_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals,
-                        u8 is_recursive) {
-    u8 i;
+static void rv_fn_begin(const char *name, size_t param_cnt, const LocalVar *locals,
+                        size_t total_locals, u8 is_recursive) {
+    size_t i;
     i32 cur_off = 0;
     (void)name;
     (void)is_recursive;
 
+    VEC_ENSURE(rv_local_off, total_locals);
     for (i = 0; i < total_locals; i++) {
         i32 sz = (locals[i].size > 0) ? (((i32)locals[i].size + 3) & ~3) : 4;
         cur_off += sz;
-        rv_local_off[i] = -cur_off;
+        rv_local_off.data[i] = -cur_off;
     }
 
     rv_addi(RV_SP, RV_SP, -8);
@@ -167,20 +170,20 @@ static void rv_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals, 
     /* Pop incoming arguments from data stack (arg param_cnt-1 is at 0(s1)) */
     if (param_cnt > 0) {
         for (i = param_cnt; i > 0; i--) {
-            u8 slot = (u8)(i - 1);
+            size_t slot = i - 1;
             pop_reg(RV_T0);
-            rv_sw(RV_T0, rv_local_off[slot], RV_FP);
+            rv_sw(RV_T0, rv_local_off.data[slot], RV_FP);
         }
     }
 
     for (i = param_cnt; i < total_locals; i++) {
         if (locals[i].size == 0) {
-            rv_sw(RV_ZERO, rv_local_off[i], RV_FP);
+            rv_sw(RV_ZERO, rv_local_off.data[i], RV_FP);
         }
     }
 }
 
-static void rv_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_locals) {
+static void rv_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_locals) {
     (void)sig;
     (void)locals;
     (void)total_locals;
@@ -252,8 +255,8 @@ static void rv_push_data(u16 offset) {
     push_reg(RV_T0);
 }
 
-static void rv_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
-    i32 off = rv_local_off[slot];
+static void rv_local_op(LocalOp op, size_t slot, StackType type, u16 stack_bytes) {
+    i32 off = rv_local_off.data[slot];
     (void)type;
     (void)stack_bytes;
     if (op == LOCAL_GET) {

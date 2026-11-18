@@ -263,8 +263,8 @@ static int obj_write(FILE *fp, u16 base) {
     u32 data_pad = (4U - (data_sz & 3U)) & 3U;
     u32 rela_sz, sym_sz, shstr_sz, str_pad;
     u32 off_text, off_data, off_rela, off_sym, off_str, off_shstr, off_shdr;
-    u16 reloc_cnt = cb_extern_reloc_count();
-    u16 i;
+    size_t reloc_cnt = cb_extern_reloc_count();
+    size_t i;
     (void)base;
 
     strtab[0] = '\0';

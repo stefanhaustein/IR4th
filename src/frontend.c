@@ -47,7 +47,7 @@ typedef struct {
         u16 offset;
         struct {
             LocalOp op;
-            u8 slot;
+            size_t slot;
             StackType type;
             u16 stack_bytes;
         } loc;
@@ -73,14 +73,15 @@ typedef struct {
     u8 kind;
 } CodeReloc;
 
+VEC_OF(LocalVec, LocalVar);
+
 typedef struct {
     size_t ir_start;
     size_t ir_len;
     size_t reloc_start;
     size_t reloc_cnt;
-    u8 param_cnt;
-    u8 local_count;
-    LocalVar locals[MAX_LOCALS];
+    size_t param_cnt;
+    LocalVec locals;
     u8 reachable;
     u8 is_code;
 } WordIR;
@@ -98,7 +99,7 @@ static CodeRelocVec code_relocs;
 typedef struct {
     FILE *fp;
     const char *path;
-    u16 line_num;
+    u32 line_num;
     u16 req_group;
 } SrcFile;
 
@@ -132,8 +133,7 @@ static StrBuf path_scratch;
 VEC_OF(BufVec, BufferSym *);
 static BufVec buffers;
 
-static LocalVar locals[MAX_LOCALS];
-static u8 local_count = 0;
+static LocalVec locals;
 static u8 cur_outs[4];
 static u8 cur_out_count = 0;
 
@@ -250,7 +250,7 @@ static void parse_line_directive(SrcFile *cur, int last_c) {
     }
     while (c != EOF && c != '\n')
         c = fgetc(cur->fp);
-    cur->line_num = (u16)new_line;
+    cur->line_num = new_line;
 }
 
 static StrBuf tok_sb;
@@ -554,12 +554,12 @@ static void free_block(BlockInfo *b) {
 }
 
 static int find_local(const char *name) {
-    u8 i;
+    size_t i;
     const char *p = intern_find(name);
     if (!p)
         return -1;
-    for (i = 0; i < local_count; i++) {
-        if (locals[i].name == p)
+    for (i = 0; i < locals.len; i++) {
+        if (locals.data[i].name == p)
             return (int)i;
     }
     return -1;
@@ -994,15 +994,15 @@ static int handle_builtin(const char *tok, WordIR *w) {
 }
 
 typedef struct {
-    u8 src_slot;
-    u8 dst_slot;
+    size_t src_slot;
+    size_t dst_slot;
     u16 size;
     const char *name;
 } BytesParamCopy;
 
 static BytesParamCopy cur_bytes_copies[8];
 static u8 cur_bytes_copy_count = 0;
-static u8 cur_bytes_cnt_slot = 0;
+static size_t cur_bytes_cnt_slot = 0;
 
 static void flush_bytes_params(u8 *params_flushed) {
     u8 k;
@@ -1012,14 +1012,13 @@ static void flush_bytes_params(u8 *params_flushed) {
     if (cur_bytes_copy_count == 0)
         return;
     for (k = 0; k < cur_bytes_copy_count; k++) {
-        if (local_count >= MAX_LOCALS)
-            ir4_die("too many parameters/locals");
-        locals[local_count].name = cur_bytes_copies[k].name;
-        locals[local_count].type = TY_A;
-        locals[local_count].slot = local_count;
-        locals[local_count].size = cur_bytes_copies[k].size;
-        cur_bytes_copies[k].dst_slot = local_count;
-        local_count++;
+        size_t slot = locals.len;
+        LocalVar *lv = VEC_ADD(locals);
+        lv->name = cur_bytes_copies[k].name;
+        lv->type = TY_A;
+        lv->slot = slot;
+        lv->size = cur_bytes_copies[k].size;
+        cur_bytes_copies[k].dst_slot = slot;
     }
 }
 
@@ -1056,13 +1055,13 @@ static void parse_icall_sig(FuncSig *sig) {
     ir4_die("unterminated '(' in indirect call");
 }
 
-static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
+static void parse_sig_body(FuncSig *sig, size_t *param_cnt_out, int allow_bytes) {
     const char *tok;
-    u8 param_cnt = 0;
+    size_t param_cnt = 0;
     u8 in_outs = 0;
     u8 params_flushed = 0;
 
-    local_count = 0;
+    locals.len = 0;
     cur_out_count = 0;
     cur_bytes_copy_count = 0;
     cur_bytes_cnt_slot = 0;
@@ -1106,12 +1105,13 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
             sig->out_types[sig->out_count++] = ty;
             cur_outs[cur_out_count++] = ty;
         } else {
-            if (local_count >= MAX_LOCALS)
-                ir4_die("too many parameters/locals");
+            size_t slot = locals.len;
+            LocalVar *lv;
             if (parse_type_tok(tok) != TY_NONE) {
                 ir4_die("expected identifier before type in signature");
             }
-            locals[local_count].name = intern_str(tok);
+            lv = VEC_ADD(locals);
+            lv->name = intern_str(tok);
             ty_tok = next_tok();
             if (!ty_tok)
                 ir4_die("expected type token (:i, :a, :f) after identifier in signature");
@@ -1126,34 +1126,32 @@ static void parse_sig_body(FuncSig *sig, u8 *param_cnt_out, int allow_bytes) {
                     ir4_die("':bytes' not allowed in extern signature");
                 if (sig->in_count >= 8)
                     ir4_die("too many parameters");
-                cur_bytes_copies[cur_bytes_copy_count].src_slot = local_count;
+                cur_bytes_copies[cur_bytes_copy_count].src_slot = slot;
                 cur_bytes_copies[cur_bytes_copy_count].size = (u16)sz;
-                cur_bytes_copies[cur_bytes_copy_count].name = locals[local_count].name;
+                cur_bytes_copies[cur_bytes_copy_count].name = lv->name;
                 cur_bytes_copy_count++;
                 sprintf(bp_name, "__bp%u", (unsigned)param_cnt);
-                locals[local_count].name = intern_str(bp_name);
-                locals[local_count].type = TY_A;
-                locals[local_count].slot = local_count;
-                locals[local_count].size = 0;
+                lv->name = intern_str(bp_name);
+                lv->type = TY_A;
+                lv->slot = slot;
+                lv->size = 0;
                 sig->in_types[sig->in_count] = TY_A;
                 sig->in_count++;
                 param_cnt++;
-                local_count++;
                 continue;
             }
             ty = parse_type_tok(ty_tok);
             if (ty == TY_NONE)
                 ir4_die("expected type token (:i, :a, :f) in signature");
-            locals[local_count].type = ty;
-            locals[local_count].slot = local_count;
-            locals[local_count].size = 0;
+            lv->type = ty;
+            lv->slot = slot;
+            lv->size = 0;
             if (sig->in_count >= 8)
                 ir4_die("too many parameters");
             sig->in_types[sig->in_count] = ty;
-            sig->in_regs[sig->in_count] = locals[local_count].name;
+            sig->in_regs[sig->in_count] = lv->name;
             sig->in_count++;
             param_cnt++;
-            local_count++;
         }
     }
 
@@ -1166,8 +1164,8 @@ static void emit_bytes_param_copies(WordIR *w) {
     u8 k;
     for (k = 0; k < cur_bytes_copy_count; k++) {
         IrInstr *ins;
-        u8 src = cur_bytes_copies[k].src_slot;
-        u8 dst = cur_bytes_copies[k].dst_slot;
+        size_t src = cur_bytes_copies[k].src_slot;
+        size_t dst = cur_bytes_copies[k].dst_slot;
         u16 sz = cur_bytes_copies[k].size;
 
         ins = emit_ir(IR_LOCAL_OP, w);
@@ -1220,7 +1218,7 @@ static void compile_word(int is_default) {
     size_t saved_ir_count = ir_buf.len;
     size_t fidx;
     int existing;
-    u8 param_cnt = 0;
+    size_t param_cnt = 0;
     u16 cur_grp = src_stack.data[src_stack.len - 1].req_group;
 
     name = next_tok_intern();
@@ -1434,7 +1432,7 @@ static void compile_init(void) {
     tstack.len = 0;
     blocks.len = 0;
     cur_out_count = 0;
-    local_count = 0;
+    locals.len = 0;
     compile_body(w);
 }
 
@@ -1518,7 +1516,8 @@ static void emit_label_br(WordIR *w, LabelVec *labels, LabelRefVec *refs, size_t
 static int parse_local_var(int allow_bytes) {
     const char *vname, *vtype;
     u8 ty;
-    int slot;
+    size_t slot;
+    LocalVar *lv;
     vname = next_tok_intern();
     if (!vname)
         ir4_die("expected local variable name after 'var'");
@@ -1526,14 +1525,13 @@ static int parse_local_var(int allow_bytes) {
         ir4_die("expected identifier after 'var'");
     if (find_local(vname) >= 0)
         ir4_die("duplicate local variable name");
-    if (local_count >= MAX_LOCALS)
-        ir4_die("too many parameters/locals");
     vtype = next_tok();
     if (!vtype)
         ir4_die("expected type after local 'var' name");
-    slot = local_count;
-    locals[slot].name = vname;
-    locals[slot].slot = (u8)slot;
+    slot = locals.len;
+    lv = VEC_ADD(locals);
+    lv->name = vname;
+    lv->slot = slot;
     if (strcmp(vtype, ":bytes") == 0) {
         i32 sz = 0;
         if (!allow_bytes)
@@ -1541,17 +1539,16 @@ static int parse_local_var(int allow_bytes) {
         vtype = next_tok();
         if (!vtype || !parse_int(vtype, &sz) || sz <= 0 || sz > 0xFFFF)
             ir4_die("invalid byte count after ':bytes'");
-        locals[slot].type = TY_A;
-        locals[slot].size = (u16)sz;
+        lv->type = TY_A;
+        lv->size = (u16)sz;
     } else {
         ty = parse_type_tok(vtype);
         if (ty == TY_NONE)
             ir4_die("expected type token (:i, :i32, :a, :f, :bytes) after 'var'");
-        locals[slot].type = ty;
-        locals[slot].size = 0;
+        lv->type = ty;
+        lv->size = 0;
     }
-    local_count++;
-    return slot;
+    return (int)slot;
 }
 
 static void compile_body(WordIR *w) {
@@ -1594,9 +1591,10 @@ static void compile_body(WordIR *w) {
                 check_return_stack();
                 emit_ir(IR_FN_END, w);
             }
-            w->local_count = local_count;
-            if (local_count > 0) {
-                memcpy(w->locals, locals, local_count * sizeof(LocalVar));
+            if (locals.len > 0) {
+                VEC_ENSURE(w->locals, locals.len);
+                memcpy(w->locals.data, locals.data, locals.len * sizeof(LocalVar));
+                w->locals.len = locals.len;
             }
             return;
         }
@@ -1639,12 +1637,13 @@ static void compile_body(WordIR *w) {
                 ir4_die("expected identifier after '&'");
             idx = find_local(tok);
             if (idx >= 0) {
-                if (locals[idx].size > 0)
+                LocalVar *lv = &locals.data[idx];
+                if (lv->size > 0)
                     ir4_die("':bytes' local is already an address");
                 ins = emit_ir(IR_LOCAL_OP, w);
                 ins->u.loc.op = LOCAL_ADDR;
-                ins->u.loc.slot = locals[idx].slot;
-                ins->u.loc.type = (StackType)locals[idx].type;
+                ins->u.loc.slot = lv->slot;
+                ins->u.loc.type = (StackType)lv->type;
                 ins->u.loc.stack_bytes = tstack_bytes();
                 tpush(TY_A);
                 continue;
@@ -1694,13 +1693,14 @@ static void compile_body(WordIR *w) {
                 ir4_die("expected identifier after '->'");
             idx = (strcmp(tok, "var") == 0) ? parse_local_var(0) : find_local(tok);
             if (idx >= 0) {
-                if (locals[idx].size > 0)
+                LocalVar *lv = &locals.data[idx];
+                if (lv->size > 0)
                     ir4_die("cannot assign to ':bytes' local");
-                tpop_expect(locals[idx].type);
+                tpop_expect(lv->type);
                 ins = emit_ir(IR_LOCAL_OP, w);
                 ins->u.loc.op = LOCAL_SET;
-                ins->u.loc.slot = locals[idx].slot;
-                ins->u.loc.type = (StackType)locals[idx].type;
+                ins->u.loc.slot = lv->slot;
+                ins->u.loc.type = (StackType)lv->type;
                 ins->u.loc.stack_bytes = tstack_bytes();
                 continue;
             }
@@ -1875,12 +1875,13 @@ static void compile_body(WordIR *w) {
         /* Local variable read (or ':bytes' local base address) */
         idx = find_local(tok);
         if (idx >= 0) {
+            LocalVar *lv = &locals.data[idx];
             ins = emit_ir(IR_LOCAL_OP, w);
-            ins->u.loc.op = (locals[idx].size > 0) ? LOCAL_ADDR : LOCAL_GET;
-            ins->u.loc.slot = locals[idx].slot;
-            ins->u.loc.type = (StackType)locals[idx].type;
+            ins->u.loc.op = (lv->size > 0) ? LOCAL_ADDR : LOCAL_GET;
+            ins->u.loc.slot = lv->slot;
+            ins->u.loc.type = (StackType)lv->type;
             ins->u.loc.stack_bytes = tstack_bytes();
-            tpush((locals[idx].size > 0) ? TY_A : locals[idx].type);
+            tpush((lv->size > 0) ? TY_A : lv->type);
             continue;
         }
 
@@ -2032,7 +2033,7 @@ static void emit_word(size_t fidx) {
     VEC_ENSURE(ir_addr, w->ir_len + 1);
     sig->addr = be->cur_addr();
     sig->has_addr = 1;
-    be->fn_begin(sig->name, w->param_cnt, w->locals, w->local_count, sig->is_recursive);
+    be->fn_begin(sig->name, w->param_cnt, w->locals.data, w->locals.len, sig->is_recursive);
 
     for (i = 0; i <= w->ir_len; i++) {
         for (p = 0; p < pending.len; p++) {
@@ -2047,7 +2048,7 @@ static void emit_word(size_t fidx) {
             const IrInstr *ins = &ir_buf.data[w->ir_start + i];
             switch (ins->kind) {
             case IR_FN_END:
-                be->fn_end(sig, w->locals, w->local_count);
+                be->fn_end(sig, w->locals.data, w->locals.len);
                 break;
             case IR_PUSH_W:
                 if (i + 2 < w->ir_len && ir_buf.data[w->ir_start + i + 1].kind == IR_ALU_OP &&
@@ -2308,7 +2309,7 @@ static void compile_data(void) {
                 if (funcs.data[idx]->is_extern)
                     ir4_die("cannot take address of 'extern' function in 'data'");
                 cb_emit_data_word(0, be->addr_bytes);
-                cb_add_data_init_reloc(patch_off, (u16)idx, be->addr_bytes, 1);
+                cb_add_data_init_reloc(patch_off, (size_t)idx, be->addr_bytes, 1);
             }
         } else if (strcmp(tok, ":i8") == 0) {
             if (!has_pending)
@@ -2506,14 +2507,15 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             main_idx = (int)wrap_idx;
         }
         if (main_idx >= 0) {
-            u16 di;
+            size_t di;
             mark_reachable((size_t)main_idx);
             for (di = 0; di < cb_data_init_reloc_count(); di++) {
-                u16 po, tv;
+                u16 po;
+                size_t tv;
                 u8 ab, is_c;
                 cb_get_data_init_reloc(di, &po, &tv, &ab, &is_c);
                 if (is_c)
-                    mark_reachable((size_t)tv);
+                    mark_reachable(tv);
             }
         } else {
             for (f = 0; f < funcs.len; f++) {
@@ -2554,11 +2556,12 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 }
             }
             for (c = 0; c < cb_data_init_reloc_count(); c++) {
-                u16 po, tv;
+                u16 po;
+                size_t tv;
                 u8 ab, is_c;
-                cb_get_data_init_reloc((u16)c, &po, &tv, &ab, &is_c);
+                cb_get_data_init_reloc(c, &po, &tv, &ab, &is_c);
                 if (is_c) {
-                    cb_patch_data_init_reloc((u16)c, funcs.data[tv]->addr);
+                    cb_patch_data_init_reloc(c, funcs.data[tv]->addr);
                 }
             }
         }

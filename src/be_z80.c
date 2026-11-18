@@ -6,6 +6,7 @@
 #include "codebuf.h"
 #include "be_z80.h"
 #include "be_z80_math48.h"
+#include "vec.h"
 #include <math.h>
 
 static u16 rt_mul_addr = 0;
@@ -13,7 +14,9 @@ static u16 rt_udivmod_addr = 0;
 static u16 rt_sdivmod_addr = 0;
 static u16 rt_icall_addr = 0;
 static u16 rt_math48_addr = 0;
-static u16 z80_local_off[MAX_LOCALS];
+VEC_OF(U16Vec, u16);
+VEC_OF(U8Vec, u8);
+static U16Vec z80_local_off;
 static u16 z80_local_bytes = 0;
 static u16 z80_last_push_pc = 0;
 static u8 z80_last_push_op = 0;
@@ -96,12 +99,12 @@ static u16 z80_cur_addr(void) {
     return cb_cur_addr();
 }
 
-static u8 z80_is_static_slot[MAX_LOCALS];
+static U8Vec z80_is_static_slot;
 static u16 z80_static_base = 0;
 
-static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals,
-                         u8 is_recursive) {
-    u8 i;
+static void z80_fn_begin(const char *name, size_t param_cnt, const LocalVar *locals,
+                         size_t total_locals, u8 is_recursive) {
+    size_t i;
     u16 off = 0;
     (void)name;
     z80_peep_barrier();
@@ -113,8 +116,10 @@ static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
         rt_math48_addr = 0;
     }
 
+    VEC_ENSURE(z80_local_off, total_locals);
+    VEC_ENSURE(z80_is_static_slot, total_locals);
     for (i = 0; i < total_locals; i++)
-        z80_is_static_slot[i] = 0;
+        z80_is_static_slot.data[i] = 0;
     z80_static_base = 0;
 
     if (!is_recursive) {
@@ -122,8 +127,8 @@ static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
         for (i = param_cnt; i < total_locals; i++) {
             u16 sz = (locals[i].size > 0) ? (u16)((locals[i].size + 1) & ~1)
                                           : (u16)z80_type_bytes(locals[i].type);
-            z80_local_off[i] = static_bytes;
-            z80_is_static_slot[i] = 1;
+            z80_local_off.data[i] = static_bytes;
+            z80_is_static_slot.data[i] = 1;
             static_bytes += sz;
         }
         z80_local_bytes = 0;
@@ -136,7 +141,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
                     u8 k;
                     u8 nbytes = z80_type_bytes(locals[i].type);
                     emit8(Z80_LD_HL_NN);
-                    cb_add_data_reloc(cb_pc(), (u16)(z80_static_base + z80_local_off[i]));
+                    cb_add_data_reloc(cb_pc(), (u16)(z80_static_base + z80_local_off.data[i]));
                     emit16(0x0000);
                     for (k = 0; k < nbytes; k++) {
                         emit8_8(0x36, 0x00); /* LD (HL), 0 */
@@ -146,7 +151,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
                 } else {
                     emit8_16(Z80_LD_HL_NN, 0x0000);
                     emit8(0x22);
-                    cb_add_data_reloc(cb_pc(), (u16)(z80_static_base + z80_local_off[i]));
+                    cb_add_data_reloc(cb_pc(), (u16)(z80_static_base + z80_local_off.data[i]));
                     emit16(0x0000); /* LD (nn), HL */
                 }
             }
@@ -156,7 +161,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
         for (i = param_cnt; i < total_locals; i++) {
             u16 sz = (locals[i].size > 0) ? (u16)((locals[i].size + 1) & ~1)
                                           : (u16)z80_type_bytes(locals[i].type);
-            z80_local_off[i] = z80_local_bytes;
+            z80_local_off.data[i] = z80_local_bytes;
             z80_local_bytes += sz;
         }
     }
@@ -166,7 +171,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
     for (i = param_cnt; i > 0; i--) {
         u8 idx = (u8)(i - 1);
         u8 sz = z80_type_bytes(locals[idx].type);
-        z80_local_off[idx] = off;
+        z80_local_off.data[idx] = off;
         off += sz;
     }
 
@@ -187,7 +192,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
                 if (locals[i].size == 0) {
                     u8 k;
                     u8 sz = z80_type_bytes(locals[i].type);
-                    emit8_16(Z80_LD_HL_NN, z80_local_off[i]);
+                    emit8_16(Z80_LD_HL_NN, z80_local_off.data[i]);
                     emit8(Z80_ADD_HL_SP);
                     for (k = 0; k < sz; k++) {
                         emit8_8(0x36, 0x00); /* LD (HL), 0 */
@@ -200,7 +205,7 @@ static void z80_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
     }
 }
 
-static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_locals) {
+static void z80_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_locals) {
     u8 i;
     u16 param_bytes = 0;
     u16 out_bytes = 0;
@@ -432,10 +437,10 @@ static void z80_push_data(u16 offset) {
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
+static void z80_local_get(size_t slot, u8 type, u16 stack_bytes) {
     u16 off;
-    if (z80_is_static_slot[slot]) {
-        u16 addr_off = (u16)(z80_static_base + z80_local_off[slot]);
+    if (z80_is_static_slot.data[slot]) {
+        u16 addr_off = (u16)(z80_static_base + z80_local_off.data[slot]);
         if (type == TY_F || type == TY_I32) {
             u8 i;
             u8 w = (type == TY_F) ? 3 : 2;
@@ -458,7 +463,7 @@ static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
         }
         return;
     }
-    off = (u16)(z80_local_off[slot] + stack_bytes);
+    off = (u16)(z80_local_off.data[slot] + stack_bytes);
     if (type == TY_F || type == TY_I32) {
         u8 i;
         u8 w = (type == TY_F) ? 3 : 2;
@@ -482,10 +487,10 @@ static void z80_local_get(u8 slot, u8 type, u16 stack_bytes) {
     }
 }
 
-static void z80_local_set(u8 slot, u8 type, u16 stack_bytes) {
+static void z80_local_set(size_t slot, u8 type, u16 stack_bytes) {
     u16 off;
-    if (z80_is_static_slot[slot]) {
-        u16 addr_off = (u16)(z80_static_base + z80_local_off[slot]);
+    if (z80_is_static_slot.data[slot]) {
+        u16 addr_off = (u16)(z80_static_base + z80_local_off.data[slot]);
         if (type == TY_F || type == TY_I32) {
             u8 i;
             u8 w = (type == TY_F) ? 3 : 2;
@@ -508,7 +513,7 @@ static void z80_local_set(u8 slot, u8 type, u16 stack_bytes) {
         }
         return;
     }
-    off = (u16)(z80_local_off[slot] + stack_bytes);
+    off = (u16)(z80_local_off.data[slot] + stack_bytes);
     if (type == TY_F || type == TY_I32) {
         u8 i;
         u8 w = (type == TY_F) ? 3 : 2;
@@ -544,19 +549,19 @@ static void z80_push_f_ac(void) {
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_local_addr(u8 slot, u16 stack_bytes) {
+static void z80_local_addr(size_t slot, u16 stack_bytes) {
     u16 off;
-    if (z80_is_static_slot[slot]) {
-        z80_push_data((u16)(z80_static_base + z80_local_off[slot]));
+    if (z80_is_static_slot.data[slot]) {
+        z80_push_data((u16)(z80_static_base + z80_local_off.data[slot]));
         return;
     }
-    off = (u16)(z80_local_off[slot] + stack_bytes);
+    off = (u16)(z80_local_off.data[slot] + stack_bytes);
     emit8_16(Z80_LD_HL_NN, off);
     emit8(Z80_ADD_HL_SP);
     z80_push(Z80_PUSH_HL);
 }
 
-static void z80_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
+static void z80_local_op(LocalOp op, size_t slot, StackType type, u16 stack_bytes) {
     if (op == LOCAL_GET)
         z80_local_get(slot, (u8)type, stack_bytes);
     else if (op == LOCAL_ADDR)
@@ -1491,11 +1496,11 @@ static void z80_op(IrOp op) {
     }
 }
 
-static int z80_local_mem(u8 slot, i32 off, IrOp op, u16 stack_bytes) {
+static int z80_local_mem(size_t slot, i32 off, IrOp op, u16 stack_bytes) {
     (void)stack_bytes;
-    if (!z80_is_static_slot[slot])
+    if (!z80_is_static_slot.data[slot])
         return 0;
-    return z80_data_mem(op, (u16)(z80_static_base + z80_local_off[slot] + off));
+    return z80_data_mem(op, (u16)(z80_static_base + z80_local_off.data[slot] + off));
 }
 
 static u16 z80_emit_br_fwd(BranchCond cond) {

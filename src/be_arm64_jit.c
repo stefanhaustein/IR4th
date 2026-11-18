@@ -79,9 +79,10 @@ static void arm64_run_jit(u8 main_idx) {
                 memcpy(data_mem, cb_init_data(), cb_init_data_size());
             }
             {
-                u16 i;
+                size_t i;
                 for (i = 0; i < cb_data_init_reloc_count(); i++) {
-                    u16 patch_off, target_val;
+                    u16 patch_off;
+                    size_t target_val;
                     u8 addr_bytes, is_code;
                     unsigned long addr;
                     cb_get_data_init_reloc(i, &patch_off, &target_val, &addr_bytes, &is_code);
@@ -94,7 +95,7 @@ static void arm64_run_jit(u8 main_idx) {
         }
 
         {
-            u16 i;
+            size_t i;
             for (i = 0; i < cb_extern_reloc_count(); i++) {
                 u16 off;
                 const char *name = cb_extern_reloc_name(i, &off);

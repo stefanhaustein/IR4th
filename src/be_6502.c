@@ -7,6 +7,7 @@
 #include "codebuf.h"
 #include "be_6502.h"
 #include "be_6502_wozfp.h"
+#include "vec.h"
 #include <math.h>
 
 static u8 zp_scratch = 0xFB;
@@ -117,8 +118,10 @@ static void m6502_ror_stk(u8 d) { emit_stack_op(0x7E, d); }
 /* --- Backend Interface Implementation --- */
 static u16 m6502_cur_addr(void) { return cb_cur_addr(); }
 
-static u16 m6502_local_off[MAX_LOCALS];
-static u8 m6502_local_is_big[MAX_LOCALS];
+VEC_OF(U16Vec, u16);
+VEC_OF(U8Vec, u8);
+static U16Vec m6502_local_off;
+static U8Vec m6502_local_is_big;
 static u16 m6502_frame_bytes = 0;
 static u16 m6502_big_bytes = 0;
 static u8 m6502_static_frame = 0;
@@ -134,11 +137,13 @@ static void m6502_emit_local_store(u16 off) {
     }
 }
 
-static void m6502_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals,
-                           u8 is_recursive) {
-    u8 i;
+static void m6502_fn_begin(const char *name, size_t param_cnt, const LocalVar *locals,
+                           size_t total_locals, u8 is_recursive) {
+    size_t i;
     (void)name;
 
+    VEC_ENSURE(m6502_local_off, total_locals);
+    VEC_ENSURE(m6502_local_is_big, total_locals);
     m6502_frame_bytes = 0;
     m6502_big_bytes = 0;
     for (i = 0; i < total_locals; i++) {
@@ -146,15 +151,15 @@ static void m6502_fn_begin(const char *name, u8 param_cnt, const LocalVar *local
                      ? locals[i].size
                      : (u16)((locals[i].type == TY_F || locals[i].type == TY_I32) ? 4 : 2);
         if (is_recursive && locals[i].size > 0) {
-            m6502_local_is_big[i] = 1;
-            m6502_local_off[i] = m6502_big_bytes;
+            m6502_local_is_big.data[i] = 1;
+            m6502_local_off.data[i] = m6502_big_bytes;
             m6502_big_bytes += sz;
         } else {
-            m6502_local_is_big[i] = 0;
+            m6502_local_is_big.data[i] = 0;
             if (is_recursive && (u32)m6502_frame_bytes + sz > 255) {
                 ir4_die("6502 local frame exceeds 255 bytes");
             }
-            m6502_local_off[i] = m6502_frame_bytes;
+            m6502_local_off.data[i] = m6502_frame_bytes;
             m6502_frame_bytes += sz;
         }
     }
@@ -226,7 +231,7 @@ static void m6502_fn_begin(const char *name, u8 param_cnt, const LocalVar *local
     /* Pop incoming parameters from data stack into locals */
     for (i = param_cnt; i > 0; i--) {
         u8 idx = (u8)(i - 1);
-        u16 off = m6502_local_off[idx];
+        u16 off = m6502_local_off.data[idx];
         u8 sz = (locals[idx].type == TY_F || locals[idx].type == TY_I32) ? 4 : 2;
         u8 b;
         for (b = 0; b < sz; b++) {
@@ -241,7 +246,7 @@ static void m6502_fn_begin(const char *name, u8 param_cnt, const LocalVar *local
     if (total_locals > param_cnt) {
         emit8_8(M6502_LDA_IMM, 0x00);
         for (i = param_cnt; i < total_locals; i++) {
-            u16 off = m6502_local_off[i];
+            u16 off = m6502_local_off.data[i];
             u8 sz = (locals[i].type == TY_F || locals[i].type == TY_I32) ? 4 : 2;
             u8 b;
             if (locals[i].size > 0)
@@ -253,7 +258,7 @@ static void m6502_fn_begin(const char *name, u8 param_cnt, const LocalVar *local
     }
 }
 
-static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_locals) {
+static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_locals) {
     (void)sig;
     (void)locals;
     (void)total_locals;
@@ -423,8 +428,8 @@ static void m6502_push_data(u16 offset) {
     cb_add_data_reloc_split(lo_pos, hi_pos, offset);
 }
 
-static void m6502_local_get(u8 slot, u8 type, u16 stack_bytes) {
-    u16 off = m6502_local_off[slot];
+static void m6502_local_get(size_t slot, u8 type, u16 stack_bytes) {
+    u16 off = m6502_local_off.data[slot];
     u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
     u8 b;
     (void)stack_bytes;
@@ -446,8 +451,8 @@ static void m6502_local_get(u8 slot, u8 type, u16 stack_bytes) {
     }
 }
 
-static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
-    u16 off = m6502_local_off[slot];
+static void m6502_local_set(size_t slot, u8 type, u16 stack_bytes) {
+    u16 off = m6502_local_off.data[slot];
     u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
     u8 b;
     (void)stack_bytes;
@@ -461,14 +466,14 @@ static void m6502_local_set(u8 slot, u8 type, u16 stack_bytes) {
         emit8(M6502_INX);
 }
 
-static void m6502_local_addr(u8 slot) {
+static void m6502_local_addr(size_t slot) {
     u16 lo_pos, hi_pos;
     if (m6502_static_frame) {
-        m6502_push_data((u16)(m6502_static_base + m6502_local_off[slot]));
+        m6502_push_data((u16)(m6502_static_base + m6502_local_off.data[slot]));
         return;
     }
-    if (m6502_local_is_big[slot]) {
-        u16 off = m6502_local_off[slot];
+    if (m6502_local_is_big.data[slot]) {
+        u16 off = m6502_local_off.data[slot];
         ensure_big_alloc();
         emit8(M6502_DEX);
         emit8(M6502_DEX);
@@ -501,10 +506,10 @@ static void m6502_local_addr(u8 slot) {
     emit8(0x00); /* LDA #>local */
     emit8_8(M6502_ADC_IMM, 0x00);
     m6502_sta_stk(1);
-    cb_add_data_reloc_split(lo_pos, hi_pos, (u16)(locals_data_off + m6502_local_off[slot]));
+    cb_add_data_reloc_split(lo_pos, hi_pos, (u16)(locals_data_off + m6502_local_off.data[slot]));
 }
 
-static void m6502_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
+static void m6502_local_op(LocalOp op, size_t slot, StackType type, u16 stack_bytes) {
     if (op == LOCAL_GET)
         m6502_local_get(slot, (u8)type, stack_bytes);
     else if (op == LOCAL_ADDR)
@@ -1611,11 +1616,11 @@ static void m6502_op(IrOp op) {
     }
 }
 
-static int m6502_local_mem(u8 slot, i32 off, IrOp op, u16 stack_bytes) {
+static int m6502_local_mem(size_t slot, i32 off, IrOp op, u16 stack_bytes) {
     (void)stack_bytes;
     if (!m6502_static_frame)
         return 0;
-    return m6502_data_mem(op, (u16)(m6502_static_base + m6502_local_off[slot] + off));
+    return m6502_data_mem(op, (u16)(m6502_static_base + m6502_local_off.data[slot] + off));
 }
 
 static u16 m6502_emit_br_fwd(BranchCond cond) {

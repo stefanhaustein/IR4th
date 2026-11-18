@@ -5,6 +5,7 @@
  *   - Frame pointer: X29 (locals at [X29, #-8], [X29, #-16], ...)
  */
 #include "codebuf.h"
+#include "vec.h"
 
 /* --- Native Hardware-SP Push/Pop (16-byte aligned slots) --- */
 static void push_x0(void) { emit32(0xF81F0FE0UL); } /* STR X0, [SP, #-16]! */
@@ -31,20 +32,22 @@ static void mov_x0_imm(i32 val) { mov_x0_u32((u32)val, (val < 0) ? 0xFFFFFFFFUL 
 /* --- Backend Interface --- */
 static u16 a64_cur_addr(void) { return cb_cur_addr(); }
 
-static u32 a64_local_off[MAX_LOCALS];
+VEC_OF(U32Vec, u32);
+static U32Vec a64_local_off;
 
-static void a64_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals, u8 total_locals,
-                         u8 is_recursive) {
-    u8 i;
+static void a64_fn_begin(const char *name, size_t param_cnt, const LocalVar *locals,
+                         size_t total_locals, u8 is_recursive) {
+    size_t i;
     u32 cur_off = 0;
     u32 frame_bytes;
     (void)is_recursive;
     (void)name;
 
+    VEC_ENSURE(a64_local_off, total_locals);
     for (i = 0; i < total_locals; i++) {
         u32 sz = (locals[i].size > 0) ? ((u32)(locals[i].size + 7) & ~7UL) : 8UL;
         cur_off += sz;
-        a64_local_off[i] = cur_off;
+        a64_local_off.data[i] = cur_off;
     }
     frame_bytes = (cur_off + 15UL) & ~15UL;
 
@@ -64,7 +67,7 @@ static void a64_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
 
     for (i = 0; i < param_cnt; i++) {
         u32 caller_off = (u32)(16 + (param_cnt - 1 - i) * 16);
-        u32 local_off = a64_local_off[i];
+        u32 local_off = a64_local_off.data[i];
         emit32(0xF94003A0UL | ((caller_off >> 3) << 10)); /* LDR X0, [X29, #caller_off] */
         if (local_off <= 255) {
             emit32(0xF80003A0UL |
@@ -80,7 +83,7 @@ static void a64_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
     if (total_locals > param_cnt) {
         emit32(0xD2800000UL); /* MOV X0, #0 */
         for (i = param_cnt; i < total_locals; i++) {
-            u32 local_off = a64_local_off[i];
+            u32 local_off = a64_local_off.data[i];
             if (locals[i].size > 0)
                 continue;
             if (local_off <= 255) {
@@ -95,7 +98,7 @@ static void a64_fn_begin(const char *name, u8 param_cnt, const LocalVar *locals,
     }
 }
 
-static void a64_fn_end(const FuncSig *sig, const LocalVar *locals, u8 total_locals) {
+static void a64_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_locals) {
     u8 k;
     u8 param_cnt = sig->in_count;
     u8 out_count = sig->out_count;
@@ -201,8 +204,8 @@ static void a64_push_data(u16 offset) {
     push_x0();
 }
 
-static void a64_local_op(LocalOp op, u8 slot, StackType type, u16 stack_bytes) {
-    u32 off = a64_local_off[slot];
+static void a64_local_op(LocalOp op, size_t slot, StackType type, u16 stack_bytes) {
+    u32 off = a64_local_off.data[slot];
     (void)type;
     (void)stack_bytes;
     if (op == LOCAL_GET) {
