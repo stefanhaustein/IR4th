@@ -206,7 +206,6 @@ typedef struct {
     void (*patch_fn)(size_t patch_pc, size_t patch_addr, size_t target_addr);
     void (*icall)(void);
     size_t (*stack_data_off)(void);
-    Bool soft_float;
 } Backend;
 
 /* Error reporting (implemented in frontend.c) */

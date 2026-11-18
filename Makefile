@@ -6,7 +6,7 @@ TARGET  = $(BUILD)/ir4c
 SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/path.c src/strpool.c src/vec.c src/be_z80.c src/be_z80_cpm.c src/be_ez80.c src/be_ez80_agon.c src/be_6502.c src/be_6502_sim.c src/be_6502_c64.c src/be_arm64.c src/be_arm64_jit.c src/be_rv32.c src/be_rv32_elf.c src/be_bc.c src/be_bc_run.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
-.PHONY: all test test-err test-z80 test-6502 test-rv32 rt rt-z80 rt-6502 rt-rv32 clean
+.PHONY: all test test-err test-z80 test-6502 test-rv32 rt rt-z80 rt-ez80 rt-6502 rt-rv32 clean
 
 all: $(TARGET)
 
@@ -26,7 +26,7 @@ $(BUILD)/be_bc.o: src/bc.h src/codebuf.h src/vec.h
 $(BUILD)/be_bc_run.o: src/bc.h src/codebuf.h src/frontend.h
 $(BUILD)/be_z80.o: src/codebuf.h src/be_z80.h src/be_z80_math48.h src/vec.h
 $(BUILD)/be_z80_cpm.o: src/codebuf.h src/frontend.h src/be_z80.h
-$(BUILD)/be_ez80.o: src/codebuf.h src/vec.h
+$(BUILD)/be_ez80.o: src/codebuf.h src/be_ez80_rt.h src/vec.h
 $(BUILD)/be_ez80_agon.o: src/codebuf.h src/frontend.h
 $(BUILD)/be_6502.o: src/codebuf.h src/be_6502.h src/be_6502_wozfp.h src/bc.h src/vec.h
 $(BUILD)/be_6502_sim.o: src/codebuf.h src/frontend.h src/be_6502.h
@@ -186,20 +186,23 @@ test-rv32: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 		echo "qemu-system-riscv32 not found; skipping RV32 execution"; \
 	fi
 
-rt: rt-z80 rt-6502 rt-rv32
+rt: rt-z80 rt-ez80 rt-6502 rt-rv32
+
+rt-ez80:
+	python3 tools/ez80/gen_ez80_rt.py --output src/be_ez80_rt.h
 
 rt-z80:
-	python3 tools/gen_math48.py --input tools/math48.asm --output src/be_z80_math48.h
+	python3 tools/z80/gen_math48.py --input tools/z80/math48.asm --output src/be_z80_math48.h
 	python3 tools/asm2ir4.py --cpu z80 --input tools/z80/i32.asm --output lib/z80/i32.ir4
 	python3 tools/asm2ir4.py --cpu z80 --input tools/z80/mem.asm --output lib/z80/mem.ir4
 
 rt-6502:
-	python3 tools/gen_wozfp.py --input tools/wozfp.asm --output src/be_6502_wozfp.h
+	python3 tools/6502/gen_wozfp.py --input tools/6502/wozfp.asm --output src/be_6502_wozfp.h
 	python3 tools/asm2ir4.py --cpu 6502 --input tools/6502/i32.asm --output lib/6502/i32.ir4
 	python3 tools/asm2ir4.py --cpu 6502 --input tools/6502/mem.asm --output lib/6502/mem.ir4
 
 rt-rv32:
-	python3 tools/gen_rv32_fp.py --input tools/rv32_fp.c --output src/be_rv32_fp.h
+	python3 tools/rv32/gen_rv32_fp.py --input tools/rv32/rv32_fp.c --output src/be_rv32_fp.h
 
 clean:
 	rm -rf $(BUILD)

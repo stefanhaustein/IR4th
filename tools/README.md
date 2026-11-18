@@ -26,9 +26,10 @@ python3 tools/asm2ir4.py --cpu z80  --input tools/z80/i32.asm  --output lib/z80/
 
 ## Floating-Point Runtime Generators
 
-Regenerate all generated runtimes and `.ir4` `code` libraries via `make rt` (or per-target with `make rt-z80`, `make rt-6502`, `make rt-rv32`):
+Regenerate all generated runtimes and `.ir4` `code` libraries via `make rt` (or per-target with `make rt-z80`, `make rt-ez80`, `make rt-6502`, `make rt-rv32`):
 
-- `gen_math48.py` — `tools/math48.asm` → `src/be_z80_math48.h` (requires `z80asm`, `sjasmplus`, `pasmo`, or `zmac`)
-- `gen_wozfp.py` — `tools/wozfp.asm` → `src/be_6502_wozfp.h` (requires `ca65` + `ld65`)
-- `gen_rv32_fp.py` — `tools/rv32_fp.c` → `src/be_rv32_fp.h` (requires `riscv64-elf-gcc` / `riscv32` toolchain)
+- `z80/gen_math48.py` — `tools/z80/math48.asm` → `src/be_z80_math48.h` (requires `z80asm`, `sjasmplus`, `pasmo`, or `zmac`)
+- `ez80/gen_ez80_rt.py` — AgDev `libagon.a` → `src/be_ez80_rt.h` (requires `ez80-none-elf-as`/`ld`/`objcopy` + `libagon.a`)
+- `6502/gen_wozfp.py` — `tools/6502/wozfp.asm` → `src/be_6502_wozfp.h` (requires `ca65` + `ld65`)
+- `rv32/gen_rv32_fp.py` — `tools/rv32/rv32_fp.c` → `src/be_rv32_fp.h` (requires `riscv64-elf-gcc` / `riscv32` toolchain)
 - `rt_util.py` — Shared relocation-diffing and C header helpers

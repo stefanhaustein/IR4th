@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rt_util import compute_relocs, extract_header_comments, write_rt_header
 
 WRAPPER_HEAD = """\
