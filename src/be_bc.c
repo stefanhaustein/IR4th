@@ -120,11 +120,9 @@ static void bc_call_extern(const FuncSig *sig) {
 
 static void bc_push_w(i32 val) {
     i16 v = (i16)val;
-    if (v == 0) {
-        emit8(BC_PUSH_0);
-    } else if (v == 1) {
-        emit8(BC_PUSH_1);
-    } else if (v >= -128 && v <= 127) {
+    if (v >= 0 && v <= 127) {
+        emit8((u8)(BC_PUSH_IMM7_BASE | v));
+    } else if (v >= -128 && v < 0) {
         emit8(BC_PUSH_I8);
         emit8((u8)(v & 0xFF));
     } else {
@@ -142,11 +140,19 @@ static void bc_push_f(double val) {
     float f = (float)val;
     u32 bits;
     memcpy(&bits, &f, 4);
+    if (bits == 0) {
+        emit8(BC_PUSH_0_32);
+        return;
+    }
     emit8(BC_PUSH_F);
     emit32(bits);
 }
 
 static void bc_push_i32(i32 val) {
+    if (val == 0) {
+        emit8(BC_PUSH_0_32);
+        return;
+    }
     emit8(BC_PUSH_I32);
     emit32((u32)val);
 }
@@ -437,12 +443,20 @@ static void bc_op(IrOp op) {
 }
 
 static int bc_add_imm(i32 imm) {
-    if (imm == 1) {
+    i16 d = (i16)imm;
+    if (d == 0)
+        return 1;
+    if (d == 1) {
         emit8(BC_INC);
         return 1;
     }
-    if (imm == -1) {
+    if (d == -1) {
         emit8(BC_DEC);
+        return 1;
+    }
+    if (d >= -128 && d <= 127) {
+        emit8(BC_ADD_IMM8);
+        emit8((u8)(d & 0xFF));
         return 1;
     }
     return 0;

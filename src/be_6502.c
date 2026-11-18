@@ -4,6 +4,7 @@
  *   - Locals: 256-byte BSS software frame stack indexed by 1-byte BSS lfp (grows downward)
  *   - Scratch pointers: 4 Zero Page bytes at zp_scratch (default $FB..$FE; override via --zp)
  */
+#include "bc.h"
 #include "codebuf.h"
 #include "be_6502.h"
 #include "be_6502_wozfp.h"
@@ -28,6 +29,15 @@ static u16 udivmod16_addr = 0;
 static u16 sdivmod16_addr = 0;
 static u16 icall_addr = 0;
 static u16 wozfp_addr = 0;
+static int m6502_compact = 0;
+static u16 vm_enter_addr = 0;
+
+void be_6502_set_compact(int compact) { m6502_compact = compact; }
+
+static void ensure_6502_vm(void);
+static void m6502_bc_local_op(LocalOp op, size_t slot, StackType type);
+static void m6502_bc_stack_op(StackOp op, StackType t1, StackType t2);
+static void m6502_bc_op(IrOp op);
 
 void be_6502_set_zp(u8 zp) { zp_scratch = zp; }
 
@@ -167,6 +177,39 @@ static void m6502_fn_begin(const char *name, size_t param_cnt, const LocalVar *l
     m6502_static_frame = (u8)(!is_recursive);
     m6502_static_base = 0;
 
+    if (m6502_compact) {
+        ensure_6502_vm();
+        emit8_16(M6502_JSR, vm_enter_addr);
+        if (m6502_static_frame) {
+            if (m6502_frame_bytes > 0)
+                m6502_static_base = cb_alloc_data(m6502_frame_bytes, 1);
+        } else {
+            if (m6502_frame_bytes > 0) {
+                ensure_data_alloc();
+                emit8_8(BC_ENTER, (u8)m6502_frame_bytes);
+            }
+            if (m6502_big_bytes > 0) {
+                ensure_big_alloc();
+                emit8_16(BC_ENTER_BIG, m6502_big_bytes);
+            }
+        }
+        for (i = param_cnt; i > 0; i--) {
+            size_t p = i - 1;
+            m6502_bc_local_op(LOCAL_SET, p, locals[p].type);
+        }
+        for (i = param_cnt; i < total_locals; i++) {
+            if (locals[i].size > 0)
+                continue;
+            if (locals[i].type == TY_F || locals[i].type == TY_I32) {
+                emit8(BC_PUSH_0_32);
+            } else {
+                emit8(BC_PUSH_IMM7_BASE);
+            }
+            m6502_bc_local_op(LOCAL_SET, i, locals[i].type);
+        }
+        return;
+    }
+
     if (m6502_static_frame) {
         if (m6502_frame_bytes > 0) {
             m6502_static_base = cb_alloc_data(m6502_frame_bytes, 1);
@@ -263,6 +306,17 @@ static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, size_t tota
     (void)locals;
     (void)total_locals;
 
+    if (m6502_compact) {
+        if (!m6502_static_frame) {
+            if (m6502_big_bytes > 0)
+                emit8(BC_LEAVE_BIG);
+            if (m6502_frame_bytes > 0)
+                emit8(BC_LEAVE);
+        }
+        emit8(BC_RET);
+        return;
+    }
+
     if (!m6502_static_frame) {
         if (m6502_big_bytes > 0) {
             ensure_big_alloc();
@@ -287,11 +341,28 @@ static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, size_t tota
     emit8(M6502_RTS);
 }
 
-static void m6502_call(size_t target_addr) { emit8_16(M6502_JSR, (u16)target_addr); }
+static void m6502_call(size_t target_addr) {
+    emit8_16(m6502_compact ? BC_CALL : M6502_JSR, (u16)target_addr);
+}
 
 static void m6502_call_extern(const FuncSig *sig) {
     size_t i;
     u8 has_a = 0, has_x = 0, has_y = 0;
+    if (m6502_compact) {
+        u16 jmp_patch;
+        u16 stub_addr;
+        emit8(BC_JMP);
+        jmp_patch = cb_pc();
+        emit16(0x0000);
+        stub_addr = cb_cur_addr();
+        m6502_compact = 0;
+        m6502_call_extern(sig);
+        m6502_compact = 1;
+        emit8(M6502_RTS);
+        patch16(jmp_patch, cb_cur_addr());
+        emit8_16(BC_CALL, stub_addr);
+        return;
+    }
     if (!sig->has_addr)
         ir4_die("6502 extern requires a fixed address");
     if (sig->out_types.len > 1)
@@ -350,6 +421,17 @@ static void m6502_call_extern(const FuncSig *sig) {
 
 static void m6502_push_w(i32 val) {
     u16 v = (u16)val;
+    if (m6502_compact) {
+        i16 sv = (i16)v;
+        if (sv >= 0 && sv <= 127) {
+            emit8((u8)(BC_PUSH_IMM7_BASE | sv));
+        } else if (sv >= -128 && sv < 0) {
+            emit8_8(BC_PUSH_I8, (u8)(sv & 0xFF));
+        } else {
+            emit8_16(BC_PUSH_I16, v);
+        }
+        return;
+    }
     emit8(M6502_DEX);
     emit8(M6502_DEX);
     emit8_8(M6502_LDA_IMM, (u8)(v & 0xFF));
@@ -394,6 +476,16 @@ static void m6502_push_f(double val) {
     u8 bytes[4];
     u8 b;
     encode_wozfp(val, bytes);
+    if (m6502_compact) {
+        if (val == 0.0) {
+            emit8(BC_PUSH_0_32);
+            return;
+        }
+        emit8(BC_PUSH_I32);
+        for (b = 0; b < 4; b++)
+            emit8(bytes[b]);
+        return;
+    }
     for (b = 0; b < 4; b++)
         emit8(M6502_DEX);
     for (b = 0; b < 4; b++) {
@@ -405,6 +497,15 @@ static void m6502_push_f(double val) {
 static void m6502_push_i32(i32 val) {
     u8 b;
     u32 u = (u32)val;
+    if (m6502_compact) {
+        if (u == 0) {
+            emit8(BC_PUSH_0_32);
+            return;
+        }
+        emit8(BC_PUSH_I32);
+        emit32(u);
+        return;
+    }
     for (b = 0; b < 4; b++)
         emit8(M6502_DEX);
     for (b = 0; b < 4; b++) {
@@ -415,6 +516,12 @@ static void m6502_push_i32(i32 val) {
 
 static void m6502_push_data(size_t offset) {
     u16 lo_pos, hi_pos;
+    if (m6502_compact) {
+        emit8(BC_PUSH_I16);
+        cb_add_data_reloc(cb_pc(), offset);
+        emit16(0x0000);
+        return;
+    }
     emit8(M6502_DEX);
     emit8(M6502_DEX);
     emit8(M6502_LDA_IMM);
@@ -510,6 +617,10 @@ static void m6502_local_addr(size_t slot) {
 }
 
 static void m6502_local_op(LocalOp op, size_t slot, StackType type, size_t stack_bytes) {
+    if (m6502_compact) {
+        m6502_bc_local_op(op, slot, type);
+        return;
+    }
     if (op == LOCAL_GET)
         m6502_local_get(slot, type, (u16)stack_bytes);
     else if (op == LOCAL_ADDR)
@@ -522,6 +633,10 @@ static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {
     u8 sz1 = (t1 == TY_F || t1 == TY_I32) ? 4 : 2;
     u8 sz2 = (t2 == TY_F || t2 == TY_I32) ? 4 : 2;
     u8 b;
+    if (m6502_compact) {
+        m6502_bc_stack_op(op, t1, t2);
+        return;
+    }
     switch (op) {
     case OP_DUP:
         for (b = 0; b < sz1; b++)
@@ -898,6 +1013,8 @@ static void emit_data_abs(u8 opcode, u16 data_offset) {
 }
 
 static int m6502_data_mem(IrOp op, size_t data_offset) {
+    if (m6502_compact)
+        return 0;
     switch (op) {
     case OP_U8FETCH:
         emit8(M6502_DEX);
@@ -974,6 +1091,8 @@ static int m6502_mem_imm(IrOp op, i32 off) {
     i32 sz;
     int swapped = (op >= OP_SI8STORE && op <= OP_SFSTORE);
     u8 val_off;
+    if (m6502_compact)
+        return 0;
     switch (op) {
     case OP_U8FETCH:
     case OP_I8FETCH:
@@ -1103,6 +1222,10 @@ static int m6502_mem_imm(IrOp op, i32 off) {
 }
 
 static void m6502_op(IrOp op) {
+    if (m6502_compact) {
+        m6502_bc_op(op);
+        return;
+    }
     switch (op) {
     case OP_INVERT:
         m6502_lda_stk(0);
@@ -1610,13 +1733,19 @@ static void m6502_op(IrOp op) {
 
 static int m6502_local_mem(size_t slot, i32 off, IrOp op, size_t stack_bytes) {
     (void)stack_bytes;
-    if (!m6502_static_frame)
+    if (m6502_compact || !m6502_static_frame)
         return 0;
     return m6502_data_mem(op, (u16)(m6502_static_base + m6502_local_off.data[slot] + off));
 }
 
 static size_t m6502_emit_br_fwd(BranchCond cond) {
     u16 patch_pos;
+    if (m6502_compact) {
+        emit8(cond == BR_JZ ? BC_JZ : BC_JMP);
+        patch_pos = cb_pc();
+        emit16(0x0000);
+        return patch_pos;
+    }
     if (cond == BR_JZ) {
         m6502_lda_stk(0);
         m6502_ora_stk(1);
@@ -1633,6 +1762,10 @@ static size_t m6502_emit_br_fwd(BranchCond cond) {
 }
 
 static void m6502_emit_br_back(BranchCond cond, size_t target_addr) {
+    if (m6502_compact) {
+        emit8_16(cond == BR_JZ ? BC_JZ : BC_JMP, (u16)target_addr);
+        return;
+    }
     if (cond == BR_JZ) {
         m6502_lda_stk(0);
         m6502_ora_stk(1);
@@ -1649,6 +1782,23 @@ static void m6502_patch_fwd(size_t patch_offset) { patch16(patch_offset, (u16)cb
 
 static int m6502_add_imm(i32 imm) {
     u16 d = (u16)(i16)imm;
+    if (m6502_compact) {
+        if (d == 0)
+            return 1;
+        if (d == 1) {
+            emit8(BC_INC);
+            return 1;
+        }
+        if (d == 0xFFFF) {
+            emit8(BC_DEC);
+            return 1;
+        }
+        if ((i16)d >= -128 && (i16)d <= 127) {
+            emit8_8(BC_ADD_IMM8, (u8)(d & 0xFF));
+            return 1;
+        }
+        return 0;
+    }
     if (d == 0)
         return 1;
     emit8(M6502_CLC);
@@ -1663,6 +1813,8 @@ static int m6502_add_imm(i32 imm) {
 
 static int m6502_shift_imm(IrOp op, u8 count) {
     u8 k;
+    if (m6502_compact)
+        return 0;
     if (count == 0)
         return 1;
     if (op != OP_LSHIFT && op != OP_RSHIFT && op != OP_ARSHIFT)
@@ -1717,6 +1869,12 @@ static void m6502_patch_call(size_t call_pc, size_t call_addr, size_t target_add
 
 static size_t m6502_push_fn(size_t target_addr) {
     size_t pc;
+    if (m6502_compact) {
+        emit8(BC_PUSH_I16);
+        pc = cb_pc();
+        emit16((u16)target_addr);
+        return pc;
+    }
     emit8(M6502_DEX);
     emit8(M6502_DEX);
     pc = cb_pc();
@@ -1730,11 +1888,19 @@ static size_t m6502_push_fn(size_t target_addr) {
 static void m6502_patch_fn(size_t patch_pc, size_t patch_addr, size_t target_addr) {
     u16 sta_len = (stack_zp_base != 0) ? 2 : 3;
     (void)patch_addr;
+    if (m6502_compact) {
+        patch16(patch_pc, (u16)target_addr);
+        return;
+    }
     patch8((u16)(patch_pc + 1), (u8)(target_addr & 0xFF));
     patch8((u16)(patch_pc + 2 + sta_len + 1), (u8)((target_addr >> 8) & 0xFF));
 }
 
 static void m6502_icall(void) {
+    if (m6502_compact) {
+        emit8(BC_ICALL);
+        return;
+    }
     m6502_lda_stk(0);
     emit8_8(M6502_STA_ZP, zp_scratch);
     m6502_lda_stk(1);
@@ -1751,6 +1917,831 @@ static void m6502_icall(void) {
         patch16(skip_jmp, cb_cur_addr());
     }
     emit8_16(M6502_JSR, icall_addr);
+}
+
+static void m6502_bc_local_op(LocalOp op, size_t slot, StackType type) {
+    u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
+    u16 off = m6502_local_off.data[slot];
+    if (m6502_static_frame) {
+        u16 data_off = (u16)(m6502_static_base + off);
+        if (op == LOCAL_ADDR)
+            emit8(BC_PUSH_I16);
+        else if (op == LOCAL_GET)
+            emit8(sz == 4 ? BC_STATIC_GET4 : BC_STATIC_GET2);
+        else
+            emit8(sz == 4 ? BC_STATIC_SET4 : BC_STATIC_SET2);
+        cb_add_data_reloc(cb_pc(), data_off);
+        emit16(0x0000);
+    } else if (m6502_local_is_big.data[slot]) {
+        emit8_16(BC_LOCAL_ADDR_BIG, off);
+    } else {
+        if (op == LOCAL_ADDR)
+            emit8_8(BC_LOCAL_ADDR, (u8)off);
+        else if (op == LOCAL_GET)
+            emit8_8(sz == 4 ? BC_LOCAL_GET4 : BC_LOCAL_GET2, (u8)off);
+        else
+            emit8_8(sz == 4 ? BC_LOCAL_SET4 : BC_LOCAL_SET2, (u8)off);
+    }
+}
+
+static void m6502_bc_stack_op(StackOp op, StackType t1, StackType t2) {
+    u8 s1 = (t1 == TY_F || t1 == TY_I32) ? 4 : 2;
+    u8 s2 = (t2 == TY_F || t2 == TY_I32) ? 4 : 2;
+    switch (op) {
+    case OP_DUP:
+        emit8(s1 == 4 ? BC_DUP4 : BC_DUP2);
+        break;
+    case OP_DROP:
+        emit8(s1 == 4 ? BC_DROP4 : BC_DROP2);
+        break;
+    case OP_SWAP:
+        if (s1 == 2 && s2 == 2)
+            emit8(BC_SWAP22);
+        else if (s1 == 4 && s2 == 2)
+            emit8(BC_SWAP24);
+        else if (s1 == 2 && s2 == 4)
+            emit8(BC_SWAP42);
+        else
+            emit8(BC_SWAP44);
+        break;
+    }
+}
+
+static void m6502_bc_op(IrOp op) {
+    switch (op) {
+    case OP_ADD:
+    case OP_AADD:
+        emit8(BC_ADD);
+        break;
+    case OP_SUB:
+    case OP_ASUB:
+    case OP_ADIFF:
+        emit8(BC_SUB);
+        break;
+    case OP_MUL:
+        emit8(BC_MUL);
+        break;
+    case OP_DIV:
+        emit8(BC_DIV);
+        break;
+    case OP_MOD:
+        emit8(BC_MOD);
+        break;
+    case OP_UDIV:
+        emit8(BC_UDIV);
+        break;
+    case OP_UMOD:
+        emit8(BC_UMOD);
+        break;
+    case OP_AND:
+        emit8(BC_AND);
+        break;
+    case OP_OR:
+        emit8(BC_OR);
+        break;
+    case OP_XOR:
+        emit8(BC_XOR);
+        break;
+    case OP_INVERT:
+        emit8(BC_INVERT);
+        break;
+    case OP_LSHIFT:
+        emit8(BC_LSHIFT);
+        break;
+    case OP_ARSHIFT:
+        emit8(BC_ARSHIFT);
+        break;
+    case OP_RSHIFT:
+        emit8(BC_RSHIFT);
+        break;
+    case OP_FADD:
+        emit8(BC_FADD);
+        break;
+    case OP_FSUB:
+        emit8(BC_FSUB);
+        break;
+    case OP_FMUL:
+        emit8(BC_FMUL);
+        break;
+    case OP_FDIV:
+        emit8(BC_FDIV);
+        break;
+    case OP_FNEG:
+        emit8(BC_FNEG);
+        break;
+    case OP_ADD32:
+        emit8(BC_ADD32);
+        break;
+    case OP_SUB32:
+        emit8(BC_SUB32);
+        break;
+    case OP_AND32:
+        emit8(BC_AND32);
+        break;
+    case OP_OR32:
+        emit8(BC_OR32);
+        break;
+    case OP_XOR32:
+        emit8(BC_XOR32);
+        break;
+    case OP_INV32:
+        emit8(BC_INV32);
+        break;
+    case OP_EQ:
+    case OP_AEQ:
+        emit8(BC_EQ);
+        break;
+    case OP_NE:
+    case OP_ANE:
+        emit8(BC_NE);
+        break;
+    case OP_LT:
+        emit8(BC_LT);
+        break;
+    case OP_GT:
+        emit8(BC_GT);
+        break;
+    case OP_LE:
+        emit8(BC_LE);
+        break;
+    case OP_GE:
+        emit8(BC_GE);
+        break;
+    case OP_ULT:
+    case OP_ALT:
+        emit8(BC_ULT);
+        break;
+    case OP_UGT:
+    case OP_AGT:
+        emit8(BC_UGT);
+        break;
+    case OP_ULE:
+        emit8(BC_ULE);
+        break;
+    case OP_UGE:
+        emit8(BC_UGE);
+        break;
+    case OP_FEQ:
+        emit8(BC_FEQ);
+        break;
+    case OP_FNE:
+        emit8(BC_FNE);
+        break;
+    case OP_FLT:
+        emit8(BC_FLT);
+        break;
+    case OP_FGT:
+        emit8(BC_FGT);
+        break;
+    case OP_EQ32:
+        emit8(BC_EQ32);
+        break;
+    case OP_NE32:
+        emit8(BC_NE32);
+        break;
+    case OP_LT32:
+        emit8(BC_LT32);
+        break;
+    case OP_GT32:
+        emit8(BC_GT32);
+        break;
+    case OP_LE32:
+        emit8(BC_LE32);
+        break;
+    case OP_GE32:
+        emit8(BC_GE32);
+        break;
+    case OP_ULT32:
+        emit8(BC_ULT32);
+        break;
+    case OP_UGT32:
+        emit8(BC_UGT32);
+        break;
+    case OP_ULE32:
+        emit8(BC_ULE32);
+        break;
+    case OP_UGE32:
+        emit8(BC_UGE32);
+        break;
+    case OP_I8FETCH:
+        emit8(BC_I8FETCH);
+        break;
+    case OP_U8FETCH:
+        emit8(BC_U8FETCH);
+        break;
+    case OP_I8STORE:
+        emit8(BC_I8STORE);
+        break;
+    case OP_SI8STORE:
+        emit8(BC_SWAP22);
+        emit8(BC_I8STORE);
+        break;
+    case OP_I16FETCH:
+    case OP_U16FETCH:
+    case OP_FETCH:
+    case OP_AFETCH:
+        emit8(BC_FETCH16);
+        break;
+    case OP_I16STORE:
+    case OP_STORE:
+    case OP_ASTORE:
+        emit8(BC_STORE16);
+        break;
+    case OP_SI16STORE:
+    case OP_SSTORE:
+    case OP_SASTORE:
+        emit8(BC_SWAP22);
+        emit8(BC_STORE16);
+        break;
+    case OP_FFETCH:
+    case OP_I32FETCH:
+        emit8(BC_FETCH32);
+        break;
+    case OP_FSTORE:
+    case OP_I32STORE:
+        emit8(BC_STORE32);
+        break;
+    case OP_SFSTORE:
+        emit8(BC_SWAP24);
+        emit8(BC_STORE32);
+        break;
+    case OP_BCOPY:
+        emit8(BC_BCOPY);
+        break;
+    case OP_SEXT:
+        emit8(BC_SEXT);
+        break;
+    case OP_W2A:
+    case OP_A2W:
+        break;
+    case OP_W2F:
+        emit8(BC_W2F);
+        break;
+    case OP_F2W:
+        emit8(BC_F2W);
+        break;
+    case OP_W2I32:
+        emit8(BC_W2I32);
+        break;
+    case OP_U2I32:
+        emit8(BC_U2I32);
+        break;
+    case OP_I322W:
+        emit8(BC_I322W);
+        break;
+    default:
+        ir4_die("unimplemented 6502 compact op");
+    }
+}
+
+static void emit_vm_read_ip_a(u8 ip_lo, u8 ip_hi) {
+    emit8_8(M6502_LDY_IMM, 0x00);
+    emit8_8(M6502_LDA_INDY, ip_lo);
+    emit8_8(M6502_INC_ZP, ip_lo);
+    emit8_8(M6502_BNE, 0x02);
+    emit8_8(M6502_INC_ZP, ip_hi);
+}
+
+static void emit_vm_save_ip(u8 ip_lo, u8 ip_hi) {
+    emit8_8(M6502_LDA_ZP, ip_lo);
+    emit8(M6502_PHA);
+    emit8_8(M6502_LDA_ZP, ip_hi);
+    emit8(M6502_PHA);
+}
+
+static void ensure_6502_vm(void) {
+    u8 ip_lo = zp_scratch;
+    u8 ip_hi = (u8)(zp_scratch + 1);
+    u8 tmp_lo = (u8)(zp_scratch + 2);
+    u8 tmp_hi = (u8)(zp_scratch + 3);
+    u16 skip_vm;
+    u16 vm_next_addr;
+    u16 vm_restore_ip_addr;
+    u16 vm_call_tmp_addr;
+    u16 tbl_lo_pc, tbl_hi_pc, vm_tbl_pc, vm_tbl_addr, bmi_imm7_pc;
+    u16 handlers[BC_I322W + 1];
+    size_t i;
+
+    if (vm_enter_addr != 0)
+        return;
+
+    m6502_compact = 0;
+    ensure_data_alloc();
+    for (i = 0; i <= BC_I322W; i++)
+        handlers[i] = 0;
+
+    emit8(M6502_JMP);
+    skip_vm = cb_pc();
+    emit16(0x0000);
+
+    /* vm_enter: pop return addr (fn+2), increment by 1 to point at bytecode */
+    vm_enter_addr = cb_cur_addr();
+    emit8(M6502_PLA);
+    emit8_8(M6502_STA_ZP, ip_lo);
+    emit8(M6502_PLA);
+    emit8_8(M6502_STA_ZP, ip_hi);
+    emit8_8(M6502_INC_ZP, ip_lo);
+    emit8_8(M6502_BNE, 0x02);
+    emit8_8(M6502_INC_ZP, ip_hi);
+
+    /* vm_next: fetch opcode, dispatch via vm_tbl (0x80..0xFF push 0..127) */
+    vm_next_addr = cb_cur_addr();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_ORA_IMM, 0x00);
+    emit8(M6502_BMI);
+    bmi_imm7_pc = cb_pc();
+    emit8(0x00);
+    emit8(0x0A); /* ASL A */
+    emit8(M6502_TAY);
+    emit8(0xB9); /* LDA vm_tbl,Y */
+    tbl_lo_pc = cb_pc();
+    emit16(0x0000);
+    emit8_8(M6502_STA_ZP, tmp_lo);
+    emit8(0xB9); /* LDA vm_tbl+1,Y */
+    tbl_hi_pc = cb_pc();
+    emit16(0x0000);
+    emit8_8(M6502_STA_ZP, tmp_hi);
+    emit8_16(0x6C, (u16)tmp_lo); /* JMP (tmp_lo) */
+
+    /* vm_restore_ip */
+    vm_restore_ip_addr = cb_cur_addr();
+    emit8(M6502_PLA);
+    emit8_8(M6502_STA_ZP, ip_hi);
+    emit8(M6502_PLA);
+    emit8_8(M6502_STA_ZP, ip_lo);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* vm_call_tmp */
+    vm_call_tmp_addr = cb_cur_addr();
+    emit8_16(0x6C, (u16)tmp_lo);
+
+    /* push_imm7: A has 0x80..0xFF -> push (A & 0x7F) */
+    patch8(bmi_imm7_pc, (u8)(cb_pc() - (bmi_imm7_pc + 1)));
+    emit8_8(M6502_AND_IMM, 0x7F);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    m6502_sta_stk(0);
+    emit8_8(M6502_LDA_IMM, 0x00);
+    m6502_sta_stk(1);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* Jump table */
+    vm_tbl_pc = cb_pc();
+    vm_tbl_addr = cb_cur_addr();
+    for (i = 0; i <= BC_I322W; i++)
+        emit16(0x0000);
+    patch16(tbl_lo_pc, vm_tbl_addr);
+    patch16(tbl_hi_pc, (u16)(vm_tbl_addr + 1));
+
+    /* BC_RET */
+    handlers[BC_RET] = cb_cur_addr();
+    emit8(M6502_RTS);
+
+    /* BC_ENTER (u8 frame_bytes) */
+    handlers[BC_ENTER] = cb_cur_addr();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_STA_ZP, tmp_lo);
+    emit8(M6502_LDA_ABS);
+    cb_add_data_reloc(cb_pc(), lfp_data_off);
+    emit16(0x0000);
+    emit8(M6502_PHA);
+    emit8(M6502_SEC);
+    emit8_8(M6502_SBC_ZP, tmp_lo);
+    emit8(M6502_STA_ABS);
+    cb_add_data_reloc(cb_pc(), lfp_data_off);
+    emit16(0x0000);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_LEAVE */
+    handlers[BC_LEAVE] = cb_cur_addr();
+    emit8(M6502_PLA);
+    emit8(M6502_STA_ABS);
+    cb_add_data_reloc(cb_pc(), lfp_data_off);
+    emit16(0x0000);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_ENTER_BIG (u16 big_bytes) */
+    handlers[BC_ENTER_BIG] = cb_cur_addr();
+    ensure_big_alloc();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_STA_ZP, tmp_lo);
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_STA_ZP, tmp_hi);
+    emit8(M6502_LDA_ABS);
+    cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1));
+    emit16(0x0000);
+    emit8_8(M6502_BNE, 10);
+    emit8_8(M6502_LDA_IMM, (u8)(m6502_ram_top & 0xFF));
+    emit8(M6502_STA_ABS);
+    cb_add_data_reloc(cb_pc(), bfp_data_off);
+    emit16(0x0000);
+    emit8_8(M6502_LDA_IMM, (u8)(m6502_ram_top >> 8));
+    emit8(M6502_STA_ABS);
+    cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1));
+    emit16(0x0000);
+    emit8(M6502_LDA_ABS);
+    cb_add_data_reloc(cb_pc(), bfp_data_off);
+    emit16(0x0000);
+    emit8(M6502_PHA);
+    emit8(M6502_LDA_ABS);
+    cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1));
+    emit16(0x0000);
+    emit8(M6502_PHA);
+    emit8(M6502_SEC);
+    emit8(M6502_LDA_ABS);
+    cb_add_data_reloc(cb_pc(), bfp_data_off);
+    emit16(0x0000);
+    emit8_8(M6502_SBC_ZP, tmp_lo);
+    emit8(M6502_STA_ABS);
+    cb_add_data_reloc(cb_pc(), bfp_data_off);
+    emit16(0x0000);
+    emit8(M6502_LDA_ABS);
+    cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1));
+    emit16(0x0000);
+    emit8_8(M6502_SBC_ZP, tmp_hi);
+    emit8(M6502_STA_ABS);
+    cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1));
+    emit16(0x0000);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_LEAVE_BIG */
+    handlers[BC_LEAVE_BIG] = cb_cur_addr();
+    emit8(M6502_PLA);
+    emit8(M6502_STA_ABS);
+    cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1));
+    emit16(0x0000);
+    emit8(M6502_PLA);
+    emit8(M6502_STA_ABS);
+    cb_add_data_reloc(cb_pc(), bfp_data_off);
+    emit16(0x0000);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_LOCAL_ADDR_BIG (u16 off) */
+    handlers[BC_LOCAL_ADDR_BIG] = cb_cur_addr();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_STA_ZP, tmp_lo);
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_STA_ZP, tmp_hi);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    emit8(M6502_CLC);
+    emit8(M6502_LDA_ABS);
+    cb_add_data_reloc(cb_pc(), bfp_data_off);
+    emit16(0x0000);
+    emit8_8(0x65, tmp_lo); /* ADC tmp_lo */
+    m6502_sta_stk(0);
+    emit8(M6502_LDA_ABS);
+    cb_add_data_reloc(cb_pc(), (u16)(bfp_data_off + 1));
+    emit16(0x0000);
+    emit8_8(0x65, tmp_hi); /* ADC tmp_hi */
+    m6502_sta_stk(1);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_PUSH_0_32 */
+    handlers[BC_PUSH_0_32] = cb_cur_addr();
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    emit8_8(M6502_LDA_IMM, 0x00);
+    m6502_sta_stk(0);
+    m6502_sta_stk(1);
+    m6502_sta_stk(2);
+    m6502_sta_stk(3);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_PUSH_I8 */
+    handlers[BC_PUSH_I8] = cb_cur_addr();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    m6502_sta_stk(0);
+    emit8_8(M6502_ORA_IMM, 0x00); /* set N from A after DEX */
+    emit8_8(M6502_BPL, 0x04);
+    emit8_8(M6502_LDA_IMM, 0xFF);
+    emit8_8(M6502_BMI, 0x02);
+    emit8_8(M6502_LDA_IMM, 0x00);
+    m6502_sta_stk(1);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_PUSH_I16 */
+    handlers[BC_PUSH_I16] = cb_cur_addr();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    m6502_sta_stk(0);
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    m6502_sta_stk(1);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_PUSH_I32 (also handles floats) */
+    handlers[BC_PUSH_I32] = cb_cur_addr();
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    {
+        u8 b;
+        for (b = 0; b < 4; b++) {
+            emit_vm_read_ip_a(ip_lo, ip_hi);
+            m6502_sta_stk(b);
+        }
+    }
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_INC */
+    handlers[BC_INC] = cb_cur_addr();
+    emit_stack_op(0xFE, 0); /* INC stk+0,X (or zp,X) */
+    emit8_8(M6502_BNE, (stack_zp_base != 0) ? 2 : 3);
+    emit_stack_op(0xFE, 1); /* INC stk+1,X */
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_DEC */
+    handlers[BC_DEC] = cb_cur_addr();
+    m6502_lda_stk(0);
+    emit8_8(M6502_BNE, (stack_zp_base != 0) ? 2 : 3);
+    emit_stack_op(0xDE, 1); /* DEC stk+1,X */
+    emit_stack_op(0xDE, 0); /* DEC stk+0,X */
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_ADD_IMM8 */
+    handlers[BC_ADD_IMM8] = cb_cur_addr();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_LDY_IMM, 0x00);
+    emit8_8(M6502_ORA_IMM, 0x00);
+    emit8_8(M6502_BPL, 0x02);
+    emit8_8(M6502_LDY_IMM, 0xFF);
+    emit8(M6502_CLC);
+    emit_stack_op(0x7D, 0); /* ADC stk+0,X */
+    m6502_sta_stk(0);
+    emit8(M6502_TYA);
+    emit_stack_op(0x7D, 1); /* ADC stk+1,X */
+    m6502_sta_stk(1);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_STATIC_GET2 / GET4 / SET2 / SET4 */
+    {
+        int is_set, sz4;
+        for (is_set = 0; is_set < 2; is_set++) {
+            for (sz4 = 0; sz4 < 2; sz4++) {
+                BcOp bc = is_set ? (sz4 ? BC_STATIC_SET4 : BC_STATIC_SET2)
+                                 : (sz4 ? BC_STATIC_GET4 : BC_STATIC_GET2);
+                u8 n = sz4 ? 4 : 2;
+                u8 b;
+                handlers[bc] = cb_cur_addr();
+                emit_vm_read_ip_a(ip_lo, ip_hi);
+                emit8_8(M6502_STA_ZP, tmp_lo);
+                emit_vm_read_ip_a(ip_lo, ip_hi);
+                emit8_8(M6502_STA_ZP, tmp_hi);
+                if (!is_set) {
+                    for (b = 0; b < n; b++)
+                        emit8(M6502_DEX);
+                    for (b = 0; b < n; b++) {
+                        emit8_8(M6502_LDY_IMM, b);
+                        emit8_8(M6502_LDA_INDY, tmp_lo);
+                        m6502_sta_stk(b);
+                    }
+                } else {
+                    for (b = 0; b < n; b++) {
+                        m6502_lda_stk(b);
+                        emit8_8(M6502_LDY_IMM, b);
+                        emit8_8(M6502_STA_INDY, tmp_lo);
+                    }
+                    for (b = 0; b < n; b++)
+                        emit8(M6502_INX);
+                }
+                emit8_16(M6502_JMP, vm_next_addr);
+            }
+        }
+    }
+
+    /* BC_LOCAL_GET2 / GET4 / SET2 / SET4 */
+    {
+        int is_set, sz4;
+        for (is_set = 0; is_set < 2; is_set++) {
+            for (sz4 = 0; sz4 < 2; sz4++) {
+                BcOp bc = is_set ? (sz4 ? BC_LOCAL_SET4 : BC_LOCAL_SET2)
+                                 : (sz4 ? BC_LOCAL_GET4 : BC_LOCAL_GET2);
+                u8 n = sz4 ? 4 : 2;
+                u8 b;
+                handlers[bc] = cb_cur_addr();
+                emit_vm_read_ip_a(ip_lo, ip_hi);
+                emit8(M6502_CLC);
+                emit8(M6502_ADC_ABS);
+                cb_add_data_reloc(cb_pc(), lfp_data_off);
+                emit16(0x0000);
+                emit8(M6502_TAY);
+                if (!is_set) {
+                    for (b = 0; b < n; b++)
+                        emit8(M6502_DEX);
+                    for (b = 0; b < n; b++) {
+                        m6502_lda_local(b);
+                        m6502_sta_stk(b);
+                    }
+                } else {
+                    for (b = 0; b < n; b++) {
+                        m6502_lda_stk(b);
+                        m6502_sta_local(b);
+                    }
+                    for (b = 0; b < n; b++)
+                        emit8(M6502_INX);
+                }
+                emit8_16(M6502_JMP, vm_next_addr);
+            }
+        }
+    }
+
+    /* BC_LOCAL_ADDR (u8 off) */
+    handlers[BC_LOCAL_ADDR] = cb_cur_addr();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8(M6502_CLC);
+    emit8(M6502_ADC_ABS);
+    cb_add_data_reloc(cb_pc(), lfp_data_off);
+    emit16(0x0000);
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+    emit8(M6502_CLC);
+    emit8(M6502_ADC_IMM);
+    {
+        u16 lo_pos = cb_pc();
+        u16 hi_pos;
+        emit8(0x00);
+        m6502_sta_stk(0);
+        emit8(M6502_LDA_IMM);
+        hi_pos = cb_pc();
+        emit8(0x00);
+        emit8_8(M6502_ADC_IMM, 0x00);
+        m6502_sta_stk(1);
+        cb_add_data_reloc_split(lo_pos, hi_pos, locals_data_off);
+    }
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_JMP (u16 target) */
+    handlers[BC_JMP] = cb_cur_addr();
+    emit8_8(M6502_LDY_IMM, 0x00);
+    emit8_8(M6502_LDA_INDY, ip_lo);
+    emit8(M6502_PHA);
+    emit8(M6502_INY);
+    emit8_8(M6502_LDA_INDY, ip_lo);
+    emit8_8(M6502_STA_ZP, ip_hi);
+    emit8(M6502_PLA);
+    emit8_8(M6502_STA_ZP, ip_lo);
+    emit8_16(M6502_JMP, vm_next_addr);
+
+    /* BC_JZ (u16 target) */
+    handlers[BC_JZ] = cb_cur_addr();
+    m6502_lda_stk(0);
+    m6502_ora_stk(1);
+    emit8(M6502_PHP);
+    emit8(M6502_INX);
+    emit8(M6502_INX);
+    emit8(M6502_PLP);
+    emit8_8(M6502_BEQ, (u8)(handlers[BC_JMP] ? 0 : 0));
+    {
+        u16 beq_pc = (u16)(cb_pc() - 1);
+        u16 skip_len;
+        /* Not zero: ip += 2 */
+        emit8(M6502_CLC);
+        emit8_8(M6502_LDA_ZP, ip_lo);
+        emit8_8(M6502_ADC_IMM, 0x02);
+        emit8_8(M6502_STA_ZP, ip_lo);
+        emit8_8(M6502_BCC, 0x02);
+        emit8_8(M6502_INC_ZP, ip_hi);
+        emit8_16(M6502_JMP, vm_next_addr);
+        skip_len = (u16)(cb_pc() - (beq_pc + 1));
+        patch8(beq_pc, (u8)skip_len);
+        emit8_16(M6502_JMP, handlers[BC_JMP]);
+    }
+
+    /* BC_CALL (u16 target) */
+    handlers[BC_CALL] = cb_cur_addr();
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_STA_ZP, tmp_lo);
+    emit_vm_read_ip_a(ip_lo, ip_hi);
+    emit8_8(M6502_STA_ZP, tmp_hi);
+    emit_vm_save_ip(ip_lo, ip_hi);
+    emit8_16(M6502_JSR, vm_call_tmp_addr);
+    emit8_16(M6502_JMP, vm_restore_ip_addr);
+
+    /* BC_ICALL */
+    handlers[BC_ICALL] = cb_cur_addr();
+    m6502_lda_stk(0);
+    emit8_8(M6502_STA_ZP, tmp_lo);
+    m6502_lda_stk(1);
+    emit8_8(M6502_STA_ZP, tmp_hi);
+    emit8(M6502_INX);
+    emit8(M6502_INX);
+    emit_vm_save_ip(ip_lo, ip_hi);
+    emit8_16(M6502_JSR, vm_call_tmp_addr);
+    emit8_16(M6502_JMP, vm_restore_ip_addr);
+
+    /* Stack ops */
+#define VM_STK(bc, op, t1, t2, save)                                                               \
+    do {                                                                                           \
+        handlers[bc] = cb_cur_addr();                                                              \
+        if (save)                                                                                  \
+            emit_vm_save_ip(ip_lo, ip_hi);                                                         \
+        m6502_stack_op(op, t1, t2);                                                                \
+        emit8_16(M6502_JMP, (save) ? vm_restore_ip_addr : vm_next_addr);                           \
+    } while (0)
+
+    VM_STK(BC_DUP2, OP_DUP, TY_W, TY_NONE, 0);
+    VM_STK(BC_DUP4, OP_DUP, TY_I32, TY_NONE, 0);
+    VM_STK(BC_DROP2, OP_DROP, TY_W, TY_NONE, 0);
+    VM_STK(BC_DROP4, OP_DROP, TY_I32, TY_NONE, 0);
+    VM_STK(BC_SWAP22, OP_SWAP, TY_W, TY_W, 0);
+    VM_STK(BC_SWAP24, OP_SWAP, TY_I32, TY_W, 1);
+    VM_STK(BC_SWAP42, OP_SWAP, TY_W, TY_I32, 1);
+    VM_STK(BC_SWAP44, OP_SWAP, TY_I32, TY_I32, 0);
+#undef VM_STK
+
+    /* ALU / cmp / mem / conv ops */
+#define VM_OP(bc, ir, save)                                                                        \
+    do {                                                                                           \
+        handlers[bc] = cb_cur_addr();                                                              \
+        if (save)                                                                                  \
+            emit_vm_save_ip(ip_lo, ip_hi);                                                         \
+        m6502_op(ir);                                                                              \
+        emit8_16(M6502_JMP, (save) ? vm_restore_ip_addr : vm_next_addr);                           \
+    } while (0)
+
+    VM_OP(BC_ADD, OP_ADD, 0);
+    VM_OP(BC_SUB, OP_SUB, 0);
+    VM_OP(BC_MUL, OP_MUL, 1);
+    VM_OP(BC_DIV, OP_DIV, 1);
+    VM_OP(BC_MOD, OP_MOD, 1);
+    VM_OP(BC_UDIV, OP_UDIV, 1);
+    VM_OP(BC_UMOD, OP_UMOD, 1);
+    VM_OP(BC_AND, OP_AND, 0);
+    VM_OP(BC_OR, OP_OR, 0);
+    VM_OP(BC_XOR, OP_XOR, 0);
+    VM_OP(BC_INVERT, OP_INVERT, 0);
+    VM_OP(BC_LSHIFT, OP_LSHIFT, 0);
+    VM_OP(BC_ARSHIFT, OP_ARSHIFT, 0);
+    VM_OP(BC_RSHIFT, OP_RSHIFT, 0);
+
+    VM_OP(BC_FADD, OP_FADD, 1);
+    VM_OP(BC_FSUB, OP_FSUB, 1);
+    VM_OP(BC_FMUL, OP_FMUL, 1);
+    VM_OP(BC_FDIV, OP_FDIV, 1);
+    VM_OP(BC_FNEG, OP_FNEG, 1);
+
+    VM_OP(BC_ADD32, OP_ADD32, 0);
+    VM_OP(BC_SUB32, OP_SUB32, 0);
+    VM_OP(BC_AND32, OP_AND32, 0);
+    VM_OP(BC_OR32, OP_OR32, 0);
+    VM_OP(BC_XOR32, OP_XOR32, 0);
+    VM_OP(BC_INV32, OP_INV32, 0);
+
+    VM_OP(BC_EQ, OP_EQ, 1);
+    VM_OP(BC_NE, OP_NE, 1);
+    VM_OP(BC_LT, OP_LT, 0);
+    VM_OP(BC_GT, OP_GT, 0);
+    VM_OP(BC_LE, OP_LE, 0);
+    VM_OP(BC_GE, OP_GE, 0);
+    VM_OP(BC_ULT, OP_ULT, 0);
+    VM_OP(BC_UGT, OP_UGT, 0);
+    VM_OP(BC_ULE, OP_ULE, 0);
+    VM_OP(BC_UGE, OP_UGE, 0);
+
+    VM_OP(BC_FEQ, OP_FEQ, 1);
+    VM_OP(BC_FNE, OP_FNE, 1);
+    VM_OP(BC_FLT, OP_FLT, 1);
+    VM_OP(BC_FGT, OP_FGT, 1);
+
+    VM_OP(BC_EQ32, OP_EQ32, 1);
+    VM_OP(BC_NE32, OP_NE32, 1);
+    VM_OP(BC_LT32, OP_LT32, 0);
+    VM_OP(BC_GT32, OP_GT32, 0);
+    VM_OP(BC_LE32, OP_LE32, 0);
+    VM_OP(BC_GE32, OP_GE32, 0);
+    VM_OP(BC_ULT32, OP_ULT32, 0);
+    VM_OP(BC_UGT32, OP_UGT32, 0);
+    VM_OP(BC_ULE32, OP_ULE32, 0);
+    VM_OP(BC_UGE32, OP_UGE32, 0);
+
+    VM_OP(BC_I8FETCH, OP_I8FETCH, 1);
+    VM_OP(BC_U8FETCH, OP_U8FETCH, 1);
+    VM_OP(BC_I8STORE, OP_I8STORE, 1);
+    VM_OP(BC_FETCH16, OP_FETCH, 1);
+    VM_OP(BC_STORE16, OP_STORE, 1);
+    VM_OP(BC_FETCH32, OP_I32FETCH, 1);
+    VM_OP(BC_STORE32, OP_I32STORE, 1);
+    VM_OP(BC_BCOPY, OP_BCOPY, 1);
+
+    VM_OP(BC_SEXT, OP_SEXT, 0);
+    VM_OP(BC_W2F, OP_W2F, 1);
+    VM_OP(BC_F2W, OP_F2W, 1);
+    VM_OP(BC_W2I32, OP_W2I32, 0);
+    VM_OP(BC_U2I32, OP_U2I32, 0);
+    VM_OP(BC_I322W, OP_I322W, 0);
+#undef VM_OP
+
+    for (i = 0; i <= BC_I322W; i++) {
+        patch16((u16)(vm_tbl_pc + i * 2), handlers[i] ? handlers[i] : handlers[BC_RET]);
+    }
+    patch16(skip_vm, cb_cur_addr());
+    m6502_compact = 1;
 }
 
 const Backend be_6502 = {"6502",

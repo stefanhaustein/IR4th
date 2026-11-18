@@ -3,14 +3,18 @@
 
 #include "ir4.h"
 
-/* Compact 16-bit stack-VM bytecode opcodes (<= 128 opcodes for 6502 jump table). */
+/* Compact 16-bit stack-VM bytecode opcodes (<= 128 opcodes; 0x80..0xFF push 0..127). */
+#define BC_PUSH_IMM7_BASE 0x80
+
 typedef enum {
     BC_RET = 0,
-    BC_ENTER,       /* u16 frame_bytes */
-    BC_LEAVE,       /* u16 frame_bytes */
+    BC_ENTER,       /* u16 frame_bytes (u8 on 6502) */
+    BC_LEAVE,       /* u16 frame_bytes (none on 6502) */
+    BC_ENTER_BIG,   /* u16 big_bytes (6502 bfp) */
+    BC_LEAVE_BIG,   /* 6502 bfp restore */
+    BC_LOCAL_ADDR_BIG, /* u16 off (6502 bfp) */
 
-    BC_PUSH_0,
-    BC_PUSH_1,
+    BC_PUSH_0_32,
     BC_PUSH_I8,     /* i8 */
     BC_PUSH_I16,    /* u16 */
     BC_PUSH_I32,    /* i32 */
@@ -20,6 +24,7 @@ typedef enum {
 
     BC_INC,
     BC_DEC,
+    BC_ADD_IMM8,    /* i8 */
 
     BC_STATIC_GET2, /* u16 addr */
     BC_STATIC_GET4, /* u16 addr */

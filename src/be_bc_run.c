@@ -73,6 +73,11 @@ static void bc_run_vm(size_t main_idx) {
 
     for (;;) {
         u8 op = mem[pc++];
+        if (op & BC_PUSH_IMM7_BASE) {
+            sp -= 2;
+            wr16(mem, sp, (u16)(op & 0x7F));
+            continue;
+        }
         switch ((BcOp)op) {
         case BC_RET:
             if (csp == 0) {
@@ -103,14 +108,14 @@ static void bc_run_vm(size_t main_idx) {
             fp += sz;
             break;
         }
-
-        case BC_PUSH_0:
-            sp -= 2;
-            wr16(mem, sp, 0);
+        case BC_ENTER_BIG:
+        case BC_LEAVE_BIG:
+        case BC_LOCAL_ADDR_BIG:
             break;
-        case BC_PUSH_1:
-            sp -= 2;
-            wr16(mem, sp, 1);
+
+        case BC_PUSH_0_32:
+            sp -= 4;
+            wr32(mem, sp, 0);
             break;
         case BC_PUSH_I8: {
             i16 v = (i8)mem[pc++];
@@ -142,6 +147,11 @@ static void bc_run_vm(size_t main_idx) {
         case BC_DEC:
             wr16(mem, sp, (u16)(rd16(mem, sp) - 1));
             break;
+        case BC_ADD_IMM8: {
+            i16 d = (i8)mem[pc++];
+            wr16(mem, sp, (u16)(rd16(mem, sp) + (u16)d));
+            break;
+        }
 
         case BC_STATIC_GET2: {
             u16 addr = rd16(mem, pc);

@@ -73,5 +73,6 @@ void be_6502_set_stack_zp(u8 base, u8 init_x);
 void be_6502_set_default_stack_zp(u8 base, u8 init_x);
 u8 be_6502_stack_zp_base(void);
 u8 be_6502_stack_zp_init_x(void);
+void be_6502_set_compact(int compact);
 
 #endif /* BE_6502_H */
