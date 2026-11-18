@@ -1,5 +1,6 @@
 #include "frontend.h"
 #include "codebuf.h"
+#include "path.h"
 #include "strpool.h"
 #include "vec.h"
 
@@ -127,7 +128,7 @@ typedef struct {
     StackType type; /* TY_NONE for :bytes / data buffers; TY_W/TY_A/TY_F for typed globals */
 } BufferSym;
 
-static StrBuf path_scratch;
+static StrBuf tok_sb;
 
 VEC_OF(BufVec, BufferSym *);
 static BufVec buffers;
@@ -214,14 +215,14 @@ static int skip_ws_and_comments(void) {
 
 static const char *read_quoted_intern(FILE *fp, const char *err_unterm) {
     int c = fgetc(fp);
-    sb_reset(&path_scratch);
+    sb_reset(&tok_sb);
     while (c != EOF && c != '\n' && c != '"') {
-        sb_putc(&path_scratch, (char)c);
+        sb_putc(&tok_sb, (char)c);
         c = fgetc(fp);
     }
     if (c != '"')
         ir4_die(err_unterm);
-    return sb_intern(&path_scratch);
+    return sb_intern(&tok_sb);
 }
 
 static void parse_line_directive(SrcFile *cur, int last_c) {
@@ -251,8 +252,6 @@ static void parse_line_directive(SrcFile *cur, int last_c) {
     cur->line_num = new_line;
 }
 
-static StrBuf tok_sb;
-
 static const char *next_tok(void) {
     for (;;) {
         int c = skip_ws_and_comments();
@@ -279,37 +278,6 @@ static const char *next_tok(void) {
 
 static const char *next_tok_intern(void) { return next_tok() ? sb_intern(&tok_sb) : NULL; }
 
-static const char *join_path(const char *a, const char *b) {
-    sb_reset(&path_scratch);
-    sb_append(&path_scratch, a);
-    sb_putc(&path_scratch, '/');
-    sb_append(&path_scratch, b);
-    return sb_intern(&path_scratch);
-}
-
-static const char *resolve_path(const char *base_path, const char *rel) {
-    const char *slash;
-    size_t dir_len = 0;
-
-    while (rel[0] == '.' && rel[1] == '/') {
-        rel += 2;
-    }
-
-    if (rel[0] != '/' && base_path != NULL) {
-        slash = strrchr(base_path, '/');
-        if (slash != NULL) {
-            dir_len = (size_t)(slash - base_path + 1);
-        }
-    }
-
-    if (dir_len == 0)
-        return intern_str(rel);
-    sb_reset(&path_scratch);
-    sb_append_n(&path_scratch, base_path, dir_len);
-    sb_append(&path_scratch, rel);
-    return sb_intern(&path_scratch);
-}
-
 static FILE *try_open_require(const char *path, int *already_seen) {
     size_t i;
     const char *p = intern_find(path);
@@ -323,25 +291,6 @@ static FILE *try_open_require(const char *path, int *already_seen) {
         }
     }
     return fopen(path, "r");
-}
-
-static const char *exe_dir = NULL;
-
-void ir4_set_exe_path(const char *exe_path) {
-    const char *sep = NULL;
-    const char *p;
-    size_t len;
-    exe_dir = NULL;
-    if (!exe_path)
-        return;
-    for (p = exe_path; *p; p++) {
-        if (*p == '/' || *p == '\\')
-            sep = p;
-    }
-    if (!sep)
-        return;
-    len = (size_t)(sep - exe_path);
-    exe_dir = (len == 0) ? intern_str("/") : intern_str_n(exe_path, len);
 }
 
 static void push_src_file(FILE *fp, const char *path, u16 req_group) {
@@ -365,15 +314,15 @@ static void push_require_ex(const char *name, int lib_only) {
 
     if (name[0] != '/') {
         if (platform_name != NULL && platform_name[0] != '\0') {
-            cands[n_cands++] = join_path(platform_name, name);
+            cands[n_cands++] = path_join(platform_name, name);
         }
-        cands[n_cands++] = join_path(be->name, name);
+        cands[n_cands++] = path_join(be->name, name);
     }
     cands[n_cands++] = intern_str(name);
 
     if (!lib_only) {
         for (c = 0; c < n_cands; c++) {
-            const char *path = resolve_path(src_stack.data[src_stack.len - 1].path, cands[c]);
+            const char *path = path_resolve(src_stack.data[src_stack.len - 1].path, cands[c]);
             int seen = 0;
             FILE *fp = try_open_require(path, &seen);
             if (seen)
@@ -388,6 +337,7 @@ static void push_require_ex(const char *name, int lib_only) {
 
     if (found_cnt == 0 && seen_cnt == 0 && name[0] != '/') {
         StrVec roots;
+        const char *exe_dir = path_exe_dir();
         size_t r;
         roots.data = NULL;
         roots.len = 0;
@@ -396,13 +346,13 @@ static void push_require_ex(const char *name, int lib_only) {
             VEC_PUSH(roots, extra_lib_roots.data[r]);
         }
         if (exe_dir != NULL) {
-            VEC_PUSH(roots, join_path(exe_dir, "../lib"));
-            VEC_PUSH(roots, join_path(exe_dir, "lib"));
+            VEC_PUSH(roots, path_join(exe_dir, "../lib"));
+            VEC_PUSH(roots, path_join(exe_dir, "lib"));
         }
         VEC_PUSH(roots, "lib");
         for (r = 0; r < roots.len && found_cnt == 0 && seen_cnt == 0; r++) {
             for (c = 0; c < n_cands; c++) {
-                const char *path = join_path(roots.data[r], cands[c]);
+                const char *path = path_join(roots.data[r], cands[c]);
                 int seen = 0;
                 FILE *fp = try_open_require(path, &seen);
                 if (seen)

@@ -1,6 +1,7 @@
 /* ir4c.c - CLI driver for IR4th (Strict C89) */
 #include "codebuf.h"
 #include "frontend.h"
+#include "path.h"
 
 static const Platform *const platforms[] = {
     &plat_z80_cpm, &plat_6502_sim, &plat_6502_c64, &plat_arm64_jit, &plat_rv32_virt, &plat_rv32_obj,
@@ -26,8 +27,7 @@ int main(int argc, char **argv) {
     FILE *in_fp;
     FILE *out_fp;
 
-    if (argc > 0 && argv[0])
-        ir4_set_exe_path(argv[0]);
+    path_set_exe(argc > 0 ? argv[0] : NULL);
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
