@@ -11,18 +11,18 @@ fn fint ( x :f -> :f )
   var res :f
   x fabs -> ax
   ax 16384.0 f< if x f>i i>f return then
-  ax 1.0 f+ ax f== if x return then
+  ax 1.0 f+ ax f= if x return then
   16384.0 -> p
   begin
-    p 2.0 f* ax f> 0 ==
+    p 2.0 f* ax f> 0 =
   while
     p 2.0 f* -> p
   repeat
   0.0 -> res
   begin
-    p 16384.0 f< 0 ==
+    p 16384.0 f< 0 =
   while
-    ax p f< 0 == if
+    ax p f< 0 = if
       ax p f- -> ax
       res p f+ -> res
     then
@@ -45,10 +45,10 @@ fn sqrt ( x :f -> :f )
   var scale :f
   var g :f
   var i :i
-  x 0.0 f> 0 == if 0.0 return then
+  x 0.0 f> 0 = if 0.0 return then
   1.0 -> scale
   begin
-    x 2.0 f< 0 ==
+    x 2.0 f< 0 =
   while
     x 0.25 f* -> x
     scale 2.0 f* -> scale
@@ -123,8 +123,8 @@ fn arctan ( x :f -> :f )
   x2 f* 0.3333333333333333 f-
   x2 f* 1.0 f+
   x f*
-  corr 0 != if 0.5235987755982988 f+ then
-  inv 0 != if 1.5707963267948966 swap f- then
+  corr 0 <> if 0.5235987755982988 f+ then
+  inv 0 <> if 1.5707963267948966 swap f- then
   sign f*
 end
 
@@ -159,7 +159,7 @@ fn ln ( x :f -> :f )
   var k :i
   var u :f
   var u2 :f
-  x 0.0 f> 0 == if 0.0 return then
+  x 0.0 f> 0 = if 0.0 return then
   begin
     x 1.4142135623730951 f>
   while

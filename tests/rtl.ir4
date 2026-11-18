@@ -13,7 +13,7 @@ var buf1 :bytes 16
 var buf2 :bytes 16
 
 fn assert_eq ( got :i expected :i code :i -> :i )
-  got expected == if 0 return then
+  got expected = if 0 return then
   code
 end
 
@@ -39,66 +39,66 @@ fn main ( -> :i )
   // mem.ir4: fillchar, memcpy, memcmp
   buf1 8 65 fillchar
   buf1 u8@ 65 1 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   buf1 7 a+ u8@ 65 2 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   buf2 buf1 8 memcpy
   buf1 buf2 8 memcmp 0 3 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   66 buf2 3 a+ i8!
   buf1 buf2 8 memcmp 0 < -1 4 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   // overlapping memcpy (dst > src, e.g. shifting "HiWorld" right by 2)
   buf2 s_exp pas_strcopy
   buf2 3 a+ buf2 1 a+ 5 memcpy
   buf2 3 a+ u8@ 72 15 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   buf2 7 a+ u8@ 114 16 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   // heap_alloc / heap_free (with coalescing) / heap_reset
   10 heap_alloc -> p1
   4 heap_alloc -> p2
   p2 p1 adiff 24 5 assert_eq
-  dup 0 != if return then drop
-  p1 __heap_start 8 a+ a== -1 6 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
+  p1 __heap_start 8 a+ a= -1 6 assert_eq
+  dup 0 <> if return then drop
   p1 heap_free
   p2 heap_free
-  32 heap_alloc p1 a== -1 7 assert_eq
-  dup 0 != if return then drop
+  32 heap_alloc p1 a= -1 7 assert_eq
+  dup 0 <> if return then drop
   heap_reset
-  8 heap_alloc p1 a== -1 14 assert_eq
-  dup 0 != if return then drop
+  8 heap_alloc p1 a= -1 14 assert_eq
+  dup 0 <> if return then drop
 
   // pascal.ir4: abs, strlen, strcopy, streq, strconcat, prints
   -123 pas_abs 123 8 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   s_hi pas_strlen 2 9 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   s_hi s_hi2 pas_streq -1 10 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   s_hi s_wld pas_streq 0 11 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   buf1 s_hi pas_strcopy
   buf1 s_hi pas_streq -1 12 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   buf2 s_hi s_wld pas_strconcat
   buf2 s_exp pas_streq -1 13 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   buf2 pas_prints
   cr
 
   // :bytes parameter (copy-by-value into callee frame)
   buf1 mutate_copy 99 17 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   buf1 u8@ 2 18 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   0
 end

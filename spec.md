@@ -185,14 +185,14 @@ All comparisons consume two values and push a boolean flag of type **`:i`** (`-1
 
 | Instruction | Stack Effect | Semantics |
 | :--- | :--- | :--- |
-| `==` , `!=` | `( :i :i -- :i )` | Native word equal / not equal |
+| `=` , `<>` | `( :i :i -- :i )` | Native word equal / not equal |
 | `<` , `>` , `<=` , `>=` | `( :i :i -- :i )` | Signed native word comparisons |
 | `u<` , `u>` , `u<=` , `u>=` | `( :i :i -- :i )` | Unsigned native word comparisons |
-| `i32==` , `i32!=` | `( :i32 :i32 -- :i )` | 32-bit integer equal / not equal |
+| `i32=` , `i32<>` | `( :i32 :i32 -- :i )` | 32-bit integer equal / not equal |
 | `i32<` , `i32>` , `i32<=` , `i32>=` | `( :i32 :i32 -- :i )` | Signed 32-bit integer comparisons |
 | `u32<` , `u32>` , `u32<=` , `u32>=` | `( :i32 :i32 -- :i )` | Unsigned 32-bit integer comparisons |
-| `a==` , `a!=` , `a<` , `a>` | `( :a :a -- :i )` | Address equality and unsigned pointer comparisons |
-| `f==` , `f!=` , `f<` , `f>` | `( :f :f -- :i )` | Floating-point comparisons |
+| `a=` , `a<>` , `a<` , `a>` | `( :a :a -- :i )` | Address equality and unsigned pointer comparisons |
+| `f=` , `f<>` , `f<` , `f>` | `( :f :f -- :i )` | Floating-point comparisons |
 
 ### 4.6 Memory Load & Store (Standard Forth Operators)
 Fixed-width memory operations (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) widen to `:i` on load and truncate the low bits of `:i` on store.

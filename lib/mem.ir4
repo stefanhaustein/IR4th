@@ -41,7 +41,7 @@ default fn memcmp ( a :a b :a len :i -> :i )
     len 0 >
   while
     a u8@ b u8@ - -> d
-    d 0 != if d return then
+    d 0 <> if d return then
     a 1 a+ -> a
     b 1 a+ -> b
     len 1 - -> len
@@ -62,13 +62,13 @@ fn heap_alloc ( bytes :i -> :a )
   var rem :i
   var nxt :a
   var split :a
-  __heap_ptr 0 i>a a== if __heap_start -> __heap_ptr then
+  __heap_ptr 0 i>a a= if __heap_start -> __heap_ptr then
   bytes 8 < if 8 -> bytes then
   bytes 7 + -8 and 8 + -> need
   0 i>a -> prev
   __heap_free -> cur
   begin
-    cur 0 i>a a!=
+    cur 0 i>a a<>
   while
     cur @ -> bsz
     bsz need >= if
@@ -81,7 +81,7 @@ fn heap_alloc ( bytes :i -> :a )
         need cur !
         split -> nxt
       then
-      prev 0 i>a a== if nxt -> __heap_free else nxt prev 8 a+ a! then
+      prev 0 i>a a= if nxt -> __heap_free else nxt prev 8 a+ a! then
       cur 8 a+ return
     then
     cur -> prev
@@ -97,26 +97,26 @@ fn heap_free ( p :a )
   var blk :a
   var prev :a
   var cur :a
-  p 0 i>a a== if return then
+  p 0 i>a a= if return then
   p 8 a- -> blk
   0 i>a -> prev
   __heap_free -> cur
   begin
-    cur 0 i>a a!= if cur blk a< else 0 then
+    cur 0 i>a a<> if cur blk a< else 0 then
   while
     cur -> prev
     cur 8 a+ a@ -> cur
   repeat
   cur blk 8 a+ a!
-  prev 0 i>a a== if blk -> __heap_free else blk prev 8 a+ a! then
-  cur 0 i>a a!= if
-    blk blk @ a+ cur a== if
+  prev 0 i>a a= if blk -> __heap_free else blk prev 8 a+ a! then
+  cur 0 i>a a<> if
+    blk blk @ a+ cur a= if
       blk @ cur @ + blk !
       cur 8 a+ a@ blk 8 a+ a!
     then
   then
-  prev 0 i>a a!= if
-    prev prev @ a+ blk a== if
+  prev 0 i>a a<> if
+    prev prev @ a+ blk a= if
       prev @ blk @ + prev !
       blk 8 a+ a@ prev 8 a+ a!
     then

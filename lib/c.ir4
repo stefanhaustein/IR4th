@@ -17,7 +17,7 @@ fn puts ( s :a -> :i )
   var c :i
   begin
     s u8@ -> c
-    c 0 !=
+    c 0 <>
   while
     c emit
     s 1 a+ -> s
@@ -30,7 +30,7 @@ fn strlen ( s :a -> :i )
   var n :i
   0 -> n
   begin
-    s u8@ 0 !=
+    s u8@ 0 <>
   while
     s 1 a+ -> s
     n 1 + -> n
@@ -44,7 +44,7 @@ fn strcmp ( a :a b :a -> :i )
   begin
     a u8@ -> ca
     b u8@ -> cb
-    ca 0 != ca cb == and
+    ca 0 <> ca cb = and
   while
     a 1 a+ -> a
     b 1 a+ -> b
@@ -59,7 +59,7 @@ fn strcpy ( dst :a src :a -> :a )
   begin
     src u8@ -> c
     c p i8!
-    c 0 !=
+    c 0 <>
   while
     src 1 a+ -> src
     p 1 a+ -> p
@@ -100,42 +100,42 @@ fn printf ( fmt :a va :a -> :i )
   __c_word_bytes -> wsz
   begin
     fmt u8@ -> c
-    c 0 !=
+    c 0 <>
   while
-    c 37 == if
+    c 37 = if
       fmt 1 a+ -> fmt
       fmt u8@ -> c
-      c 0 == if cnt return then
-      c 37 == if
+      c 0 = if cnt return then
+      c 37 = if
         37 emit cnt 1 + -> cnt
-      else c 99 == if
+      else c 99 = if
         va @ emit
         va wsz a+ -> va
         cnt 1 + -> cnt
-      else c 115 == if
+      else c 115 = if
         va a@ -> s
         begin
           s u8@ -> c
-          c 0 !=
+          c 0 <>
         while
           c emit
           s 1 a+ -> s
           cnt 1 + -> cnt
         repeat
         va wsz a+ -> va
-      else c 100 == c 105 == or if
+      else c 100 = c 105 = or if
         va @ puti
         va wsz a+ -> va
         cnt 1 + -> cnt
-      else c 117 == if
+      else c 117 = if
         va @ putu
         va wsz a+ -> va
         cnt 1 + -> cnt
-      else c 120 == if
+      else c 120 = if
         va @ 0 __c_puthex_u
         va wsz a+ -> va
         cnt 1 + -> cnt
-      else c 88 == if
+      else c 88 = if
         va @ 1 __c_puthex_u
         va wsz a+ -> va
         cnt 1 + -> cnt

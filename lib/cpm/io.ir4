@@ -9,7 +9,7 @@ fn key ( -> :i )
 end
 
 fn keypressed ( -> :i )
-  11 0 bdos 0 != if 1 else 0 then
+  11 0 bdos 0 <> if 1 else 0 then
 end
 
 fn cpm_exit ( )

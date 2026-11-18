@@ -37,22 +37,22 @@ fn main ( -> :i )
   var psz :i
   & probe_b & probe_a adiff -> psz
   // Direct & of earlier function + indirect call via helper
-  10 20 & add2 apply2 30 != if 1 return then
+  10 20 & add2 apply2 30 <> if 1 return then
   // & of forward/later function (also tests DCE retention)
-  50 8 & later_sub apply2 42 != if 2 return then
+  50 8 & later_sub apply2 42 <> if 2 return then
   // Store in typed global :a and local :a
   & inc_counter -> fp_global
   & inc_counter -> fp
   0 -> counter
   fp_global ( )
   fp ( )
-  counter 10 != if 3 return then
+  counter 10 <> if 3 return then
   // Test & fn, & data, & var inside 'data' table
-  3 4 vtable a@ ( :i :i -> :i ) 7 != if 4 return then
-  20 5 vtable psz a+ a@ ( :i :i -> :i ) 15 != if 5 return then
-  vtable psz 2 * a+ a@ u8@ 0x68 != if 6 return then
+  3 4 vtable a@ ( :i :i -> :i ) 7 <> if 4 return then
+  20 5 vtable psz a+ a@ ( :i :i -> :i ) 15 <> if 5 return then
+  vtable psz 2 * a+ a@ u8@ 0x68 <> if 6 return then
   77 -> num_val
-  vtable psz 3 * a+ a@ @ 77 != if 7 return then
+  vtable psz 3 * a+ a@ @ 77 <> if 7 return then
   0
 end
 

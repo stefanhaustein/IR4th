@@ -5,7 +5,7 @@ var buf_a :bytes 16
 var buf_b :bytes 32
 
 fn assert_eq ( got :i expected :i code :i -> :i )
-  got expected == if
+  got expected = if
     0 return
   then
   code
@@ -30,71 +30,71 @@ fn main ( -> :i )
   0x41 buf_a i8!
   0xFF buf_a 1 a+ i8!
   buf_a u8@ 0x41 1 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   buf_a 1 a+ u8@ 0xFF 2 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   buf_a 1 a+ u8@ sext -1 3 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   // Native word store / fetch
   12345 buf_b !
   -5432 buf_b 8 a+ !
   buf_b @ 12345 4 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   buf_b 8 a+ @ -5432 5 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   // Address store / fetch (a!, a@)
   buf_a 1 a+ buf_b 16 a+ a!
   buf_b 16 a+ a@ -> p
-  p buf_a 1 a+ a== -1 6 assert_eq
-  dup 0 != if return then drop
+  p buf_a 1 a+ a= -1 6 assert_eq
+  dup 0 <> if return then drop
   p u8@ sext -1 7 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   // Explicit-width 8-bit and 16-bit ops (i8@, u8@, i8!, i16@, u16@, i16!)
   0xFE buf_a 2 a+ i8!
   buf_a 2 a+ u8@ 0xFE 8 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   buf_a 2 a+ i8@ -2 9 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   -1234 buf_b 24 a+ i16!
   buf_b 24 a+ i16@ -1234 10 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   0x8001 buf_b 26 a+ i16!
   buf_b 26 a+ u16@ 0x8001 11 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   // Address-of local (&)
   40 -> x
   & x @ 40 12 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
   & x 2 add_to_var
   x 42 13 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   // Stack-allocated :bytes local (recursive)
   5 sum_local_buf 15 14 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   // Fused swap + store (swap i8!, swap i16!, swap !, swap a!, swap f!)
   buf_a 3 a+ 0x7B swap i8!
   buf_a 3 a+ u8@ 0x7B 15 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   buf_b 28 a+ -4321 swap i16!
   buf_b 28 a+ i16@ -4321 16 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   & x 99 swap !
   x 99 17 assert_eq
-  dup 0 != if return then drop
+  dup 0 <> if return then drop
 
   buf_b 16 a+ buf_a 3 a+ swap a!
-  buf_b 16 a+ a@ buf_a 3 a+ a== -1 18 assert_eq
-  dup 0 != if return then drop
+  buf_b 16 a+ a@ buf_a 3 a+ a= -1 18 assert_eq
+  dup 0 <> if return then drop
 
   buf_b 24 a+ 2.5 swap f!
-  buf_b 24 a+ f@ 2.5 f== -1 19 assert_eq
+  buf_b 24 a+ f@ 2.5 f= -1 19 assert_eq
 end

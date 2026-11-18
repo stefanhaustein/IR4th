@@ -18,7 +18,7 @@ fn prints ( s :a )
   var c :i
   begin
     s u8@ -> c
-    c 0 !=
+    c 0 <>
   while
     c emit
     s 1 a+ -> s
@@ -49,11 +49,11 @@ fn puti_w ( n :i w :i )
   else
     0 -> d
   then
-  t 0 == if
+  t 0 = if
     d 1 + -> d
   else
     begin
-      t 0 !=
+      t 0 <>
     while
       d 1 + -> d
       t 10 u/ -> t
