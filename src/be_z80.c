@@ -632,25 +632,6 @@ static void z80_stack_op(StackOp op, StackType t1, StackType t2) {
             emit8(Z80_EXX);
         }
         break;
-    case OP_OVER:
-        if (!is4_1 && !is4_2) {
-            z80_pop(Z80_POP_DE);
-            emit8(Z80_POP_HL);
-            emit8(Z80_PUSH_HL);
-            emit8(Z80_PUSH_DE);
-            z80_push(Z80_PUSH_HL);
-        } else {
-            z80_pop_any(t1);
-            emit8(Z80_EXX);
-            z80_pop_any(t2);
-            z80_push_any(t2);
-            emit8(Z80_EXX);
-            z80_push_any(t1);
-            emit8(Z80_EXX);
-            z80_push_any(t2);
-            emit8(Z80_EXX);
-        }
-        break;
     default:
         ir4_die("unimplemented Z80 stack op");
     }

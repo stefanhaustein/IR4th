@@ -255,10 +255,6 @@ static void a64_stack_op(StackOp op, StackType t1, StackType t2) {
         push_x0();
         push_x1();
         break;
-    case OP_OVER:
-        emit32(0xF9400BE0UL); /* LDR X0, [SP, #16] */
-        push_x0();
-        break;
     default:
         ir4_die("unimplemented ARM64 stack op");
     }

@@ -9,14 +9,12 @@ fn assert_eq ( got :i expected :i code :i -> :i )
 end
 
 fn test_stack ( -> :i )
-  \ dup, drop, swap, over
+  \ dup, drop, swap
   10 dup + 20 1 assert_eq
   dup 0 <> if return then drop
   10 20 drop 10 2 assert_eq
   dup 0 <> if return then drop
   10 20 swap - 10 3 assert_eq
-  dup 0 <> if return then drop
-  10 20 over + + 40 4 assert_eq
 end
 
 fn test_alu ( -> :i )

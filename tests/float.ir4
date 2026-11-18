@@ -62,9 +62,6 @@ fn main ( -> :i )
   1.0 2.0 swap f- 1.0 f= 14 assert_true
   dup 0 <> if return then drop
 
-  2.0 3.0 over f+ f+ 7.0 f= 15 assert_true
-  dup 0 <> if return then drop
-
   10 2.5 swap i>f f+ 12.5 f= 16 assert_true
   dup 0 <> if return then drop
 

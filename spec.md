@@ -139,7 +139,6 @@ In stack-effect notation `( before -- after )`, the rightmost item is the top of
 | `dup` | `( t -- t t )` | Duplicate top stack item |
 | `drop` | `( t -- )` | Discard top stack item |
 | `swap` | `( t1 t2 -- t2 t1 )` | Exchange top two stack items |
-| `over` | `( t1 t2 -- t1 t2 t1 )` | Copy second stack item to top |
 
 ### 4.2 Integer Arithmetic & Bitwise Operations (`:i` and `:i32`)
 Native `:i` operators are unprefixed; `:i32` operators use an `i32` prefix (`u32` for unsigned division, remainder, and logical right shift):

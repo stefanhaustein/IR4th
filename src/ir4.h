@@ -35,7 +35,7 @@ typedef signed long i32;
 typedef enum { TY_NONE = 0, TY_W, TY_A, TY_F, TY_I32 } StackType;
 
 /* Stack operations */
-typedef enum { OP_DUP = 0, OP_DROP, OP_SWAP, OP_OVER } StackOp;
+typedef enum { OP_DUP = 0, OP_DROP, OP_SWAP } StackOp;
 
 /* Local variable operations */
 typedef enum { LOCAL_GET = 0, LOCAL_SET, LOCAL_ADDR } LocalOp;

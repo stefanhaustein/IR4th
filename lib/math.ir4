@@ -156,7 +156,7 @@ fn exp ( x :f -> :f )
 end
 
 fn ln ( x :f -> :f )
-  var k :i
+  0 -> var k :i
   var u :f
   var u2 :f
   x 0.0 f> 0 = if 0.0 return then

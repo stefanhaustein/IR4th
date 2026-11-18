@@ -44,11 +44,10 @@ fn main ( -> :i )
   g_buf i32@ -987654321 i>i32 6 check32 dup if return then drop
   g_buf 4 a+ i32@ 0x12345678 i>i32 7 check32 dup if return then drop
 
-  \ 4. Stack ops (dup, drop, swap, over, mixed)
+  \ 4. Stack ops (dup, drop, swap, mixed)
   100000 i>i32 dup i32+ 200000 i>i32 8 check32 dup if return then drop
   100000 i>i32 200000 i>i32 drop 100000 i>i32 9 check32 dup if return then drop
   100000 i>i32 200000 i>i32 swap i32- 100000 i>i32 10 check32 dup if return then drop
-  100000 i>i32 200000 i>i32 over i32+ i32+ 400000 i>i32 11 check32 dup if return then drop
   10000 i>i32 7 swap i32>i + 10007 12 checkw dup if return then drop
 
   \ 5. Arithmetic (i32+, i32-, i32*, i32/, i32mod, u32/, u32mod)

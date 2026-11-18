@@ -820,18 +820,6 @@ static int handle_builtin(const char *tok, WordIR *w) {
         ins->u.stk.t2 = (StackType)a;
         return 1;
     }
-    if (strcmp(tok, "over") == 0) {
-        b = tpop();
-        a = tpop();
-        tpush(a);
-        tpush(b);
-        tpush(a);
-        ins = emit_ir(IR_STACK_OP, w);
-        ins->u.stk.op = OP_OVER;
-        ins->u.stk.t1 = (StackType)b;
-        ins->u.stk.t2 = (StackType)a;
-        return 1;
-    }
 
     {
         int matched_name = 0;
@@ -839,7 +827,7 @@ static int handle_builtin(const char *tok, WordIR *w) {
             int need;
             if (strcmp(tok, builtins[i].name) != 0)
                 continue;
-            if (be->word_bytes == 2 &&
+            if (be->word_bytes == 2 && strcmp(be->name, "bc") != 0 &&
                 (builtins[i].op == OP_MUL32 || builtins[i].op == OP_DIV32 ||
                  builtins[i].op == OP_MOD32 || builtins[i].op == OP_UDIV32 ||
                  builtins[i].op == OP_UMOD32 || builtins[i].op == OP_SHL32 ||
@@ -2333,7 +2321,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     fwd_calls.len = 0;
     init_funcs.len = 0;
 
-    if (be->word_bytes == 2) {
+    if (be->word_bytes == 2 && strcmp(be->name, "bc") != 0) {
         push_require_ex("i32.ir4", 1);
     }
 

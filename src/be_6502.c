@@ -560,14 +560,6 @@ static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {
             }
         }
         break;
-    case OP_OVER:
-        for (b = 0; b < sz2; b++)
-            emit8(M6502_DEX);
-        for (b = 0; b < sz2; b++) {
-            m6502_lda_stk((u8)(sz2 + sz1 + b));
-            m6502_sta_stk(b);
-        }
-        break;
     default:
         ir4_die("unimplemented 6502 stack op");
     }

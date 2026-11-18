@@ -1,0 +1,6 @@
+\ bc/io.ir4 - Portable host I/O for bytecode VM
+extern putchar ( c :i -> :i )
+
+fn emit ( c :i )
+  c putchar drop
+end

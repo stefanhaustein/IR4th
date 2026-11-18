@@ -1,4 +1,5 @@
 /* ir4c.c - CLI driver for IR4th (Strict C89) */
+#include "bc.h"
 #include "codebuf.h"
 #include "frontend.h"
 #include "path.h"
@@ -8,7 +9,7 @@ static const Platform *const platforms[] = {
     NULL};
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [-I dir] "
+    fprintf(stderr, "Usage: ir4c [-t z80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] "
                     "[--platform name] [--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] "
                     "[--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>\n");
 }
@@ -49,6 +50,10 @@ int main(int argc, char **argv) {
                 be = &be_rv32;
                 if (!base_set)
                     base = 0x0000;
+            } else if (strcmp(argv[i], "bc") == 0) {
+                be = &be_bc;
+                if (!base_set)
+                    base = 0x0100;
             } else {
                 fprintf(stderr, "Unknown target: %s\n", argv[i]);
                 return 1;
@@ -122,6 +127,11 @@ int main(int argc, char **argv) {
     }
 
     if (plat) {
+        if (plat == &plat_arm64_jit && target_set && be == &be_bc) {
+            plat = &plat_bc_run;
+            if (!platform && plat->req_platform)
+                platform = plat->req_platform;
+        }
         if (!target_set) {
             be = plat->be;
         } else if (be != plat->be) {

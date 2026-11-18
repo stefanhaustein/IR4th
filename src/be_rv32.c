@@ -293,10 +293,6 @@ static void rv_stack_op(StackOp op, StackType t1, StackType t2) {
         rv_sw(RV_T1, 0, RV_DSP);
         rv_sw(RV_T0, 4, RV_DSP);
         break;
-    case OP_OVER:
-        rv_lw(RV_T0, 4, RV_DSP);
-        push_reg(RV_T0);
-        break;
     default:
         ir4_die("unimplemented RV32 stack op");
     }
