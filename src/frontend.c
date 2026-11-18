@@ -2416,8 +2416,9 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 ir4_die("expected type (:i, :a, :f) or ':bytes' after var name");
             }
             if (strcmp(tok, ":bytes") == 0) {
+                long max_bytes = (be->addr_bytes <= 2) ? 0xFFFFL : 0xFFFFFFL;
                 tok = next_tok();
-                if (!tok || !parse_int(tok, &num_val) || num_val <= 0 || num_val > 0xFFFF) {
+                if (!tok || !parse_int(tok, &num_val) || num_val <= 0 || num_val > max_bytes) {
                     ir4_die("invalid byte count after ':bytes'");
                 }
                 bs->offset = cb_alloc_data((size_t)num_val, be->word_bytes);
