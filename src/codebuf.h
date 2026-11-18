@@ -16,6 +16,7 @@ const u8 *cb_data(void);
 
 void emit8(u8 b);
 void emit16(u16 w);
+void emit24(u32 w);
 void emit32(u32 w);
 void emit8_8(u8 a, u8 b);
 void emit8_16(u8 a, u16 w);
@@ -24,6 +25,7 @@ void cb_rewind(size_t n);
 
 void patch8(size_t patch_offset, u8 val);
 void patch16(size_t patch_offset, u16 target_addr);
+void patch24(size_t patch_offset, u32 target_addr);
 void patch32(size_t patch_offset, u32 val);
 void put_le16(u8 *p, u16 v);
 void put_le32(u8 *p, u32 v);
@@ -38,6 +40,7 @@ const u8 *cb_init_data(void);
 size_t cb_init_data_size(void);
 
 void cb_add_data_reloc(size_t patch_offset, size_t data_offset);
+void cb_add_data_reloc24(size_t patch_offset, size_t data_offset);
 void cb_add_data_reloc_split(size_t lo_offset, size_t hi_offset, size_t data_offset);
 void cb_patch_data_relocs(size_t data_base);
 

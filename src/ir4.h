@@ -225,11 +225,13 @@ typedef struct {
 } Platform;
 
 extern const Backend be_z80;
+extern const Backend be_ez80;
 extern const Backend be_6502;
 extern const Backend be_arm64;
 extern const Backend be_rv32;
 
 extern const Platform plat_z80_cpm;
+extern const Platform plat_ez80_agon;
 extern const Platform plat_6502_sim;
 extern const Platform plat_6502_c64;
 extern const Platform plat_arm64_jit;

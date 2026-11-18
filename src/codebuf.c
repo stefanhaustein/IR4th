@@ -5,6 +5,7 @@
 
 typedef struct {
     Bool split;
+    u8 width;
     size_t off1;
     size_t off2;
     size_t data_offset;
@@ -58,6 +59,12 @@ void emit16(u16 w) {
     emit8((u8)((w >> 8) & 0xFF)); /* Little-endian high byte */
 }
 
+void emit24(u32 w) {
+    emit8((u8)(w & 0xFFU));
+    emit8((u8)((w >> 8) & 0xFFU));
+    emit8((u8)((w >> 16) & 0xFFU));
+}
+
 void emit32(u32 w) {
     emit16((u16)(w & 0xFFFFU));
     emit16((u16)((w >> 16) & 0xFFFFU));
@@ -99,6 +106,15 @@ void patch16(size_t patch_offset, u16 target_addr) {
     }
     code_buf.data[patch_offset] = (u8)(target_addr & 0xFF);
     code_buf.data[patch_offset + 1] = (u8)((target_addr >> 8) & 0xFF);
+}
+
+void patch24(size_t patch_offset, u32 target_addr) {
+    if (patch_offset + 2 >= code_buf.len) {
+        ir4_die("patch offset out of bounds");
+    }
+    code_buf.data[patch_offset] = (u8)(target_addr & 0xFFU);
+    code_buf.data[patch_offset + 1] = (u8)((target_addr >> 8) & 0xFFU);
+    code_buf.data[patch_offset + 2] = (u8)((target_addr >> 16) & 0xFFU);
 }
 
 void patch32(size_t patch_offset, u32 val) {
@@ -183,6 +199,16 @@ size_t cb_init_data_size(void) { return data_init_size; }
 void cb_add_data_reloc(size_t patch_offset, size_t data_offset) {
     DataReloc *r = VEC_ADD(relocs);
     r->split = false;
+    r->width = 2;
+    r->off1 = patch_offset;
+    r->off2 = 0;
+    r->data_offset = data_offset;
+}
+
+void cb_add_data_reloc24(size_t patch_offset, size_t data_offset) {
+    DataReloc *r = VEC_ADD(relocs);
+    r->split = false;
+    r->width = 3;
     r->off1 = patch_offset;
     r->off2 = 0;
     r->data_offset = data_offset;
@@ -191,6 +217,7 @@ void cb_add_data_reloc(size_t patch_offset, size_t data_offset) {
 void cb_add_data_reloc_split(size_t lo_offset, size_t hi_offset, size_t data_offset) {
     DataReloc *r = VEC_ADD(relocs);
     r->split = true;
+    r->width = 2;
     r->off1 = lo_offset;
     r->off2 = hi_offset;
     r->data_offset = data_offset;
@@ -214,12 +241,14 @@ void cb_patch_data_init_relocs_base(u32 code_base, u32 data_base) {
 void cb_patch_data_relocs(size_t data_base) {
     size_t i;
     for (i = 0; i < relocs.len; i++) {
-        u16 addr = (u16)(data_base + relocs.data[i].data_offset);
+        size_t addr = data_base + relocs.data[i].data_offset;
         if (relocs.data[i].split) {
             code_buf.data[relocs.data[i].off1] = (u8)(addr & 0xFF);
             code_buf.data[relocs.data[i].off2] = (u8)((addr >> 8) & 0xFF);
+        } else if (relocs.data[i].width == 3) {
+            patch24(relocs.data[i].off1, (u32)addr);
         } else {
-            patch16(relocs.data[i].off1, addr);
+            patch16(relocs.data[i].off1, (u16)addr);
         }
     }
     cb_patch_data_init_relocs_base(0, (u32)data_base);
