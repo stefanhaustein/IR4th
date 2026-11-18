@@ -1,4 +1,4 @@
-// Auto-generated from tools/6502/mem.asm by tools/asm2ir4.py (do not edit manually).
+\ Auto-generated from tools/6502/mem.asm by tools/asm2ir4.py (do not edit manually).
 
 code fillchar ( dst :a len :i val :i )
   0xBD :i8 0 :as 0x85 :i8 0x08 :i8 0xE8 :i8 0xE8 :i8 0xBD :i8 0 :as

@@ -8,7 +8,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 ### 1.1 Tokenization & Whitespace
 * Programs consist of **whitespace-delimited tokens** (spaces, tabs, newlines).
-* Line comments start with `//` and extend to the end of the line.
+* Line comments start with `\` followed by whitespace (or newline) and extend to the end of the line.
 * `#line <num>` or `#line <num> "<filename>"` sets the current source line number (and optionally filename) for subsequent error messages.
 
 ### 1.2 Lexical Categories
@@ -71,8 +71,8 @@ end
 Top-level writable globals and fixed-size buffers can be declared outside word definitions:
 
 ```forth
-var <name> :i            // Typed scalar global (:i, :i32, :a, or :f)
-var <name> :bytes <size> // Raw byte buffer
+var <name> :i            \ Typed scalar global (:i, :i32, :a, or :f)
+var <name> :bytes <size> \ Raw byte buffer
 ```
 
 * Typed globals (`:i`, `:i32`, `:a`, `:f`) behave like locals: `<name>` reads the value, `-> <name>` assigns to it, and `& <name>` pushes its `:a` address.
@@ -118,8 +118,8 @@ require "<filename>"
 Top-level `extern` declares an external platform/OS function:
 
 ```forth
-extern putchar ( c :i -> :i )                  // ARM64 JIT (dlsym, C ABI)
-extern bdos 0x0005 ( C :i DE :i -> A :i )      // Z80 CP/M (fixed addr + registers)
+extern putchar ( c :i -> :i )                  \ ARM64 JIT (dlsym, C ABI)
+extern bdos 0x0005 ( C :i DE :i -> A :i )      \ Z80 CP/M (fixed addr + registers)
 ```
 
 * Signatures use `( inputs -> outputs )` (or `( inputs )` for void) with at most 1 return value.

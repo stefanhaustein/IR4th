@@ -107,7 +107,7 @@ def main():
     header_text = "\n".join(header)
 
     out_lines = [
-        f"// Auto-generated from {args.input} by tools/asm2ir4.py (do not edit manually).",
+        f"\\ Auto-generated from {args.input} by tools/asm2ir4.py (do not edit manually).",
         "",
     ]
 

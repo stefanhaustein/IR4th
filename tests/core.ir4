@@ -1,5 +1,5 @@
-// core.ir4 - Core language, control-flow, ALU, comparison, and address tests
-// Expected main() return value: 0 (all checks pass)
+\ core.ir4 - Core language, control-flow, ALU, comparison, and address tests
+\ Expected main() return value: 0 (all checks pass)
 
 fn assert_eq ( got :i expected :i code :i -> :i )
   got expected = if
@@ -9,7 +9,7 @@ fn assert_eq ( got :i expected :i code :i -> :i )
 end
 
 fn test_stack ( -> :i )
-  // dup, drop, swap, over
+  \ dup, drop, swap, over
   10 dup + 20 1 assert_eq
   dup 0 <> if return then drop
   10 20 drop 10 2 assert_eq
@@ -83,7 +83,7 @@ end
 
 fn test_ctrl ( x :i -> :i )
   var acc :i
-  // if ... else ... then
+  \ if ... else ... then
   x 0 > if
     100
   else
@@ -91,7 +91,7 @@ fn test_ctrl ( x :i -> :i )
   then
   -> acc
 
-  // begin ... while ... repeat (sum 1..5 = 15)
+  \ begin ... while ... repeat (sum 1..5 = 15)
   0 -> x
   begin
     x 5 <
@@ -121,7 +121,7 @@ end
 fn test_labels ( n :i -> :i )
   var acc :i
   var i :i
-  // Forward jz + jmp skipping block
+  \ Forward jz + jmp skipping block
   0 -> acc
   0 -> i
   n 0 = jz nonzero
@@ -135,7 +135,7 @@ fn test_labels ( n :i -> :i )
   acc i + -> acc
   jmp loop
   :: done
-  // Backward jz (post-test loop: add 1..3 = 6)
+  \ Backward jz (post-test loop: add 1..3 = 6)
   0 -> i
   :: post
   i 1 + -> i
@@ -144,7 +144,7 @@ fn test_labels ( n :i -> :i )
   acc
 end
 
-// Exercise >4KB forward (if) and backward (jz) conditional branches on RV32
+\ Exercise >4KB forward (if) and backward (jz) conditional branches on RV32
 fn test_long_branch ( flag :i -> :i )
   var x :i
   0 -> x

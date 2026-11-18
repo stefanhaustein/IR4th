@@ -1,4 +1,4 @@
-// Error test: empty return list after '->'
+\ Error test: empty return list after '->'
 fn foo ( x :i -> )
 end
 

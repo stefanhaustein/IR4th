@@ -1,4 +1,4 @@
-// Auto-generated from tools/z80/mem.asm by tools/asm2ir4.py (do not edit manually).
+\ Auto-generated from tools/z80/mem.asm by tools/asm2ir4.py (do not edit manually).
 
 code fillchar ( dst :a len :i val :i )
   0xFD :i8 0xE1 :i8 0xD1 :i8 0xC1 :i8 0xE1 :i8 0xCB :i8 0x78 :i8 0x20 :i8

@@ -1,5 +1,5 @@
-// mem.ir4 - Named buffer and memory load/store tests (i8@, u8@, i8!, i16@, u16@, i16!, @, !, a@, a!)
-// Expected main() return value: 0
+\ mem.ir4 - Named buffer and memory load/store tests (i8@, u8@, i8!, i16@, u16@, i16!, @, !, a@, a!)
+\ Expected main() return value: 0
 
 var buf_a :bytes 16
 var buf_b :bytes 32
@@ -15,7 +15,7 @@ fn add_to_var ( vp :a delta :i )
   vp @ delta + vp !
 end
 
-// Recursive test for stack-allocated :bytes local buffers
+\ Recursive test for stack-allocated :bytes local buffers
 fn sum_local_buf ( n :i -> :i )
   var tmp :bytes 8
   n 0 <= if 0 return then
@@ -26,7 +26,7 @@ end
 fn main ( -> :i )
   var p :a
   var x :i
-  // Byte store / fetch / sext
+  \ Byte store / fetch / sext
   0x41 buf_a i8!
   0xFF buf_a 1 a+ i8!
   buf_a u8@ 0x41 1 assert_eq
@@ -36,7 +36,7 @@ fn main ( -> :i )
   buf_a 1 a+ u8@ sext -1 3 assert_eq
   dup 0 <> if return then drop
 
-  // Native word store / fetch
+  \ Native word store / fetch
   12345 buf_b !
   -5432 buf_b 8 a+ !
   buf_b @ 12345 4 assert_eq
@@ -44,7 +44,7 @@ fn main ( -> :i )
   buf_b 8 a+ @ -5432 5 assert_eq
   dup 0 <> if return then drop
 
-  // Address store / fetch (a!, a@)
+  \ Address store / fetch (a!, a@)
   buf_a 1 a+ buf_b 16 a+ a!
   buf_b 16 a+ a@ -> p
   p buf_a 1 a+ a= -1 6 assert_eq
@@ -52,7 +52,7 @@ fn main ( -> :i )
   p u8@ sext -1 7 assert_eq
   dup 0 <> if return then drop
 
-  // Explicit-width 8-bit and 16-bit ops (i8@, u8@, i8!, i16@, u16@, i16!)
+  \ Explicit-width 8-bit and 16-bit ops (i8@, u8@, i8!, i16@, u16@, i16!)
   0xFE buf_a 2 a+ i8!
   buf_a 2 a+ u8@ 0xFE 8 assert_eq
   dup 0 <> if return then drop
@@ -66,7 +66,7 @@ fn main ( -> :i )
   buf_b 26 a+ u16@ 0x8001 11 assert_eq
   dup 0 <> if return then drop
 
-  // Address-of local (&)
+  \ Address-of local (&)
   40 -> x
   & x @ 40 12 assert_eq
   dup 0 <> if return then drop
@@ -74,11 +74,11 @@ fn main ( -> :i )
   x 42 13 assert_eq
   dup 0 <> if return then drop
 
-  // Stack-allocated :bytes local (recursive)
+  \ Stack-allocated :bytes local (recursive)
   5 sum_local_buf 15 14 assert_eq
   dup 0 <> if return then drop
 
-  // Fused swap + store (swap i8!, swap i16!, swap !, swap a!, swap f!)
+  \ Fused swap + store (swap i8!, swap i16!, swap !, swap a!, swap f!)
   buf_a 3 a+ 0x7B swap i8!
   buf_a 3 a+ u8@ 0x7B 15 assert_eq
   dup 0 <> if return then drop

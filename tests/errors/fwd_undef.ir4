@@ -1,4 +1,4 @@
-// Error test: calling a 'fwd' function that is never defined
+\ Error test: calling a 'fwd' function that is never defined
 fwd missing_fn ( x :i -> :i )
 
 fn main ( -> :i )

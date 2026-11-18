@@ -1,4 +1,4 @@
-// Error test: unbalanced stack in begin/while/repeat loop
+\ Error test: unbalanced stack in begin/while/repeat loop
 fn main ( -> :i )
   begin
     1

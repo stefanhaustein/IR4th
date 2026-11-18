@@ -197,17 +197,20 @@ static int skip_ws_and_comments(void) {
         }
         if (isspace((unsigned char)c))
             continue;
-        if (c == '/') {
+        if (c == '\\') {
             int c2 = fgetc(cur->fp);
-            if (c2 == '/') {
-                while ((c = fgetc(cur->fp)) != EOF && c != '\n')
-                    ;
-                if (c == '\n')
+            if (c2 == EOF || c2 == '\n' || isspace((unsigned char)c2)) {
+                if (c2 == '\n') {
                     cur->line_num++;
+                } else if (c2 != EOF) {
+                    while ((c = fgetc(cur->fp)) != EOF && c != '\n')
+                        ;
+                    if (c == '\n')
+                        cur->line_num++;
+                }
                 continue;
             }
-            if (c2 != EOF)
-                ungetc(c2, cur->fp);
+            ungetc(c2, cur->fp);
         }
         return c;
     }
@@ -579,8 +582,8 @@ static const BuiltinDef builtins[] = {/* Native word (:i) arithmetic & bitwise *
                                       {"a+", OP_AADD, TY_W, TY_A, TY_A},
                                       {"a-", OP_ASUB, TY_W, TY_A, TY_A},
                                       {"adiff", OP_ADIFF, TY_A, TY_A, TY_W},
-                                      {"a==", OP_AEQ, TY_A, TY_A, TY_W},
-                                      {"a!=", OP_ANE, TY_A, TY_A, TY_W},
+                                      {"a=", OP_AEQ, TY_A, TY_A, TY_W},
+                                      {"a<>", OP_ANE, TY_A, TY_A, TY_W},
                                       {"a<", OP_ALT, TY_A, TY_A, TY_W},
                                       {"a>", OP_AGT, TY_A, TY_A, TY_W},
 
@@ -590,8 +593,8 @@ static const BuiltinDef builtins[] = {/* Native word (:i) arithmetic & bitwise *
                                       {"f*", OP_FMUL, TY_F, TY_F, TY_F},
                                       {"f/", OP_FDIV, TY_F, TY_F, TY_F},
                                       {"fnegate", OP_FNEG, TY_F, TY_NONE, TY_F},
-                                      {"f==", OP_FEQ, TY_F, TY_F, TY_W},
-                                      {"f!=", OP_FNE, TY_F, TY_F, TY_W},
+                                      {"f=", OP_FEQ, TY_F, TY_F, TY_W},
+                                      {"f<>", OP_FNE, TY_F, TY_F, TY_W},
                                       {"f<", OP_FLT, TY_F, TY_F, TY_W},
                                       {"f>", OP_FGT, TY_F, TY_F, TY_W},
 
@@ -610,8 +613,8 @@ static const BuiltinDef builtins[] = {/* Native word (:i) arithmetic & bitwise *
                                       {"i32<<", OP_SHL32, TY_W, TY_I32, TY_I32},
                                       {"i32>>", OP_ASHR32, TY_W, TY_I32, TY_I32},
                                       {"u32>>", OP_RSHR32, TY_W, TY_I32, TY_I32},
-                                      {"i32==", OP_EQ32, TY_I32, TY_I32, TY_W},
-                                      {"i32!=", OP_NE32, TY_I32, TY_I32, TY_W},
+                                      {"i32=", OP_EQ32, TY_I32, TY_I32, TY_W},
+                                      {"i32<>", OP_NE32, TY_I32, TY_I32, TY_W},
                                       {"i32<", OP_LT32, TY_I32, TY_I32, TY_W},
                                       {"i32>", OP_GT32, TY_I32, TY_I32, TY_W},
                                       {"i32<=", OP_LE32, TY_I32, TY_I32, TY_W},
@@ -622,8 +625,8 @@ static const BuiltinDef builtins[] = {/* Native word (:i) arithmetic & bitwise *
                                       {"u32>=", OP_UGE32, TY_I32, TY_I32, TY_W},
 
                                       /* Native word (:i) comparisons */
-                                      {"==", OP_EQ, TY_W, TY_W, TY_W},
-                                      {"!=", OP_NE, TY_W, TY_W, TY_W},
+                                      {"=", OP_EQ, TY_W, TY_W, TY_W},
+                                      {"<>", OP_NE, TY_W, TY_W, TY_W},
                                       {"<", OP_LT, TY_W, TY_W, TY_W},
                                       {">", OP_GT, TY_W, TY_W, TY_W},
                                       {"<=", OP_LE, TY_W, TY_W, TY_W},

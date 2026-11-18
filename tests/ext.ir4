@@ -1,4 +1,4 @@
-// Test platform-resolved require + extern (emit)
+\ Test platform-resolved require + extern (emit)
 
 require "io.ir4"
 

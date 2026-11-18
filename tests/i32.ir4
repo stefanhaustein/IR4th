@@ -1,5 +1,5 @@
-// i32.ir4 - 32-bit integer (:i32) tests across all targets
-// Expected main() return value: 0
+\ i32.ir4 - 32-bit integer (:i32) tests across all targets
+\ Expected main() return value: 0
 
 data g_val
   123456789 :i32
@@ -29,29 +29,29 @@ fn sum_local_i32 ( a :i32 b :i32 -> :i32 )
 end
 
 fn main ( -> :i )
-  // 1. Literals & conversions
+  \ 1. Literals & conversions
   -1 0 + i>i32 -1 i>i32 1 check32 dup if return then drop
   30000 0 + i>u32 30000 i>i32 2 check32 dup if return then drop
   123456 i>i32 100000 i>i32 i32- i32>i 23456 3 checkw dup if return then drop
 
-  // 2. Locals & calls
+  \ 2. Locals & calls
   100000 i>i32 200000 i>i32 sum_local_i32 400000 i>i32 4 check32 dup if return then drop
 
-  // 3. Globals & i32@ / i32!
+  \ 3. Globals & i32@ / i32!
   g_val i32@ 123456789 i>i32 5 check32 dup if return then drop
   -987654321 i>i32 g_buf i32!
   0x12345678 i>i32 g_buf 4 a+ i32!
   g_buf i32@ -987654321 i>i32 6 check32 dup if return then drop
   g_buf 4 a+ i32@ 0x12345678 i>i32 7 check32 dup if return then drop
 
-  // 4. Stack ops (dup, drop, swap, over, mixed)
+  \ 4. Stack ops (dup, drop, swap, over, mixed)
   100000 i>i32 dup i32+ 200000 i>i32 8 check32 dup if return then drop
   100000 i>i32 200000 i>i32 drop 100000 i>i32 9 check32 dup if return then drop
   100000 i>i32 200000 i>i32 swap i32- 100000 i>i32 10 check32 dup if return then drop
   100000 i>i32 200000 i>i32 over i32+ i32+ 400000 i>i32 11 check32 dup if return then drop
   10000 i>i32 7 swap i32>i + 10007 12 checkw dup if return then drop
 
-  // 5. Arithmetic (i32+, i32-, i32*, i32/, i32mod, u32/, u32mod)
+  \ 5. Arithmetic (i32+, i32-, i32*, i32/, i32mod, u32/, u32mod)
   100000 i>i32 200000 i>i32 i32+ 300000 i>i32 13 check32 dup if return then drop
   100000 i>i32 250000 i>i32 i32- -150000 i>i32 14 check32 dup if return then drop
   100000 i>i32 300 i>i32 i32* 30000000 i>i32 15 check32 dup if return then drop
@@ -67,7 +67,7 @@ fn main ( -> :i )
   0x80000000 i>i32 2 i>i32 u32/ 0x40000000 i>i32 25 check32 dup if return then drop
   0x80000003 i>i32 4 i>i32 u32mod 3 i>i32 26 check32 dup if return then drop
 
-  // 6. Bitwise & shifts (i32and, i32or, i32xor, i32invert, i32<<, i32>>, u32>>)
+  \ 6. Bitwise & shifts (i32and, i32or, i32xor, i32invert, i32<<, i32>>, u32>>)
   0x12345678 i>i32 0x0F0F0F0F i>i32 i32and 0x02040608 i>i32 27 check32 dup if return then drop
   0x12340000 i>i32 0x00005678 i>i32 i32or 0x12345678 i>i32 28 check32 dup if return then drop
   0x12345678 i>i32 0xFFFFFFFF i>i32 i32xor 0xEDCBA987 i>i32 29 check32 dup if return then drop
@@ -77,7 +77,7 @@ fn main ( -> :i )
   -1 i>i32 4 u32>> 0x0FFFFFFF i>i32 33 check32 dup if return then drop
   123456 i>i32 0 i32<< 123456 i>i32 34 check32 dup if return then drop
 
-  // 7. Comparisons (i32=, i32<>, i32<, i32>, i32<=, i32>=, u32<, u32>, u32<=, u32>=)
+  \ 7. Comparisons (i32=, i32<>, i32<, i32>, i32<=, i32>=, u32<, u32>, u32<=, u32>=)
   100000 i>i32 100000 i>i32 i32= -1 35 checkw dup if return then drop
   100000 i>i32 100001 i>i32 i32<> -1 36 checkw dup if return then drop
   -100000 i>i32 100000 i>i32 i32< -1 37 checkw dup if return then drop
@@ -91,7 +91,7 @@ fn main ( -> :i )
   0x80000000 i>i32 0x80000000 i>i32 u32<= -1 45 checkw dup if return then drop
   0x80000000 i>i32 1 i>i32 u32>= -1 46 checkw dup if return then drop
 
-  // 8. Immediate shifts & power-of-2 strength reduction
+  \ 8. Immediate shifts & power-of-2 strength reduction
   0x1234 0 + 8 << 0x3400 and 0x3400 47 checkw dup if return then drop
   0x1234 0 + 8 u>> 0x12 48 checkw dup if return then drop
   -512 0 + 8 >> -2 49 checkw dup if return then drop

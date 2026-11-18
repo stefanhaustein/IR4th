@@ -1,4 +1,4 @@
-// Error test: mismatched branch stack types in if/else/then
+\ Error test: mismatched branch stack types in if/else/then
 fn main ( -> :i )
   1 if 1 else 2.0 then
   drop 0

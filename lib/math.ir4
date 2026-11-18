@@ -1,4 +1,4 @@
-// lib/math.ir4 - Portable floating-point math library for IR4th
+\ lib/math.ir4 - Portable floating-point math library for IR4th
 
 fn fabs ( x :f -> :f )
   x 0.0 f< if x fnegate return then

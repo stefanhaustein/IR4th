@@ -1,4 +1,4 @@
-// Error test: assigning i: into f: local via '->'
+\ Error test: assigning i: into f: local via '->'
 fn main ( -> :i )
   var x :f
   1 -> x

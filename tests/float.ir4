@@ -1,5 +1,5 @@
-// float.ir4 - Z80 math48 floating-point tests
-// Expected main() return value: 0
+\ float.ir4 - Z80 math48 floating-point tests
+\ Expected main() return value: 0
 
 var fbuf :bytes 6
 
@@ -16,7 +16,7 @@ end
 
 fn main ( -> :i )
   var x :f
-  // Basic arithmetic & literals
+  \ Basic arithmetic & literals
   1.5 2.25 f+ 3.75 f= 1 assert_true
   dup 0 <> if return then drop
 
@@ -32,7 +32,7 @@ fn main ( -> :i )
   3.5 fnegate -3.5 f= 5 assert_true
   dup 0 <> if return then drop
 
-  // Conversions i>f and f>i
+  \ Conversions i>f and f>i
   -42 i>f -42.0 f= 6 assert_true
   dup 0 <> if return then drop
 
@@ -42,7 +42,7 @@ fn main ( -> :i )
   -17.25 f>i -17 = 8 assert_true
   dup 0 <> if return then drop
 
-  // Comparisons (f=, f<>, f<, f>)
+  \ Comparisons (f=, f<>, f<, f>)
   1.5 2.5 f< 9 assert_true
   dup 0 <> if return then drop
 
@@ -55,7 +55,7 @@ fn main ( -> :i )
   1.0 2.0 f<> 12 assert_true
   dup 0 <> if return then drop
 
-  // Stack ops on F: and mixed (W: F:)
+  \ Stack ops on F: and mixed (W: F:)
   3.0 dup f+ 6.0 f= 13 assert_true
   dup 0 <> if return then drop
 
@@ -68,12 +68,12 @@ fn main ( -> :i )
   10 2.5 swap i>f f+ 12.5 f= 16 assert_true
   dup 0 <> if return then drop
 
-  // F: params, locals, and return value
+  \ F: params, locals, and return value
   1.5 2.5 3 add_mul_f -> x
   x 12.0 f= 17 assert_true
   dup 0 <> if return then drop
 
-  // f! and f@
+  \ f! and f@
   -6.25 fbuf f!
   fbuf f@ -6.25 f= 18 assert_true
 end
