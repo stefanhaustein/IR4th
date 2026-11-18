@@ -842,6 +842,15 @@ static int handle_builtin(const char *tok, WordIR *w) {
                  builtins[i].op == OP_ASHR32 || builtins[i].op == OP_RSHR32)) {
                 continue;
             }
+            if (be->soft_float &&
+                (builtins[i].op == OP_FADD || builtins[i].op == OP_FSUB ||
+                 builtins[i].op == OP_FMUL || builtins[i].op == OP_FDIV ||
+                 builtins[i].op == OP_FNEG || builtins[i].op == OP_FEQ ||
+                 builtins[i].op == OP_FNE || builtins[i].op == OP_FLT ||
+                 builtins[i].op == OP_FGT || builtins[i].op == OP_W2F ||
+                 builtins[i].op == OP_F2W)) {
+                continue;
+            }
             matched_name = 1;
             need = (builtins[i].in2 != TY_NONE) ? 2 : 1;
             if (tstack.len < (size_t)need)
@@ -2335,6 +2344,9 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     fwd_calls.len = 0;
     init_funcs.len = 0;
 
+    if (be->soft_float) {
+        push_require_ex("float32.ir4", 1);
+    }
     if (be->word_bytes < 4 && strcmp(be->name, "bc") != 0) {
         push_require_ex("i32.ir4", 1);
     }

@@ -1649,4 +1649,5 @@ const Backend be_z80 = {"z80",
                         z80_push_fn,
                         z80_patch_fn,
                         z80_icall,
-                        NULL};
+                        NULL,
+                        false};

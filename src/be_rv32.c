@@ -878,4 +878,5 @@ const Backend be_rv32 = {"rv32",
                          rv_push_fn,
                          rv_patch_fn,
                          rv_icall,
-                         NULL};
+                         NULL,
+                         false};

@@ -353,8 +353,34 @@ static void ez_stack_op(StackOp op, StackType t1, StackType t2) {
             emit8(0xD1);
             emit8(0xE5);
             emit8(0xD5);
+        } else if (is4_1 && !is4_2) {
+            emit8(0xE1); /* lo */
+            emit8(0xD1); /* hi */
+            emit8(0xC1); /* w */
+            emit8(0xD5); /* PUSH hi */
+            emit8(0xE5); /* PUSH lo */
+            emit8(0xC5); /* PUSH w */
+        } else if (!is4_1 && is4_2) {
+            emit8(0xC1); /* w */
+            emit8(0xE1); /* lo */
+            emit8(0xD1); /* hi */
+            emit8(0xC5); /* PUSH w */
+            emit8(0xD5); /* PUSH hi */
+            emit8(0xE5); /* PUSH lo */
         } else {
-            ir4_die("eZ80 mixed 6-byte swap not yet implemented");
+            ez_ensure_rt_data();
+            emit8(0xE1); /* a_lo */
+            ez_ld_data_hl(ez_tmp_off);
+            emit8(0xE1); /* a_hi */
+            ez_ld_data_hl(ez_tmp_off + 3);
+            emit8(0xD1); /* b_lo */
+            emit8(0xC1); /* b_hi */
+            ez_ld_hl_ind_data(ez_tmp_off + 3);
+            emit8(0xE5); /* PUSH a_hi */
+            ez_ld_hl_ind_data(ez_tmp_off);
+            emit8(0xE5); /* PUSH a_lo */
+            emit8(0xC5); /* PUSH b_hi */
+            emit8(0xD5); /* PUSH b_lo */
         }
         break;
     }
@@ -907,6 +933,7 @@ static void ez_op(IrOp op) {
         ez_push_hl();
         break;
     case OP_I32FETCH:
+    case OP_FFETCH:
         ez_pop_hl();
         emit8_8(0xED, 0x17); /* LD DE, (HL) */
         emit8(0x23);
@@ -920,10 +947,22 @@ static void ez_op(IrOp op) {
         ez_stack_bytes += 3;
         break;
     case OP_I32STORE:
+    case OP_FSTORE:
         ez_pop_hl(); /* addr */
         ez_pop_de(); /* lo 24 */
         emit8(0xC1); /* hi 8 in C */
         ez_stack_bytes -= 3;
+        emit8_8(0xED, 0x1F); /* LD (HL), DE */
+        emit8(0x23);
+        emit8(0x23);
+        emit8(0x23);
+        emit8(0x71); /* LD (HL), C */
+        break;
+    case OP_SFSTORE:
+        ez_pop_de(); /* lo 24 */
+        emit8(0xC1); /* hi 8 in C */
+        ez_stack_bytes -= 3;
+        ez_pop_hl(); /* addr */
         emit8_8(0xED, 0x1F); /* LD (HL), DE */
         emit8(0x23);
         emit8(0x23);
@@ -1338,4 +1377,5 @@ const Backend be_ez80 = {"ez80",
                          ez_push_fn,
                          ez_patch_fn,
                          ez_icall,
-                         ez_stack_data_off};
+                         ez_stack_data_off,
+                         true};

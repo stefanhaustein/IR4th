@@ -112,5 +112,7 @@ fn main ( -> :i )
   8 vdu_mode
   render_fb
   blit_fb
+  key drop
+  0 vdu_mode
   0
 end
