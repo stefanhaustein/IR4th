@@ -29,10 +29,11 @@ static u16 udivmod16_addr = 0;
 static u16 sdivmod16_addr = 0;
 static u16 icall_addr = 0;
 static u16 wozfp_addr = 0;
-static int m6502_compact = 0;
+static int m6502_compact = 2; /* 0 = native, 1 = all compact, 2 = auto */
 static u16 vm_enter_addr = 0;
 
 void be_6502_set_compact(int compact) { m6502_compact = compact; }
+int be_6502_get_compact(void) { return m6502_compact; }
 
 static void ensure_6502_vm(void);
 static void m6502_bc_local_op(LocalOp op, size_t slot, StackType type);

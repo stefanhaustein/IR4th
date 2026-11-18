@@ -670,18 +670,26 @@ static IrInstr *emit_ir(IrKind kind, WordIR *w) {
     return ins;
 }
 
+static i32 sext_word(u32 u, u8 word_bytes) {
+    u32 mask = (word_bytes == 2) ? 0xFFFFUL : 0xFFFFFFUL;
+    u32 sign = (word_bytes == 2) ? 0x8000UL : 0x800000UL;
+    u &= mask;
+    return (u & sign) ? (i32)(u | ~mask) : (i32)u;
+}
+
 static int try_fold_const_w(IrOp op, i32 a, i32 b, i32 *out) {
-    if (be->word_bytes == 2) {
-        i16 sa = (i16)a;
-        i16 sb = (i16)b;
-        u16 ua = (u16)sa;
-        u16 ub = (u16)sb;
+    if (be->word_bytes == 2 || be->word_bytes == 3) {
+        u32 mask = (be->word_bytes == 2) ? 0xFFFFUL : 0xFFFFFFUL;
+        u32 ua = (u32)a & mask;
+        u32 ub = (u32)b & mask;
+        i32 sa = sext_word(ua, be->word_bytes);
+        i32 sb = sext_word(ub, be->word_bytes);
         switch (op) {
         case OP_ADD:
-            *out = (i32)(i16)(ua + ub);
+            *out = sext_word(ua + ub, be->word_bytes);
             return 1;
         case OP_SUB:
-            *out = (i32)(i16)(ua - ub);
+            *out = sext_word(ua - ub, be->word_bytes);
             return 1;
         case OP_EQ:
             *out = (sa == sb) ? -1 : 0;
@@ -827,7 +835,7 @@ static int handle_builtin(const char *tok, WordIR *w) {
             int need;
             if (strcmp(tok, builtins[i].name) != 0)
                 continue;
-            if (be->word_bytes == 2 && strcmp(be->name, "bc") != 0 &&
+            if (be->word_bytes < 4 && strcmp(be->name, "bc") != 0 &&
                 (builtins[i].op == OP_MUL32 || builtins[i].op == OP_DIV32 ||
                  builtins[i].op == OP_MOD32 || builtins[i].op == OP_UDIV32 ||
                  builtins[i].op == OP_UMOD32 || builtins[i].op == OP_SHL32 ||
@@ -890,7 +898,10 @@ static int handle_builtin(const char *tok, WordIR *w) {
                     IrInstr *p1 = &ir_buf.data[w->ir_start + w->ir_len - 1];
                     u8 is32 = (rop == OP_MUL32 || rop == OP_UDIV32 || rop == OP_UMOD32);
                     if ((!is32 && p1->kind == IR_PUSH_W) || (is32 && p1->kind == IR_PUSH_I32)) {
-                        u32 v = (!is32 && be->word_bytes == 2) ? (u32)(u16)p1->u.w : (u32)p1->u.w;
+                        u32 mask = (be->word_bytes == 2)   ? 0xFFFFUL
+                                   : (be->word_bytes == 3) ? 0xFFFFFFUL
+                                                           : 0xFFFFFFFFUL;
+                        u32 v = (!is32 && be->word_bytes < 4) ? ((u32)p1->u.w & mask) : (u32)p1->u.w;
                         if (v == 1 && (rop == OP_MUL || rop == OP_UDIV || rop == OP_MUL32 ||
                                        rop == OP_UDIV32)) {
                             w->ir_len--;
@@ -898,7 +909,7 @@ static int handle_builtin(const char *tok, WordIR *w) {
                             return 1;
                         }
                         if (v >= 2 && (v & (v - 1)) == 0 &&
-                            (is32 || be->word_bytes == 2 || p1->u.w > 0)) {
+                            (is32 || be->word_bytes < 4 || p1->u.w > 0)) {
                             u8 sh = 0;
                             while ((v >> sh) > 1)
                                 sh++;
@@ -2026,7 +2037,7 @@ static void emit_word(size_t fidx) {
                                aop == OP_SHL32 || aop == OP_RSHR32 || aop == OP_ASHR32) {
                         u8 max_sh = (aop >= OP_SHL32 || be->word_bytes == 4) ? 31
                                     : (be->word_bytes == 8)                  ? 63
-                                                                             : 15;
+                                                                             : (u8)(be->word_bytes * 8 - 1);
                         if (imm >= 0 && imm <= (i32)max_sh && be->shift_imm &&
                             be->shift_imm(aop, (u8)imm)) {
                             i++;
@@ -2142,6 +2153,9 @@ static void emit_word(size_t fidx) {
 
 static void flush_vals_word(i32 val) {
     if (be->word_bytes == 2 && (val < -32768 || val > 65535)) {
+        ir4_die(":i value out of range");
+    }
+    if (be->word_bytes == 3 && (val < -8388608L || val > 16777215L)) {
         ir4_die(":i value out of range");
     }
     cb_emit_data_word(val, be->word_bytes);
@@ -2321,7 +2335,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     fwd_calls.len = 0;
     init_funcs.len = 0;
 
-    if (be->word_bytes == 2 && strcmp(be->name, "bc") != 0) {
+    if (be->word_bytes < 4 && strcmp(be->name, "bc") != 0) {
         push_require_ex("i32.ir4", 1);
     }
 
@@ -2484,10 +2498,108 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
         heap_start_off = cb_alloc_data(0, be->word_bytes);
 
         /* Pass 2: Emit reachable words and patch forward calls */
-        for (f = 0; f < funcs.len; f++) {
-            if (!funcs.data[f]->is_extern && words.data[f]->reachable) {
-                emit_word(f);
+        {
+            int saved_compact = (be == &be_6502) ? be_6502_get_compact() : 0;
+            Bool *fn_compact = NULL;
+            if (be == &be_6502 && saved_compact == 2 && funcs.len > 0) {
+                u32 *est = (u32 *)vec_calloc(funcs.len, sizeof(u32));
+                u32 *heat = (u32 *)vec_calloc(funcs.len, sizeof(u32));
+                u32 total_est = 0;
+                size_t max_ir = 1;
+                for (f = 0; f < funcs.len; f++) {
+                    if (!funcs.data[f]->is_extern && words.data[f]->reachable &&
+                        !words.data[f]->is_code) {
+                        est[f] = (u32)(words.data[f]->ir_len * 10);
+                        total_est += est[f];
+                        if (words.data[f]->ir_len > max_ir)
+                            max_ir = words.data[f]->ir_len;
+                    }
+                }
+                if (total_est > 10240) {
+                    u8 *depth = (u8 *)vec_calloc(max_ir, sizeof(u8));
+                    u32 native_budget = 6144;
+                    int pass;
+                    fn_compact = (Bool *)vec_calloc(funcs.len, sizeof(Bool));
+                    for (f = 0; f < funcs.len; f++) {
+                        WordIR *w = words.data[f];
+                        size_t i;
+                        if (funcs.data[f]->is_extern || !w->reachable || w->is_code)
+                            continue;
+                        fn_compact[f] = true;
+                        if (funcs.data[f]->is_recursive)
+                            heat[f] += 100;
+                        memset(depth, 0, w->ir_len);
+                        for (i = 0; i < w->ir_len; i++) {
+                            const IrInstr *ins = &ir_buf.data[w->ir_start + i];
+                            if (ins->kind == IR_BR_BACK) {
+                                size_t k;
+                                for (k = ins->u.br.target; k <= i; k++) {
+                                    if (depth[k] < 255)
+                                        depth[k]++;
+                                }
+                            }
+                        }
+                        for (i = 0; i < w->ir_len; i++) {
+                            const IrInstr *ins = &ir_buf.data[w->ir_start + i];
+                            u32 wgt = (depth[i] == 0) ? 0 : (depth[i] == 1 ? 10 : 100);
+                            heat[f] += wgt;
+                            if (ins->kind == IR_CALL && wgt > 0) {
+                                heat[ins->u.func_idx] += wgt * 4;
+                            }
+                        }
+                    }
+                    /* Propagate loop heat one hop to callees of hot functions */
+                    for (pass = 0; pass < 2; pass++) {
+                        for (f = 0; f < funcs.len; f++) {
+                            WordIR *w = words.data[f];
+                            size_t i;
+                            if (funcs.data[f]->is_extern || !w->reachable || w->is_code ||
+                                heat[f] == 0)
+                                continue;
+                            for (i = 0; i < w->ir_len; i++) {
+                                const IrInstr *ins = &ir_buf.data[w->ir_start + i];
+                                if (ins->kind == IR_CALL && heat[ins->u.func_idx] < heat[f]) {
+                                    heat[ins->u.func_idx] += heat[f] / 2;
+                                }
+                            }
+                        }
+                    }
+                    /* Greedily keep hottest functions (by heat/byte) native up to budget */
+                    for (;;) {
+                        size_t best_f = funcs.len;
+                        u32 best_score = 0;
+                        for (f = 0; f < funcs.len; f++) {
+                            u32 score;
+                            if (!fn_compact[f] || heat[f] == 0 || est[f] > native_budget)
+                                continue;
+                            score = (heat[f] * 100) / (est[f] ? est[f] : 1);
+                            if (score > best_score) {
+                                best_score = score;
+                                best_f = f;
+                            }
+                        }
+                        if (best_f == funcs.len)
+                            break;
+                        fn_compact[best_f] = false;
+                        native_budget -= est[best_f];
+                    }
+                    free(depth);
+                }
+                free(est);
+                free(heat);
             }
+            for (f = 0; f < funcs.len; f++) {
+                if (!funcs.data[f]->is_extern && words.data[f]->reachable) {
+                    if (fn_compact)
+                        be_6502_set_compact(fn_compact[f] ? 1 : 0);
+                    else if (be == &be_6502 && saved_compact == 2)
+                        be_6502_set_compact(0);
+                    emit_word(f);
+                }
+            }
+            if (be == &be_6502)
+                be_6502_set_compact(saved_compact);
+            free(fn_compact);
         }
         {
             size_t c;

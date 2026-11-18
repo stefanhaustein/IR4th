@@ -131,10 +131,16 @@ Bool cb_write_raw(FILE *fp, Bool include_data) {
 
 size_t cb_alloc_data(size_t size, u8 align) {
     size_t aligned = data_buf.len;
-    size_t mask = (size_t)(align > 1 ? align - 1 : 0);
     size_t new_len;
-    if (mask > 0) {
-        aligned = (aligned + mask) & ~mask;
+    if (align > 1) {
+        if ((align & (align - 1)) == 0) {
+            size_t mask = (size_t)(align - 1);
+            aligned = (aligned + mask) & ~mask;
+        } else {
+            size_t rem = aligned % align;
+            if (rem != 0)
+                aligned += align - rem;
+        }
     }
     new_len = aligned + size;
     if (new_len > data_buf.len) {
@@ -161,15 +167,11 @@ void cb_emit_data_word(i32 val, u8 word_bytes) {
     u32 lo = (u32)val;
     u8 fill = (val < 0) ? 0xFF : 0x00;
     u8 i;
-    if (word_bytes == 2) {
-        cb_emit_data_u16((u16)lo);
-        return;
-    }
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < word_bytes && i < 4; i++) {
         cb_emit_data_u8((u8)(lo & 0xFF));
         lo >>= 8;
     }
-    for (i = 4; i < word_bytes; i++) {
+    for (; i < word_bytes; i++) {
         cb_emit_data_u8(fill);
     }
 }

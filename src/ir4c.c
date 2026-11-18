@@ -92,6 +92,10 @@ int main(int argc, char **argv) {
             be_6502_set_stack_zp(0, 0);
         } else if (strcmp(argv[i], "--compact") == 0) {
             be_6502_set_compact(1);
+        } else if (strcmp(argv[i], "--no-compact") == 0) {
+            be_6502_set_compact(0);
+        } else if (strcmp(argv[i], "--auto-compact") == 0) {
+            be_6502_set_compact(2);
         } else if (argv[i][0] == '-') {
             const Platform *matched = NULL;
             for (j = 0; platforms[j]; j++) {
