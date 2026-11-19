@@ -1,0 +1,126 @@
+data __gfx_def_modes
+  0 :i16 320 :i16 240 :i16 6 :i16
+end
+
+default fn gfxmodes ( -> :a :i )
+  __gfx_def_modes 1
+end
+
+default fn gfxmode ( mode :i )
+  mode drop
+end
+
+default fn gfxdone ( ) end
+default fn gfxwidth ( -> :i ) 320 end
+default fn gfxheight ( -> :i ) 240 end
+default fn gfxdepth ( -> :i ) 6 end
+default fn gfxvsync ( ) end
+
+default fn gfxinit ( w :i h :i depth :i )
+  var tbl :a
+  var cnt :i
+  var p :a
+  var best_mode :i
+  var best_score :i
+  var mw :i
+  var mh :i
+  var md :i
+  var dw :i
+  var dh :i
+  var dd :i
+  var score :i
+  gfxmodes -> cnt -> tbl
+  cnt 0 <= if 0 gfxmode return then
+  tbl i16@ -> best_mode
+  w 0 = h 0 = and depth 0 = and if best_mode gfxmode return then
+  32767 -> best_score
+  tbl -> p
+  begin cnt 0 > while
+    p 2 a+ i16@ -> mw
+    p 4 a+ i16@ -> mh
+    p 6 a+ i16@ -> md
+    mw w - -> dw  dw 0 < if 0 dw - -> dw then
+    mh h - -> dh  dh 0 < if 0 dh - -> dh then
+    md depth - -> dd  dd 0 < if 0 dd - -> dd then
+    dw dh + dd 5 << + -> score
+    score best_score < if
+      score -> best_score
+      p i16@ -> best_mode
+    then
+    p 8 a+ -> p
+    cnt 1 - -> cnt
+  repeat
+  best_mode gfxmode
+end
+
+default fn gfxrgb ( r :i g :i b :i -> :i )
+  r 6 u>> 4 << g 6 u>> 2 << or b 6 u>> or
+end
+
+default fn gfxcolor ( c :i )
+  c drop
+end
+
+default fn gfxpx ( x :i y :i )
+  x drop y drop
+end
+
+default fn gfxhline ( x :i y :i w :i )
+  begin w 0 > while
+    x y gfxpx
+    x 1 + -> x
+    w 1 - -> w
+  repeat
+end
+
+default fn gfxvline ( x :i y :i h :i )
+  begin h 0 > while
+    x y gfxpx
+    y 1 + -> y
+    h 1 - -> h
+  repeat
+end
+
+default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
+  var dx :i
+  var dy :i
+  var sx :i
+  var sy :i
+  var err :i
+  var e2 :i
+  x2 x1 - -> dx
+  dx 0 < if 0 dx - -> dx -1 -> sx else 1 -> sx then
+  y2 y1 - -> dy
+  dy 0 < if 0 dy - -> dy -1 -> sy else 1 -> sy then
+  0 dy - -> dy
+  dx dy + -> err
+  begin -1 while
+    x1 y1 gfxpx
+    x1 x2 = y1 y2 = and if return then
+    err 1 << -> e2
+    e2 dy >= if err dy + -> err x1 sx + -> x1 then
+    e2 dx <= if err dx + -> err y1 sy + -> y1 then
+  repeat
+end
+
+default fn gfxrect ( x :i y :i w :i h :i )
+  w 0 <= h 0 <= or if return then
+  x y w gfxhline
+  x y h + 1 - w gfxhline
+  x y h gfxvline
+  x w + 1 - y h gfxvline
+end
+
+default fn gfxfillrect ( x :i y :i w :i h :i )
+  var ye :i
+  w 0 <= h 0 <= or if return then
+  y h + -> ye
+  begin y ye < while
+    x y w gfxhline
+    y 1 + -> y
+  repeat
+end
+
+default fn gfxclear ( )
+  0 0 gfxwidth gfxheight gfxfillrect
+end

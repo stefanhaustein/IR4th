@@ -159,6 +159,7 @@ typedef struct {
     Bool is_extern;
     Bool is_defined;
     Bool is_default;
+    Bool is_hot;
     Bool has_addr;
     Bool is_recursive;
     u16 req_group;

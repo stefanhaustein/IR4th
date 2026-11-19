@@ -1160,7 +1160,7 @@ static size_t alloc_func(FuncSig **sig_out, WordIR **w_out) {
     return idx;
 }
 
-static void compile_word(int is_default) {
+static void compile_word(int is_default, int is_hot) {
     const char *tok;
     const char *name;
     FuncSig *sig;
@@ -1220,6 +1220,7 @@ static void compile_word(int is_default) {
             *ex = fn_sig;
             ex->is_defined = 1;
             ex->is_default = (u8)is_default;
+            ex->is_hot = (u8)is_hot;
             ex->req_group = cur_grp;
             sig = ex;
             w = words.data[fidx];
@@ -1230,6 +1231,7 @@ static void compile_word(int is_default) {
         sig->name = intern_str(name);
         sig->is_defined = 1;
         sig->is_default = (u8)is_default;
+        sig->is_hot = (u8)is_hot;
         sig->req_group = cur_grp;
         tstack.len = 0;
         blocks.len = 0;
@@ -2342,13 +2344,26 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
 
     while ((tok = next_tok()) != NULL) {
         if (strcmp(tok, "fn") == 0) {
-            compile_word(0);
-        } else if (strcmp(tok, "default") == 0) {
-            tok = next_tok();
-            if (!tok || strcmp(tok, "fn") != 0) {
-                ir4_die("expected 'fn' after 'default'");
+            compile_word(0, 0);
+        } else if (strcmp(tok, "default") == 0 || strcmp(tok, "hot") == 0) {
+            int is_default = 0;
+            int is_hot = 0;
+            for (;;) {
+                if (strcmp(tok, "default") == 0 && !is_default) {
+                    is_default = 1;
+                } else if (strcmp(tok, "hot") == 0 && !is_hot) {
+                    is_hot = 1;
+                } else {
+                    break;
+                }
+                tok = next_tok();
+                if (!tok)
+                    break;
             }
-            compile_word(1);
+            if (!tok || strcmp(tok, "fn") != 0) {
+                ir4_die("expected 'fn' after function modifier");
+            }
+            compile_word(is_default, is_hot);
         } else if (strcmp(tok, "code") == 0) {
             compile_code();
         } else if (strcmp(tok, "init") == 0) {
@@ -2527,7 +2542,9 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                         size_t i;
                         if (funcs.data[f]->is_extern || !w->reachable || w->is_code)
                             continue;
-                        fn_compact[f] = true;
+                        fn_compact[f] = !funcs.data[f]->is_hot;
+                        if (funcs.data[f]->is_hot)
+                            heat[f] += 10000;
                         if (funcs.data[f]->is_recursive)
                             heat[f] += 100;
                         memset(depth, 0, w->ir_len);
@@ -2592,7 +2609,9 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             }
             for (f = 0; f < funcs.len; f++) {
                 if (!funcs.data[f]->is_extern && words.data[f]->reachable) {
-                    if (fn_compact)
+                    if (funcs.data[f]->is_hot)
+                        be_6502_set_compact(0);
+                    else if (fn_compact)
                         be_6502_set_compact(fn_compact[f] ? 1 : 0);
                     else if (be == &be_6502 && saved_compact == 2)
                         be_6502_set_compact(0);

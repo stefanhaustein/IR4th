@@ -1,0 +1,184 @@
+\ c64/gfx.ir4 - Commodore 64 VIC-II Hires Bitmap (320x200) in VIC Bank 1 ($4000-$7FFF)
+\ Screen RAM at $4400 (1000 bytes), Bitmap at $6000 (8000 bytes), leaves $0801-$43FF for code.
+
+data __c64_modes
+  0 :i16 320 :i16 200 :i16 1 :i16
+end
+
+data __c64_gfx_pal
+  0 :i8 2 :i8 5 :i8 7 :i8 6 :i8 4 :i8 3 :i8 1 :i8
+end
+
+var __c64_col :i
+
+fn gfxmodes ( -> :a :i )
+  __c64_modes 1
+end
+
+fn gfxwidth ( -> :i ) 320 end
+fn gfxheight ( -> :i ) 200 end
+fn gfxdepth ( -> :i ) 1 end
+
+fn gfxmode ( mode :i )
+  mode drop
+  1 -> __c64_col
+  \ Select VIC bank 1 ($4000-$7FFF): CIA2 $DD00 bits 0..1 = 2
+  56576 i>a u8@ 252 and 2 or 56576 i>a i8!
+  \ Screen at $4400 ($0400 in bank), bitmap at $6000 ($2000 in bank): $D018 = $18
+  24 53272 i>a i8!
+  \ Enable bitmap mode: $D011 = $3B
+  59 53265 i>a i8!
+end
+
+fn gfxdone ( )
+  \ Restore VIC bank 0, screen $0400 / char ROM $1000 ($D018 = $15), text mode ($D011 = $1B)
+  56576 i>a u8@ 252 and 3 or 56576 i>a i8!
+  21 53272 i>a i8!
+  27 53265 i>a i8!
+end
+
+fn gfxvsync ( )
+  begin 53266 i>a u8@ 255 <> while repeat
+end
+
+fn gfxrgb ( r :i g :i b :i -> :i )
+  var idx :i
+  0 -> idx
+  r 128 >= if idx 1 or -> idx then
+  g 128 >= if idx 2 or -> idx then
+  b 128 >= if idx 4 or -> idx then
+  __c64_gfx_pal idx a+ u8@
+end
+
+fn gfxcolor ( c :i )
+  c 15 and -> __c64_col
+end
+
+fn gfxclear ( )
+  var p :a
+  var n :i
+  var attr :i
+  0x6000 i>a -> p
+  8000 -> n
+  begin n 0 > while
+    0 p i8!
+    p 1 a+ -> p
+    n 1 - -> n
+  repeat
+  __c64_col 0 = if 0 else __c64_col 4 << then -> attr
+  0x4400 i>a -> p
+  1000 -> n
+  begin n 0 > while
+    attr p i8!
+    p 1 a+ -> p
+    n 1 - -> n
+  repeat
+end
+
+hot fn gfxpx ( x :i y :i )
+  var row :i
+  var col :i
+  var off :i
+  var p :a
+  var mask :i
+  var cell :a
+  x 0 < x 320 >= or y 0 < y 200 >= or or if return then
+  y 3 u>> -> row
+  x 3 u>> -> col
+  row 8 << row 6 << + col 3 << + y 7 and + -> off
+  0x6000 i>a off a+ -> p
+  128 x 7 and u>> -> mask
+  __c64_col 0 <> if
+    p u8@ mask or p i8!
+    0x4400 i>a row 5 << row 3 << + col + a+ -> cell
+    cell u8@ 15 and __c64_col 4 << or cell i8!
+  else
+    p u8@ mask 255 xor and p i8!
+  then
+end
+
+hot fn gfxhline ( x :i y :i w :i )
+  var row :i
+  var col :i
+  var p :a
+  var cell :a
+  var mask :i
+  y 0 < y 200 >= or if return then
+  x 0 < if w x + -> w 0 -> x then
+  x w + 320 > if 320 x - -> w then
+  w 0 <= if return then
+  y 3 u>> -> row
+  begin w 0 > while
+    x 7 and 0 = w 8 >= and if
+      x 3 u>> -> col
+      0x6000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
+      __c64_col 0 <> if
+        255 p i8!
+        0x4400 i>a row 5 << row 3 << + col + a+ -> cell
+        cell u8@ 15 and __c64_col 4 << or cell i8!
+      else
+        0 p i8!
+      then
+      x 8 + -> x
+      w 8 - -> w
+    else
+      x 3 u>> -> col
+      0x6000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
+      128 x 7 and u>> -> mask
+      __c64_col 0 <> if
+        p u8@ mask or p i8!
+        0x4400 i>a row 5 << row 3 << + col + a+ -> cell
+        cell u8@ 15 and __c64_col 4 << or cell i8!
+      else
+        p u8@ mask 255 xor and p i8!
+      then
+      x 1 + -> x
+      w 1 - -> w
+    then
+  repeat
+end
+
+hot fn gfxvline ( x :i y :i h :i )
+  var row :i
+  var col :i
+  var ry :i
+  var p :a
+  var cell :a
+  var mask :i
+  var nmask :i
+  x 0 < x 320 >= or if return then
+  y 0 < if h y + -> h 0 -> y then
+  y h + 200 > if 200 y - -> h then
+  h 0 <= if return then
+  y 3 u>> -> row
+  x 3 u>> -> col
+  y 7 and -> ry
+  0x6000 i>a row 8 << row 6 << + col 3 << + ry + a+ -> p
+  0x4400 i>a row 5 << row 3 << + col + a+ -> cell
+  128 x 7 and u>> -> mask
+  mask 255 xor -> nmask
+  __c64_col 0 <> if
+    cell u8@ 15 and __c64_col 4 << or cell i8!
+  then
+  begin h 0 > while
+    __c64_col 0 <> if
+      p u8@ mask or p i8!
+    else
+      p u8@ nmask and p i8!
+    then
+    h 1 - -> h
+    h 0 > if
+      ry 7 = if
+        0 -> ry
+        p 313 a+ -> p
+        cell 40 a+ -> cell
+        __c64_col 0 <> if
+          cell u8@ 15 and __c64_col 4 << or cell i8!
+        then
+      else
+        ry 1 + -> ry
+        p 1 a+ -> p
+      then
+    then
+  repeat
+end

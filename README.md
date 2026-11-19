@@ -44,7 +44,7 @@ fn fib ( n :i -> :i )
 end
 ```
 
-See [examples/](examples/) (including Agon demos [agon_boing.ir4](examples/agon_boing.ir4) and [agon_mandel.ir4](examples/agon_mandel.ir4)) and [tests/](tests/) for the full test suite.
+See [examples/](examples/) (including [agon_boing.ir4](examples/agon_boing.ir4) and [mandel.ir4](examples/mandel.ir4)) and [tests/](tests/) for the full test suite.
 
 ## Compiler Optimizations
 
