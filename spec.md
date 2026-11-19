@@ -2,7 +2,7 @@
 
 **IR4th** (*Typed Forth as an Intermediate Representation*) is a minimal, statically typed, monomorphic concatenative intermediate language designed for retro-computing CPUs (such as the Z80 and 6502) and constrained embedded systems.
 
-IR4th compiles via direct 2-pass machine-code generation (with dead-code elimination) to native Z80, 6502, RISC-V (RV32), and ARM64 binaries.
+IR4th compiles via direct 2-pass machine-code generation (with dead-code elimination) to native Z80, eZ80, 6502, RISC-V (RV32), and ARM64 binaries, as well as portable bytecode for the built-in VM.
 
 ## 1. Lexical Structure
 
@@ -21,12 +21,12 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 IR4th v0.3 defines **four stack types** on a **single unified stack** with **explicitly typed operators** (no operator overloading). Nothing smaller than a native machine word `:i` exists on the stack; byte- and 16-bit memory accesses (`u8@`, `i8@`, `i8!`, `u16@`, `i16@`, `i16!`) implicitly widen to and truncate from `:i`.
 
-| Type Token | Name | Width & Semantics | Z80 / 6502 | ARM32 / RISC-V32 | ARM64 / x86-64 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`:i`** | Native Word | Target-native signed integer (`isize`) | 2 bytes (`i16`) | 4 bytes (`i32`) | 8 bytes (`i64`) |
-| **`:i32`** | 32-bit Integer | Fixed-width 32-bit integer | 4 bytes (`i32`) | 4 bytes (`i32`) | 4 bytes (`i32`, 8-byte slot) |
-| **`:a`** | Address | Target-width memory pointer (`usize`) | 2 bytes (`u16`) | 4 bytes (`u32`) | 8 bytes (`u64`) |
-| **`:f`** | Float | Target-native floating-point | **6 bytes** (Z80) / **4 bytes** (6502) | **4 bytes** (IEEE-754 `binary32`) | **8 bytes** (IEEE-754 `binary64`) |
+| Type Token | Name | Width & Semantics | Z80 / 6502 | eZ80 (ADL) | ARM32 / RISC-V32 | ARM64 / x86-64 / VM |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **`:i`** | Native Word | Target-native signed integer (`isize`) | 2 bytes (`i16`) | 3 bytes (`i24`) | 4 bytes (`i32`) | 8 bytes (`i64`) |
+| **`:i32`** | 32-bit Integer | Fixed-width 32-bit integer | 4 bytes (`i32`) | 4 bytes (`i32`) | 4 bytes (`i32`) | 4 bytes (`i32`, 8-byte slot) |
+| **`:a`** | Address | Target-width memory pointer (`usize`) | 2 bytes (`u16`) | 3 bytes (`u24`) | 4 bytes (`u32`) | 8 bytes (`u64`) |
+| **`:f`** | Float | Target-native floating-point | **6 bytes** (Z80) / **4 bytes** (6502) | **4 bytes** (IEEE-754 `binary32`) | **4 bytes** (IEEE-754 `binary32`) | **8 bytes** (IEEE-754 `binary64`) |
 
 ### 2.1 Literal Typing Rules
 * **Bare Integer Literals** (`0`, `1`, `-42`, `0x10`, `$FF`) implicitly default to **`:i`**.

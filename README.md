@@ -12,9 +12,11 @@ This project is based on [hi5](https://github.com/stefanhaustein/hi5), an earlie
 ## Targets
 
 - **Z80** (`-t z80`): Generates Z80 machine code, with optional `--cpm` support to emit a CP/M `.com` entry stub that prints `main`'s return value.
+- **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with `--agon` for Agon Light / Console8 MOS executables (base `0x40000`, AgDev `float32` runtime).
 - **6502** (`-t 6502`): Generates 6502 machine code (BSS stack/locals by default, optional Zero Page data stack via `--stack-zp`, 4-byte Zero Page scratch configurable via `--zp`), with `--sim65` for `cc65`'s `sim65` simulator and `--c64` for Commodore 64 `.prg` output (BASIC `SYS` stub, KERNAL `CHROUT`, BASIC ROM unmapping, and `$20..$8F` ZP data stack by default; disable with `--no-stack-zp`).
 - **ARM64** (`-t arm64`): Generates AArch64 machine code, with `--run` support for direct JIT execution on macOS Apple Silicon.
 - **RISC-V RV32IM** (`-t rv32`): Generates RV32IM machine code, with `--virt` for standalone QEMU `virt` ELF32 execution and `--obj` for relocatable ELF32 `.o` output (linking `extern` symbols and `libgcc` soft-float).
+- **Bytecode VM** (`-t bc`): Emits portable IR4th bytecode, with `--run` to execute directly in the built-in stack VM.
 
 ## Examples
 
@@ -42,7 +44,7 @@ fn fib ( n :i -> :i )
 end
 ```
 
-See [tests/](tests/) for the full test suite.
+See [examples/](examples/) (including Agon demos [agon_boing.ir4](examples/agon_boing.ir4) and [agon_mandel.ir4](examples/agon_mandel.ir4)) and [tests/](tests/) for the full test suite.
 
 ## Compiler Optimizations
 
@@ -50,7 +52,7 @@ See [tests/](tests/) for the full test suite.
 - **Constant folding & casts:** Compile-time folding for integer arithmetic/comparisons and literal casts (`:a`, `:i32`, `:u32`).
 - **Strength reduction:** Power-of-2 `*`, `u/`, and `umod` by constants lower to shifts (`<<`, `u>>`) and masks (`and`); multiply/unsigned-divide by `1` is elided.
 - **Immediate lowering:** Constant-operand `+`/`-`, comparisons, shifts, and base+offset memory accesses emit immediate instructions where supported by the target.
-- **Static locals (Z80 / 6502):** Non-recursive functions place locals in static RAM rather than frame-pointer stacks.
+- **Static locals (Z80 / eZ80 / 6502):** Non-recursive functions place locals in static RAM rather than frame-pointer stacks.
 - **On-demand runtimes:** Math, `:i32`, and floating-point helpers are embedded only when referenced.
 
 ## Building & Testing
@@ -61,6 +63,7 @@ make test         # Compile tests for Z80, 6502, ARM64 and run ARM64 JIT tests
 make test-rv32    # Build QEMU virt ELF32 binaries and run them via qemu-system-riscv32 (if installed)
 make test-6502    # Build sim65 binaries and run them via sim65 (if installed)
 make test-z80     # Build CP/M .com binaries and run them via tnylpo (if installed)
+make test-ez80    # Build Agon MOS binaries and run them via fab-agon-emulator (if installed)
 ```
 
 ## Usage
@@ -68,7 +71,7 @@ make test-z80     # Build CP/M .com binaries and run them via tnylpo (if install
 Compile with `ir4c`:
 
 ```sh
-./build/ir4c [-t z80|6502|arm64|rv32] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr[:init_x]] [--no-stack-zp] [--run] [--cpm] [--sim65] [--c64] [--virt] [--obj] <input.ir4>
+./build/ir4c [-t z80|ez80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr[:init_x]] [--no-stack-zp] [--run] [--cpm] [--agon] [--sim65] [--c64] [--virt] [--obj] <input.ir4>
 ```
 
 Pass `-I dir` (repeatable) to add library search directories ahead of the built-in `lib/` directory.
