@@ -1,3 +1,6 @@
+\ i32.ir4 - Portable 32-bit signed division and modulo fallbacks (auto-required when i32/ or i32mod is used)
+
+\ Signed 32-bit truncating division: a / b
 default fn i32/ ( a :i32 b :i32 -> :i32 )
   var neg :i
   var ua :i32
@@ -11,6 +14,7 @@ default fn i32/ ( a :i32 b :i32 -> :i32 )
   q
 end
 
+\ Signed 32-bit remainder (sign matches dividend a): a mod b
 default fn i32mod ( a :i32 b :i32 -> :i32 )
   var neg :i
   var ua :i32

@@ -5,6 +5,7 @@ fn fabs ( x :f -> :f )
   x
 end
 
+\ Truncate x toward zero, returning float
 fn fint ( x :f -> :f )
   var ax :f
   var p :f
@@ -32,15 +33,18 @@ fn fint ( x :f -> :f )
   x 0.0 f< if fnegate then
 end
 
+\ Fractional part of x (x - fint(x))
 fn frac ( x :f -> :f )
   x x fint f-
 end
 
+\ Round x to nearest integer (half away from zero)
 fn fround ( x :f -> :i )
   x 0.0 f< if x 0.5 f- f>i return then
   x 0.5 f+ f>i
 end
 
+\ Returns 0.0 for x <= 0.0
 fn sqrt ( x :f -> :f )
   var scale :f
   var g :f
@@ -128,6 +132,7 @@ fn arctan ( x :f -> :f )
   sign f*
 end
 
+\ Two-argument arctangent atan2(y, x) in [-pi, pi]
 fn atan2 ( y :f x :f -> :f )
   y 0.0 f= if
     x 0.0 f< if 3.141592653589793 else 0.0 then return
@@ -170,6 +175,7 @@ fn exp ( x :f -> :f )
   res
 end
 
+\ Returns 0.0 for x <= 0.0
 fn ln ( x :f -> :f )
   0 -> var k :i
   var u :f

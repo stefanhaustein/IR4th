@@ -1,6 +1,9 @@
+\ mem.ir4 - Memory operations and first-fit heap allocator starting at __heap_start
+
 var __heap_ptr :a
 var __heap_free :a
 
+\ Fill len bytes starting at dst with byte value val
 default fn fillchar ( dst :a len :i val :i )
   begin
     len 0 >
@@ -11,6 +14,7 @@ default fn fillchar ( dst :a len :i val :i )
   repeat
 end
 
+\ Copy len bytes from src to dst (overlap-safe)
 default fn memcpy ( dst :a src :a len :i )
   dst src a> if
     dst len a+ -> dst
@@ -35,6 +39,7 @@ default fn memcpy ( dst :a src :a len :i )
   repeat
 end
 
+\ Compare len bytes at a and b; returns first nonzero (a[i] - b[i]) or 0 if equal
 default fn memcmp ( a :a b :a len :i -> :i )
   var d :i
   begin
@@ -49,11 +54,13 @@ default fn memcmp ( a :a b :a len :i -> :i )
   0
 end
 
+\ Reset the heap to empty (invalidates all prior allocations)
 fn heap_reset ( )
   __heap_start -> __heap_ptr
   0 i>a -> __heap_free
 end
 
+\ Allocate at least bytes bytes on the heap; returns block address
 fn heap_alloc ( bytes :i -> :a )
   var need :i
   var prev :a
@@ -93,6 +100,7 @@ fn heap_alloc ( bytes :i -> :a )
   cur 8 a+
 end
 
+\ Free a block previously returned by heap_alloc (coalesces adjacent free blocks)
 fn heap_free ( p :a )
   var blk :a
   var prev :a
