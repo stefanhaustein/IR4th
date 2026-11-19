@@ -330,7 +330,7 @@ fn draw_testcard ( )
   rx y0 rw bh draw_ebu_bars
   y0 bh + -> y0
 
-  \ Row 2: 7-step grayscale ramp (2 grid cells) + white center line
+  \ Row 2: 5 equal grayscale blocks (2 grid cells) + white center line
   step 1 << -> bh
   rx y0 rw bh draw_gray_steps
   c_white gfxcolor

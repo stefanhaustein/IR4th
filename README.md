@@ -85,6 +85,14 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 - [tools/](tools/) — Relocatable runtime generators
 - [spec.md](spec.md) — IR4th v0.3 language specification
 
+## Screenshots
+
+| Target | TV Test Card ([testcard.ir4](examples/testcard.ir4)) | Mandelbrot ([mandel.ir4](examples/mandel.ir4)) |
+|---|---|---|
+| **Commander X16 (`--x16`)** | ![Commander X16 testcard](docs/imgs/testcard_x16.png) | *(not yet captured)* |
+| **Commodore 64 (`--c64`)** | ![C64 testcard](docs/imgs/testcard_c64.png) | ![C64 Mandelbrot](docs/imgs/mandel_c64.png) |
+| **Terminal (ANSI half-blocks)** | ![ANSI terminal testcard](docs/imgs/testcard_ansi.png) | ![ARM64 ANSI Mandelbrot](docs/imgs/mandel_arm64.png) |
+
 ## License
 
 Licensed under the **GNU General Public License v3.0 or later (GPLv3+)** with a compiled-output exception and separate notices for third-party float runtimes (`math48` and `wozfp`). See [LICENSE](LICENSE) (and [GPLv3](GPLv3) for the full GPLv3 text).
