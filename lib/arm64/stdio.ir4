@@ -1,5 +1,10 @@
 extern putchar ( c :i -> :i )
+extern getchar ( -> :i )
 
 fn emit ( c :i )
   c putchar drop
+end
+
+fn key ( -> :i )
+  getchar
 end

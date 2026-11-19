@@ -68,8 +68,9 @@ static void arm64_run_jit(size_t main_idx) {
             exit(1);
         }
 
-        if (cb_data_size() > 0) {
-            data_mem = calloc(1, cb_data_size());
+        {
+            size_t alloc_sz = cb_data_size() + (1024 * 1024);
+            data_mem = calloc(1, alloc_sz);
             if (!data_mem) {
                 perror("calloc data");
                 munmap(mem, map_sz);

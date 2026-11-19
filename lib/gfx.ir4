@@ -1,20 +1,45 @@
-data __gfx_def_modes
-  0 :i16 320 :i16 240 :i16 6 :i16
-end
+require "stdio.ir4"
+require "mem.ir4"
+
+var __gfx_def_modes :bytes 8
+var __gfx_w :i
+var __gfx_h :i
+var __gfx_col :i
+var __gfx_fb :a
 
 default fn gfxmodes ( -> :a :i )
+  0 __gfx_def_modes i16!
+  termwidth __gfx_def_modes 2 a+ i16!
+  termheight 1 << __gfx_def_modes 4 a+ i16!
+  3 __gfx_def_modes 6 a+ i16!
   __gfx_def_modes 1
 end
 
+default fn gfxwidth ( -> :i ) __gfx_w end
+default fn gfxheight ( -> :i ) __gfx_h end
+default fn gfxdepth ( -> :i ) 3 end
+default fn gfxvsync ( ) end
+
 default fn gfxmode ( mode :i )
   mode drop
+  termwidth -> __gfx_w
+  termheight 1 << -> __gfx_h
+  __gfx_fb 0 i>a a<> if __gfx_fb heap_free then
+  __gfx_w termheight * heap_alloc -> __gfx_fb
+  __gfx_fb __gfx_w termheight * 0 fillchar
+  7 -> __gfx_col
+  cls
 end
 
-default fn gfxdone ( ) end
-default fn gfxwidth ( -> :i ) 320 end
-default fn gfxheight ( -> :i ) 240 end
-default fn gfxdepth ( -> :i ) 6 end
-default fn gfxvsync ( ) end
+default fn gfxdone ( )
+  __gfx_fb 0 i>a a<> if
+    __gfx_fb heap_free
+    0 i>a -> __gfx_fb
+  then
+  27 emit 91 emit 48 emit 109 emit
+  0 termheight 1 - gotoxy
+  cr
+end
 
 default fn gfxinit ( w :i h :i depth :i )
   var tbl :a
@@ -54,15 +79,39 @@ default fn gfxinit ( w :i h :i depth :i )
 end
 
 default fn gfxrgb ( r :i g :i b :i -> :i )
-  r 6 u>> 4 << g 6 u>> 2 << or b 6 u>> or
+  var c :i
+  0 -> c
+  r 128 >= if c 1 or -> c then
+  g 128 >= if c 2 or -> c then
+  b 128 >= if c 4 or -> c then
+  c
 end
 
 default fn gfxcolor ( c :i )
-  c drop
+  c 7 and -> __gfx_col
+end
+
+fn __gfx_emit_cell ( cx :i cy :i val :i )
+  cx cy gotoxy
+  val 4 u>> fgcolor
+  val 15 and bgcolor
+  226 emit 150 emit 128 emit
 end
 
 default fn gfxpx ( x :i y :i )
-  x drop y drop
+  var cell :a
+  var old :i
+  var val :i
+  x 0 < x __gfx_w >= or y 0 < y __gfx_h >= or or if return then
+  __gfx_fb y 1 u>> __gfx_w * x + a+ -> cell
+  cell u8@ -> old
+  y 1 and 0 = if
+    old 15 and __gfx_col 4 << or -> val
+  else
+    old 240 and __gfx_col or -> val
+  then
+  val cell i8!
+  x y 1 u>> val __gfx_emit_cell
 end
 
 default fn gfxhline ( x :i y :i w :i )
@@ -122,5 +171,7 @@ default fn gfxfillrect ( x :i y :i w :i h :i )
 end
 
 default fn gfxclear ( )
-  0 0 gfxwidth gfxheight gfxfillrect
+  __gfx_fb __gfx_w termheight * __gfx_col 4 << __gfx_col or fillchar
+  __gfx_col bgcolor
+  cls
 end
