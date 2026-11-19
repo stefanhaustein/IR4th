@@ -28,9 +28,9 @@ fn fib_iter ( n :i -> :i )
   a
 end
 
-\ Entry point called by --run (computes fib_rec(10) + fib_iter(10) = 55 + 55 = 110)
+\ Entry point called by --run (checks fib_rec(10) = 55 and fib_iter(10) = 55; returns 0 on pass)
 fn main ( -> :i )
-  10 fib_rec
-  10 fib_iter
-  +
+  10 fib_rec 55 <> if 1 return then
+  10 fib_iter 55 <> if 2 return then
+  0
 end

@@ -100,8 +100,8 @@ end
 
 fn arctan ( x :f -> :f )
   var sign :f
-  var inv :i
-  var corr :i
+  0 -> var inv :i
+  0 -> var corr :i
   var x2 :f
   1.0 -> sign
   x 0.0 f< if
@@ -126,6 +126,21 @@ fn arctan ( x :f -> :f )
   corr 0 <> if 0.5235987755982988 f+ then
   inv 0 <> if 1.5707963267948966 swap f- then
   sign f*
+end
+
+fn atan2 ( y :f x :f -> :f )
+  y 0.0 f= if
+    x 0.0 f< if 3.141592653589793 else 0.0 then return
+  then
+  x 0.0 f> if
+    y x f/ arctan return
+  then
+  x 0.0 f< if
+    y x f/ arctan
+    y 0.0 f< if 3.141592653589793 f- else 3.141592653589793 f+ then
+    return
+  then
+  y 0.0 f> if 1.5707963267948966 else -1.5707963267948966 then
 end
 
 fn exp ( x :f -> :f )

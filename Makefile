@@ -6,7 +6,9 @@ TARGET  = $(BUILD)/ir4c
 SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/path.c src/strpool.c src/vec.c src/be_z80.c src/be_z80_cpm.c src/be_ez80.c src/be_ez80_agon.c src/be_6502.c src/be_6502_sim.c src/be_6502_c64.c src/be_arm64.c src/be_arm64_jit.c src/be_rv32.c src/be_rv32_elf.c src/be_bc.c src/be_bc_run.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
-.PHONY: all test test-err test-z80 test-6502 test-rv32 rt rt-z80 rt-ez80 rt-6502 rt-rv32 clean
+AGON_EMU ?= $(HOME)/opt/fab-agon-emulator/fab-agon-emulator
+
+.PHONY: all test test-err test-z80 test-ez80 test-6502 test-rv32 rt rt-z80 rt-ez80 rt-6502 rt-rv32 clean
 
 all: $(TARGET)
 
@@ -92,7 +94,7 @@ test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 
 	@if command -v tnylpo >/dev/null 2>&1; then \
 		out=$$(cd $(BUILD) && tnylpo fib.com | tr -d '\r\n'); \
 		echo "tnylpo fib.com -> $$out"; \
-		test "$$out" = "110"; \
+		test "$$out" = "0"; \
 		out=$$(cd $(BUILD) && tnylpo core.com | tr -d '\r\n'); \
 		echo "tnylpo core.com -> $$out"; \
 		test "$$out" = "0"; \
@@ -118,6 +120,34 @@ test-z80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 
 		echo "tnylpo not found; skipping Z80 execution"; \
 	fi
 
+test-ez80: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4 tests/math.ir4 tests/fnptr.ir4 tests/i32.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/fib_agon.bin    tests/fib.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/core_agon.bin   tests/core.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/muldiv_agon.bin tests/muldiv.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/mem_agon.bin    tests/mem.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/float_agon.bin  tests/float.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/req_agon.bin    tests/req.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/data_agon.bin   tests/data.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/ext_agon.bin    tests/ext.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/math_agon.bin   tests/math.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/fnptr_agon.bin  tests/fnptr.ir4
+	./$(TARGET) -t ez80 --agon -o $(BUILD)/i32_agon.bin    tests/i32.ir4
+	@emu=$$(command -v "$(AGON_EMU)" 2>/dev/null || true); \
+	if [ -n "$$emu" ] && [ -x "$$emu" ]; then \
+		sd="$$(pwd)/$(BUILD)/agon-sd"; \
+		mkdir -p "$$sd"; \
+		for pair in "fib_agon.bin:000000" "core_agon.bin:000000" "muldiv_agon.bin:000000" "mem_agon.bin:000000" "float_agon.bin:000000" "req_agon.bin:000000" "data_agon.bin:000000" "ext_agon.bin:000000" "math_agon.bin:000000" "fnptr_agon.bin:000000" "i32_agon.bin:000000"; do \
+			f=$${pair%%:*}; exp=$${pair#*:}; \
+			cp $(BUILD)/$$f "$$sd/test.bin"; \
+			printf "load test.bin\nrun\n" > "$$sd/autoexec.txt"; \
+			bc=$$(cd "$$(dirname "$$emu")" && printf "state\nexit\n" | SDL_AUDIODRIVER=dummy SDL_VIDEO_DRIVER=dummy "./$$(basename "$$emu")" -u --sdcard "$$sd" --debugger -b 0x000d5f | sed -n 's/.*\* 000d5f:.* BC:\([0-9a-fA-F]*\).*/\1/p' | head -n1); \
+			echo "fab-agon-emulator $$f -> BC=$$bc"; \
+			test "$$bc" = "$$exp"; \
+		done; \
+	else \
+		echo "fab-agon-emulator not found; skipping eZ80 execution"; \
+	fi
+
 test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4 tests/float.ir4 tests/req.ir4 tests/data.ir4 tests/ext.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/fib_sim65.bin    tests/fib.ir4
 	./$(TARGET) -t 6502 --sim65 -o $(BUILD)/core_sim65.bin   tests/core.ir4
@@ -130,7 +160,7 @@ test-6502: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 	@if command -v sim65 >/dev/null 2>&1; then \
 		out=$$(sim65 $(BUILD)/fib_sim65.bin | tr -d '\r\n'); \
 		echo "sim65 fib_sim65.bin -> $$out"; \
-		test "$$out" = "110"; \
+		test "$$out" = "0"; \
 		out=$$(sim65 $(BUILD)/core_sim65.bin | tr -d '\r\n'); \
 		echo "sim65 core_sim65.bin -> $$out"; \
 		test "$$out" = "0"; \
@@ -176,7 +206,7 @@ test-rv32: $(TARGET) tests/fib.ir4 tests/core.ir4 tests/muldiv.ir4 tests/mem.ir4
 	./$(TARGET) -t rv32 --virt -o $(BUILD)/math_rv32.elf   tests/math.ir4
 	./$(TARGET) -t rv32 --virt -o $(BUILD)/fnptr_rv32.elf  tests/fnptr.ir4
 	@if command -v qemu-system-riscv32 >/dev/null 2>&1; then \
-		for pair in "fib_rv32.elf:110" "core_rv32.elf:0" "muldiv_rv32.elf:0" "mem_rv32.elf:0" "float_rv32.elf:0" "req_rv32.elf:0" "data_rv32.elf:0" "ext_rv32.elf:OK0" "math_rv32.elf:0" "fnptr_rv32.elf:0"; do \
+		for pair in "fib_rv32.elf:0" "core_rv32.elf:0" "muldiv_rv32.elf:0" "mem_rv32.elf:0" "float_rv32.elf:0" "req_rv32.elf:0" "data_rv32.elf:0" "ext_rv32.elf:OK0" "math_rv32.elf:0" "fnptr_rv32.elf:0"; do \
 			f=$${pair%%:*}; exp=$${pair#*:}; \
 			out=$$(qemu-system-riscv32 -machine virt -cpu rv32 -bios none -nographic -kernel $(BUILD)/$$f | tr -d '\r\n'); \
 			echo "qemu-system-riscv32 $$f -> $$out"; \

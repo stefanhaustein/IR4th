@@ -173,12 +173,12 @@ static void ez_local_op(LocalOp op, size_t slot, StackType type, size_t stack_by
             emit8(EZ80_ADD_HL_SP);
             emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
             ez_pop_de();
-            emit8_24(EZ80_LD_HL_N24, (u32)off);
+            emit8_24(EZ80_LD_HL_N24, (u32)(off - 3));
             emit8(EZ80_ADD_HL_SP);
             emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
         } else {
             ez_pop_de();
-            emit8_24(EZ80_LD_HL_N24, (u32)off);
+            emit8_24(EZ80_LD_HL_N24, (u32)(off - 3));
             emit8(EZ80_ADD_HL_SP);
             emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
         }
@@ -205,67 +205,53 @@ static void ez_fn_begin(const char *name, size_t param_cnt, const LocalVar *loca
     VEC_ENSURE(ez_is_static, total_locals);
     ez_frame_bytes = 0;
 
-    for (i = 0; i < total_locals; i++) {
-        size_t sz = locals[i].size ? locals[i].size
-                                   : ((locals[i].type == TY_F || locals[i].type == TY_I32) ? 6 : 3);
-        ez_local_off.data[i] = ez_frame_bytes;
-        ez_is_static.data[i] = (u8)(!is_recursive);
-        ez_frame_bytes += sz;
-    }
-
     if (!is_recursive) {
+        for (i = 0; i < total_locals; i++) {
+            size_t sz = locals[i].size
+                            ? locals[i].size
+                            : ((locals[i].type == TY_F || locals[i].type == TY_I32) ? 6 : 3);
+            ez_local_off.data[i] = ez_frame_bytes;
+            ez_is_static.data[i] = 1;
+            ez_frame_bytes += sz;
+        }
         ez_static_base = ez_frame_bytes ? cb_alloc_data(ez_frame_bytes, 1) : 0;
         for (i = param_cnt; i > 0; i--) {
             ez_local_op(LOCAL_SET, i - 1, locals[i - 1].type, 0);
         }
     } else {
-        if (ez_frame_bytes > 0) {
-            /* Allocate frame on SP */
-            emit8_24(EZ80_LD_HL_N24, (u32)(0x1000000UL - (ez_frame_bytes & 0xFFFFFFUL)));
-            emit8(EZ80_ADD_HL_SP);
-            emit8(EZ80_LD_SP_HL);
+        /* Layout on SP: [local_only vars (0..local_bytes-1)] [params (param_cnt-1 .. 0)] */
+        size_t local_bytes = 0;
+        for (i = param_cnt; i < total_locals; i++) {
+            size_t sz = locals[i].size
+                            ? locals[i].size
+                            : ((locals[i].type == TY_F || locals[i].type == TY_I32) ? 6 : 3);
+            ez_local_off.data[i] = local_bytes;
+            ez_is_static.data[i] = 0;
+            local_bytes += sz;
         }
-        /* Pop params from above frame into frame slots */
+        ez_frame_bytes = local_bytes;
         for (i = param_cnt; i > 0; i--) {
             size_t p = i - 1;
             size_t sz = (locals[p].type == TY_F || locals[p].type == TY_I32) ? 6 : 3;
-            size_t src_off = ez_frame_bytes;
-            size_t dst_off = ez_local_off.data[p];
-            if (sz == 6) {
-                emit8_24(EZ80_LD_HL_N24, (u32)src_off);
-                emit8(EZ80_ADD_HL_SP);
-                emit8_8(EZ80_ED, EZ80_ED_LD_DE_MHL);
-                emit8_24(EZ80_LD_HL_N24, (u32)dst_off);
-                emit8(EZ80_ADD_HL_SP);
-                emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
-                emit8_24(EZ80_LD_HL_N24, (u32)(src_off + 3));
-                emit8(EZ80_ADD_HL_SP);
-                emit8_8(EZ80_ED, EZ80_ED_LD_DE_MHL);
-                emit8_24(EZ80_LD_HL_N24, (u32)(dst_off + 3));
-                emit8(EZ80_ADD_HL_SP);
-                emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
-            } else {
-                emit8_24(EZ80_LD_HL_N24, (u32)src_off);
-                emit8(EZ80_ADD_HL_SP);
-                emit8_8(EZ80_ED, EZ80_ED_LD_DE_MHL);
-                emit8_24(EZ80_LD_HL_N24, (u32)dst_off);
-                emit8(EZ80_ADD_HL_SP);
-                emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
-            }
-            /* Collapse parameter slot by moving frame up? Easier: just use SP+off for frame */
-            if (sz == 6) {
-                emit8(EZ80_POP_HL);
-                emit8(EZ80_POP_HL);
-            } else {
-                emit8(EZ80_POP_HL);
-            }
+            ez_local_off.data[p] = ez_frame_bytes;
+            ez_is_static.data[p] = 0;
+            ez_frame_bytes += sz;
+        }
+        if (local_bytes > 0) {
+            /* Allocate only non-param locals on SP; params are already on SP above them */
+            emit8_24(EZ80_LD_HL_N24, (u32)(0x1000000UL - (local_bytes & 0xFFFFFFUL)));
+            emit8(EZ80_ADD_HL_SP);
+            emit8(EZ80_LD_SP_HL);
         }
     }
 }
 
 static void ez_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_locals) {
-    (void)sig;
     (void)locals;
+    if (sig->out_types.len == 1) {
+        int out4 = (sig->out_types.data[0] == TY_F || sig->out_types.data[0] == TY_I32);
+        ez_stack_bytes -= out4 ? 6 : 3;
+    }
     if (total_locals > 0 && !ez_is_static.data[0] && ez_frame_bytes > 0) {
         /* Deallocate recursive frame */
         if (sig->out_types.len == 1) {
@@ -556,6 +542,22 @@ static void ez_ensure_sdivmod24(void) {
     emit8(EZ80_EX_DE_HL); /* DE = -quot */
     emit8(EZ80_POP_HL); /* restore rem */
     patch24(pos_q, (u32)cb_cur_addr());
+    /* Negate remainder if dividend was negative (sign in B) */
+    emit8(EZ80_LD_A_B);
+    emit8(EZ80_OR_A);
+    emit8(EZ80_JP_P);
+    {
+        u16 pos_r = (u16)cb_pc();
+        emit24(0);
+        emit8(EZ80_PUSH_DE); /* save quot */
+        emit8(EZ80_EX_DE_HL); /* DE = |rem| */
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE); /* HL = -|rem| */
+        emit8(EZ80_POP_DE); /* restore quot */
+        patch24(pos_r, (u32)cb_cur_addr());
+    }
     emit8(EZ80_RET);
     patch24(skip, (u32)cb_cur_addr());
 }

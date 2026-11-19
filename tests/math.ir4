@@ -55,11 +55,33 @@ fn main ( -> :i )
   dup 0 <> if return then drop
 
   \ arctan
+  0.2 arctan 0.1973956 35 assert_near
+  dup 0 <> if return then drop
+  0.5 arctan 0.4636476 36 assert_near
+  dup 0 <> if return then drop
   1.0 arctan 0.7853982 16 assert_near
   dup 0 <> if return then drop
   -1.0 arctan -0.7853982 17 assert_near
   dup 0 <> if return then drop
   2.0 arctan 1.1071487 18 assert_near
+  dup 0 <> if return then drop
+
+  \ atan2
+  1.0 1.0 atan2 0.7853982 27 assert_near
+  dup 0 <> if return then drop
+  1.0 -1.0 atan2 2.3561945 28 assert_near
+  dup 0 <> if return then drop
+  -1.0 -1.0 atan2 -2.3561945 29 assert_near
+  dup 0 <> if return then drop
+  -1.0 1.0 atan2 -0.7853982 30 assert_near
+  dup 0 <> if return then drop
+  1.0 0.0 atan2 1.5707963 31 assert_near
+  dup 0 <> if return then drop
+  -1.0 0.0 atan2 -1.5707963 32 assert_near
+  dup 0 <> if return then drop
+  0.0 -1.0 atan2 3.1415927 33 assert_near
+  dup 0 <> if return then drop
+  0.0 0.0 atan2 0.0 34 assert_near
   dup 0 <> if return then drop
 
   \ exp & ln

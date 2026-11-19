@@ -46,7 +46,7 @@ static void agon_end(int main_idx) {
     emit24((u32)sig->addr);
 
     if (sig->out_types.len == 1) {
-        emit8(EZ80_POP_HL); /* discard return value for now */
+        emit8(EZ80_POP_BC); /* preserve main() return value in BC for test harness */
     }
     emit8(EZ80_LD_HL_N24);
     emit24(0); /* MOS exit code */

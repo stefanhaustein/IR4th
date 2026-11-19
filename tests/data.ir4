@@ -45,6 +45,7 @@ end
 
 fn word_bytes ( -> :i )
   1 16 << 0 = if 2 return then
+  1 24 << 0 = if 3 return then
   1 31 << 1 << 0 = if 4 else 8 then
 end
 
