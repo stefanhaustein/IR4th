@@ -4,7 +4,7 @@
 \   2. Flat 24-bit addressing > 64 KiB (76,800-byte 320x240 off-screen buffer in bss)
 \   3. Agon VDP Mode 8 graphics via RST.LIL $10
 
-require "io.ir4"
+require "stdio.ir4"
 
 var fb :bytes 76800
 

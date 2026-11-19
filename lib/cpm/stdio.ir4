@@ -1,0 +1,33 @@
+extern bdos 0x0005 ( C :i DE :i -> A :i )
+
+fn emit ( c :i )
+  2 c bdos drop
+end
+
+fn key ( -> :i )
+  1 0 bdos
+end
+
+fn inkey ( -> :i )
+  11 0 bdos 0 <> if key else 0 then
+end
+
+fn cpm_exit ( )
+  0 0 bdos drop
+end
+
+fn cls ( )
+  27 emit 72 emit 27 emit 74 emit
+end
+
+fn gotoxy ( x :i y :i )
+  27 emit 89 emit y 32 + emit x 32 + emit
+end
+
+fn fgcolor ( c :i )
+  c drop
+end
+
+fn bgcolor ( c :i )
+  c drop
+end

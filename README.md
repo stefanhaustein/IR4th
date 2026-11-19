@@ -30,7 +30,7 @@ data msg
 end
 
 fn main ( -> :i )
-  msg prints
+  msg type0
   0
 end
 ```

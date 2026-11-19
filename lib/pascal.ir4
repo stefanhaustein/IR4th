@@ -20,7 +20,7 @@ fn pas_prints_w ( s :a w :i )
   begin
     w len >
   while
-    32 emit
+    32 xemit
     w 1 - -> w
   repeat
   s pas_prints
@@ -328,10 +328,10 @@ fn pas_putf_fix ( x :f w :i d :i )
   x rnd f+ -> x
   x fint fround -> ip
   x frac -> fr
-  neg if 45 emit then
-  ip putu
+  neg if 45 xemit then
+  ip typeu
   d 0 > if
-    46 emit
+    46 xemit
     0 -> k
     begin
       k d <
@@ -340,7 +340,7 @@ fn pas_putf_fix ( x :f w :i d :i )
       fr fint fround -> dig
       dig 9 > if 9 -> dig then
       dig 0 < if 0 -> dig then
-      dig 48 + emit
+      dig 48 + xemit
       fr dig i>f f- -> fr
       k 1 + -> k
     repeat

@@ -1,45 +1,62 @@
-require "io.ir4"
+default fn xemit ( c :i )
+  c emit
+end
 
 fn cr ( )
-  10 emit
+  10 xemit
 end
 
 fn type ( s :a len :i )
   begin
     len 0 >
   while
-    s u8@ emit
+    s u8@ xemit
     s 1 a+ -> s
     len 1 - -> len
   repeat
 end
 
-fn prints ( s :a )
+fn type0 ( s :a )
   var c :i
   begin
     s u8@ -> c
     c 0 <>
   while
-    c emit
+    c xemit
     s 1 a+ -> s
   repeat
 end
 
-fn putu ( n :i )
-  n 9 u> if n 10 u/ putu then
-  n 10 umod 48 + emit
+fn typeu ( n :i )
+  var buf :bytes 20
+  var len :i
+  0 -> len
+  n 0 = if 48 xemit return then
+  begin
+    n 0 <>
+  while
+    n 10 umod 48 + buf len a+ i8!
+    n 10 u/ -> n
+    len 1 + -> len
+  repeat
+  begin
+    len 0 >
+  while
+    len 1 - -> len
+    buf len a+ u8@ xemit
+  repeat
 end
 
-fn puti ( n :i )
+fn typei ( n :i )
   n 0 < if
-    45 emit
-    0 n - putu
+    45 xemit
+    0 n - typeu
     return
   then
-  n putu
+  n typeu
 end
 
-fn puti_w ( n :i w :i )
+fn typei_w ( n :i w :i )
   var d :i
   var t :i
   n -> t
@@ -62,27 +79,70 @@ fn puti_w ( n :i w :i )
   begin
     w d >
   while
-    32 emit
+    32 xemit
     w 1 - -> w
   repeat
-  n puti
+  n typei
 end
 
-fn puthex1 ( d :i )
-  d 15 and -> d
-  d 10 < if
-    d 48 + emit
-  else
-    d 55 + emit
-  then
+fn typeh_w ( n :i w :i )
+  var d :i
+  begin
+    w 0 >
+  while
+    w 1 - -> w
+    n w 2 << u>> 15 and -> d
+    d 10 < if
+      d 48 + xemit
+    else
+      d 55 + xemit
+    then
+  repeat
 end
 
-fn puthex2 ( n :i )
-  n 4 u>> puthex1
-  n puthex1
+fn typeh ( n :i )
+  var t :i
+  var w :i
+  n -> t
+  1 -> w
+  begin
+    t 15 u>
+  while
+    t 4 u>> -> t
+    w 1 + -> w
+  repeat
+  n w typeh_w
 end
 
-fn puthex4 ( n :i )
-  n 8 u>> puthex2
-  n puthex2
+default fn cls ( )
+  27 emit 91 emit 50 emit 74 emit
+  27 emit 91 emit 72 emit
+end
+
+default fn gotoxy ( x :i y :i )
+  27 emit 91 emit
+  y 1 + typeu
+  59 emit
+  x 1 + typeu
+  72 emit
+end
+
+default fn termwidth ( -> :i )
+  80
+end
+
+default fn termheight ( -> :i )
+  24
+end
+
+default fn fgcolor ( c :i )
+  27 emit 91 emit
+  c 8 < if 30 c + else 82 c + then typeu
+  109 emit
+end
+
+default fn bgcolor ( c :i )
+  27 emit 91 emit
+  c 8 < if 40 c + else 92 c + then typeu
+  109 emit
 end

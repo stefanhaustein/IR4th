@@ -3,7 +3,7 @@
 \ using lib/math.ir4 (sqrt, arctan) + AgDev float32, uploads them as VDP
 \ sprite frames, draws the perspective grid, and bounces at 60 fps.
 
-require "io.ir4"
+require "stdio.ir4"
 require "math.ir4"
 
 var ilat_buf :bytes 2304

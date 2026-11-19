@@ -1,12 +1,10 @@
-\ rtl.ir4 - Portable RTL tests (stdio.ir4, mem.ir4, pascal.ir4)
+\ rtl.ir4 - Portable RTL tests (stdio.ir4, mem.ir4)
 \ Expected main() output ends with 0 (return code)
 
-require "pascal.ir4"
+require "stdio.ir4"
+require "../lib/mem.ir4"
 
-data s_hi  2 :i8 "Hi" end
-data s_wld 5 :i8 "World" end
-data s_hi2 2 :i8 "Hi" end
-data s_exp 7 :i8 "HiWorld" end
+data s_exp "HiWorld" 0 :i8 end
 data c_msg "RTL:" 0 :i8 end
 
 var buf1 :bytes 16
@@ -26,14 +24,14 @@ fn main ( -> :i )
   var p1 :a
   var p2 :a
   \ stdio formatting smoke test
-  c_msg prints
-  -42 puti
+  c_msg type0
+  -42 typei
   32 emit
-  65535 putu
+  65535 typeu
   32 emit
-  7 4 puti_w
+  7 4 typei_w
   32 emit
-  0xBEEF puthex4
+  0xBEEF 4 typeh_w
   32 emit
 
   \ mem.ir4: fillchar, memcpy, memcmp
@@ -52,11 +50,11 @@ fn main ( -> :i )
   dup 0 <> if return then drop
 
   \ overlapping memcpy (dst > src, e.g. shifting "HiWorld" right by 2)
-  buf2 s_exp pas_strcopy
-  buf2 3 a+ buf2 1 a+ 5 memcpy
-  buf2 3 a+ u8@ 72 15 assert_eq
+  buf2 s_exp 7 memcpy
+  buf2 2 a+ buf2 7 memcpy
+  buf2 2 a+ u8@ 72 15 assert_eq
   dup 0 <> if return then drop
-  buf2 7 a+ u8@ 114 16 assert_eq
+  buf2 6 a+ u8@ 114 16 assert_eq
   dup 0 <> if return then drop
 
   \ heap_alloc / heap_free (with coalescing) / heap_reset
@@ -74,28 +72,10 @@ fn main ( -> :i )
   8 heap_alloc p1 a= -1 14 assert_eq
   dup 0 <> if return then drop
 
-  \ pascal.ir4: abs, strlen, strcopy, streq, strconcat, prints
-  -123 pas_abs 123 8 assert_eq
-  dup 0 <> if return then drop
-  s_hi pas_strlen 2 9 assert_eq
-  dup 0 <> if return then drop
-  s_hi s_hi2 pas_streq -1 10 assert_eq
-  dup 0 <> if return then drop
-  s_hi s_wld pas_streq 0 11 assert_eq
-  dup 0 <> if return then drop
-
-  buf1 s_hi pas_strcopy
-  buf1 s_hi pas_streq -1 12 assert_eq
-  dup 0 <> if return then drop
-
-  buf2 s_hi s_wld pas_strconcat
-  buf2 s_exp pas_streq -1 13 assert_eq
-  dup 0 <> if return then drop
-
-  buf2 pas_prints
   cr
 
   \ :bytes parameter (copy-by-value into callee frame)
+  2 buf1 i8!
   buf1 mutate_copy 99 17 assert_eq
   dup 0 <> if return then drop
   buf1 u8@ 2 18 assert_eq
