@@ -1,0 +1,21 @@
+\ x16/stdio.ir4 - Commander X16 overrides (inherits emit, inkey, key, xemit, cls, gotoxy from c64/stdio.ir4)
+
+fwd emit ( c :i )
+
+fn termwidth ( -> :i ) 80 end
+fn termheight ( -> :i ) 60 end
+
+\ ANSI 0..7 -> PETSCII color control bytes (black, red, green, yellow, blue, purple, cyan, white)
+data __x16_fg_codes
+  144 :i8 28 :i8 30 :i8 158 :i8 31 :i8 156 :i8 159 :i8 5 :i8
+end
+
+fn fgcolor ( c :i )
+  __x16_fg_codes c 7 and a+ u8@ emit
+end
+
+fn bgcolor ( c :i )
+  1 emit
+  c fgcolor
+  1 emit
+end

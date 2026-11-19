@@ -102,6 +102,7 @@ typedef struct {
     const char *path;
     u32 line_num;
     u16 req_group;
+    u8 req_rank;
 } SrcFile;
 
 VEC_OF(SrcVec, SrcFile);
@@ -296,7 +297,7 @@ static FILE *try_open_require(const char *path, int *already_seen) {
     return fopen(path, "r");
 }
 
-static void push_src_file(FILE *fp, const char *path, u16 req_group) {
+static void push_src_file(FILE *fp, const char *path, u16 req_group, u8 req_rank) {
     const char *ipath = intern_str(path);
     SrcFile *sf = VEC_ADD(src_stack);
     VEC_PUSH(seen_files, ipath);
@@ -304,20 +305,31 @@ static void push_src_file(FILE *fp, const char *path, u16 req_group) {
     sf->path = ipath;
     sf->line_num = 1;
     sf->req_group = req_group;
+    sf->req_rank = req_rank;
+}
+
+static const char *platform_parent(const char *plat) {
+    if (plat && strcmp(plat, "x16") == 0)
+        return "c64";
+    return NULL;
 }
 
 static void push_require_ex(const char *name, int lib_only) {
-    const char *cands[3];
+    const char *cands[4];
     int n_cands = 0;
     int c;
-    FILE *found_fps[3];
-    const char *found_paths[3];
+    FILE *found_fps[4];
+    const char *found_paths[4];
+    u8 found_ranks[4];
     int found_cnt = 0;
     int seen_cnt = 0;
 
     if (name[0] != '/') {
         if (platform_name != NULL && platform_name[0] != '\0') {
+            const char *par = platform_parent(platform_name);
             cands[n_cands++] = path_join(platform_name, name);
+            if (par)
+                cands[n_cands++] = path_join(par, name);
         }
         cands[n_cands++] = path_join(be->name, name);
     }
@@ -333,6 +345,7 @@ static void push_require_ex(const char *name, int lib_only) {
             else if (fp) {
                 found_fps[found_cnt] = fp;
                 found_paths[found_cnt] = path;
+                found_ranks[found_cnt] = (u8)c;
                 found_cnt++;
             }
         }
@@ -363,6 +376,7 @@ static void push_require_ex(const char *name, int lib_only) {
                 else if (fp) {
                     found_fps[found_cnt] = fp;
                     found_paths[found_cnt] = path;
+                    found_ranks[found_cnt] = (u8)c;
                     found_cnt++;
                 }
             }
@@ -381,6 +395,7 @@ static void push_require_ex(const char *name, int lib_only) {
             else if (fp) {
                 found_fps[found_cnt] = fp;
                 found_paths[found_cnt] = path;
+                found_ranks[found_cnt] = (u8)c;
                 found_cnt++;
             }
         }
@@ -391,7 +406,7 @@ static void push_require_ex(const char *name, int lib_only) {
         int i;
         /* Push least-specific first so most-specific is parsed first on LIFO stack. */
         for (i = found_cnt - 1; i >= 0; i--) {
-            push_src_file(found_fps[i], found_paths[i], grp);
+            push_src_file(found_fps[i], found_paths[i], grp, found_ranks[i]);
         }
         return;
     }
@@ -1188,6 +1203,7 @@ static void compile_word(int is_default, int is_hot) {
     int existing;
     size_t param_cnt = 0;
     u16 cur_grp = src_stack.data[src_stack.len - 1].req_group;
+    u8 cur_rank = src_stack.data[src_stack.len - 1].req_rank;
 
     name = next_tok_intern();
     if (!name)
@@ -1207,11 +1223,13 @@ static void compile_word(int is_default, int is_hot) {
             if (cur_grp == 0 || ex->req_group != cur_grp) {
                 ir4_die("duplicate function definition");
             }
-            if (is_default && ex->is_default) {
-                ir4_die("duplicate 'default' function definition");
-            }
-            if (!is_default && !ex->is_default) {
-                ir4_die("duplicate function definition");
+            if (cur_rank == ex->req_rank) {
+                if (is_default && ex->is_default) {
+                    ir4_die("duplicate 'default' function definition");
+                }
+                if (!is_default && !ex->is_default) {
+                    ir4_die("duplicate function definition");
+                }
             }
         }
         fidx = (size_t)existing;
@@ -1225,7 +1243,8 @@ static void compile_word(int is_default, int is_hot) {
                         ? "override signature does not match 'default' declaration"
                         : "function signature does not match 'fwd' declaration");
         }
-        if (is_default && ex->is_defined) {
+        if ((is_default && ex->is_defined && cur_rank == ex->req_rank) ||
+            (ex->is_defined && cur_rank > ex->req_rank)) {
             /* Already overridden by a more-specific file in this require group. */
             free_sig_vecs(&fn_sig);
             discard_body = 1;
@@ -1238,6 +1257,7 @@ static void compile_word(int is_default, int is_hot) {
             ex->is_default = (u8)is_default;
             ex->is_hot = (u8)is_hot;
             ex->req_group = cur_grp;
+            ex->req_rank = cur_rank;
             sig = ex;
             w = words.data[fidx];
             memset(w, 0, sizeof(WordIR));
@@ -1249,6 +1269,7 @@ static void compile_word(int is_default, int is_hot) {
         sig->is_default = (u8)is_default;
         sig->is_hot = (u8)is_hot;
         sig->req_group = cur_grp;
+        sig->req_rank = cur_rank;
         tstack.len = 0;
         blocks.len = 0;
         parse_sig_body(sig, &param_cnt, 1);
@@ -1282,6 +1303,7 @@ static void compile_code(void) {
 
     int existing;
     u16 cur_grp = src_stack.data[src_stack.len - 1].req_group;
+    u8 cur_rank = src_stack.data[src_stack.len - 1].req_rank;
 
     name = next_tok_intern();
     if (!name)
@@ -1309,6 +1331,7 @@ static void compile_code(void) {
         ex->is_defined = 1;
         ex->is_default = 0;
         ex->req_group = cur_grp;
+        ex->req_rank = cur_rank;
         sig = ex;
         w = words.data[fidx];
         memset(w, 0, sizeof(WordIR));
@@ -1320,6 +1343,7 @@ static void compile_code(void) {
         sig->name = name;
         sig->is_defined = 1;
         sig->req_group = cur_grp;
+        sig->req_rank = cur_rank;
         parse_sig_body(sig, NULL, 0);
     }
 
@@ -2338,6 +2362,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     sf->path = root_path;
     sf->line_num = 1;
     sf->req_group = 0;
+    sf->req_rank = 0;
     next_req_group = 1;
 
     seen_files.len = 0;
@@ -2398,25 +2423,30 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 ir4_die("expected '(' after 'fwd' name");
             parse_sig_body(sig, NULL, 0);
         } else if (strcmp(tok, "extern") == 0) {
-            FuncSig *sig;
+            FuncSig ex_sig;
             const char *name;
-            alloc_func(&sig, NULL);
-            sig->is_extern = 1;
-            sig->is_defined = 1;
+            int existing;
+            u16 cur_grp = src_stack.data[src_stack.len - 1].req_group;
+            u8 cur_rank = src_stack.data[src_stack.len - 1].req_rank;
             name = next_tok_intern();
             if (!name)
                 ir4_die("expected word name after 'extern'");
-            sig->name = name;
+            memset(&ex_sig, 0, sizeof(FuncSig));
+            ex_sig.name = name;
+            ex_sig.is_extern = 1;
+            ex_sig.is_defined = 1;
+            ex_sig.req_group = cur_grp;
+            ex_sig.req_rank = cur_rank;
             tok = next_tok();
             if (!tok)
                 ir4_die("expected address or '(' after extern name");
             if (strcmp(tok, "(") == 0) {
-                sig->has_addr = 0;
+                ex_sig.has_addr = 0;
             } else if (parse_int(tok, &num_val)) {
                 if (num_val < 0 || num_val > 0xFFFF)
                     ir4_die("invalid extern address");
-                sig->addr = (u16)num_val;
-                sig->has_addr = 1;
+                ex_sig.addr = (u16)num_val;
+                ex_sig.has_addr = 1;
                 tok = next_tok();
                 if (!tok || strcmp(tok, "(") != 0) {
                     ir4_die("expected '(' after extern address");
@@ -2424,9 +2454,35 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             } else {
                 ir4_die("expected address or '(' after extern name");
             }
-            parse_sig_body(sig, NULL, 0);
-            if (sig->out_types.len > 1)
+            parse_sig_body(&ex_sig, NULL, 0);
+            if (ex_sig.out_types.len > 1)
                 ir4_die("extern supports at most 1 return value");
+            existing = ir4_find_func(name);
+            if (existing >= 0) {
+                FuncSig *ex = funcs.data[existing];
+                if (!ex->is_defined) {
+                    if (!sigs_match(&ex_sig, ex))
+                        ir4_die("extern signature does not match 'fwd' declaration");
+                    free_sig_vecs(ex);
+                    *ex = ex_sig;
+                } else if (cur_grp != 0 && ex->req_group == cur_grp && cur_rank != ex->req_rank) {
+                    if (!sigs_match(&ex_sig, ex))
+                        ir4_die("override extern signature does not match");
+                    if (cur_rank > ex->req_rank) {
+                        free_sig_vecs(&ex_sig);
+                    } else {
+                        free_sig_vecs(ex);
+                        *ex = ex_sig;
+                    }
+                } else {
+                    free_sig_vecs(&ex_sig);
+                    ir4_die("duplicate function definition");
+                }
+            } else {
+                FuncSig *sig;
+                alloc_func(&sig, NULL);
+                *sig = ex_sig;
+            }
         } else if (strcmp(tok, "require") == 0) {
             push_require(read_require_path());
         } else if (strcmp(tok, "data") == 0) {

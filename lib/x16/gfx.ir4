@@ -1,0 +1,147 @@
+\ x16/gfx.ir4 - Commander X16 VERA 8bpp bitmap modes (320x240 and 160x120 via Mode $80)
+
+data __x16_modes
+  128 :i16 320 :i16 240 :i16 8 :i16
+  1   :i16 160 :i16 120 :i16 8 :i16
+end
+
+var __x16_col :i
+var __x16_w :i
+var __x16_h :i
+
+code __x16_mode_gfx ( )
+  0xA9 :i8 0x80 :i8 0x18 :i8 0x4C :i8 0x5F :i8 0xFF :i8
+end
+
+code __x16_mode_txt ( )
+  0xA9 :i8 0x00 :i8 0x18 :i8 0x4C :i8 0x5F :i8 0xFF :i8
+end
+
+fn gfxmodes ( -> :a :i )
+  __x16_modes 2
+end
+
+fn gfxwidth ( -> :i ) __x16_w end
+fn gfxheight ( -> :i ) __x16_h end
+fn gfxdepth ( -> :i ) 8 end
+
+fn __x16_init_pal ( )
+  var r :i
+  var g :i
+  var b :i
+  \ VERA palette indices 16..231 at VRAM $1FA20 (auto-inc +1 => ADDR_H = $11)
+  0 0x9F25 i>a i8!
+  0x20 0x9F20 i>a i8!
+  0xFA 0x9F21 i>a i8!
+  0x11 0x9F22 i>a i8!
+  0 -> r
+  begin r 6 < while
+    0 -> g
+    begin g 6 < while
+      0 -> b
+      begin b 6 < while
+        g 3 * 4 << b 3 * or 0x9F23 i>a i8!
+        r 3 * 0x9F23 i>a i8!
+        b 1 + -> b
+      repeat
+      g 1 + -> g
+    repeat
+    r 1 + -> r
+  repeat
+end
+
+fn gfxmode ( mode :i )
+  15 -> __x16_col
+  __x16_mode_gfx
+  __x16_init_pal
+  mode 1 = if
+    160 -> __x16_w
+    120 -> __x16_h
+    0 0x9F25 i>a i8!
+    32 0x9F2A i>a i8!
+    32 0x9F2B i>a i8!
+  else
+    320 -> __x16_w
+    240 -> __x16_h
+  then
+end
+
+fn gfxdone ( )
+  __x16_mode_txt
+end
+
+fn gfxvsync ( )
+  begin 0x9F27 i>a u8@ 0 <> while repeat
+end
+
+\ Map 8-bit RGB to X16 default 6x6x6 palette cube (indices 16..231)
+fn gfxrgb ( r :i g :i b :i -> :i )
+  r 6 * 8 u>> 36 *
+  g 6 * 8 u>> 6 * +
+  b 6 * 8 u>> +
+  16 +
+end
+
+fn gfxcolor ( c :i )
+  c 255 and -> __x16_col
+end
+
+hot fn __x16_set_addr ( x :i y :i inc :i )
+  var lo :i
+  var mid :i
+  0 0x9F25 i>a i8!
+  x 255 and y 3 and 6 << + -> lo
+  x 8 u>> y + y 2 u>> + -> mid
+  lo 255 > if
+    lo 255 and -> lo
+    mid 1 + -> mid
+  then
+  lo 0x9F20 i>a i8!
+  mid 255 and 0x9F21 i>a i8!
+  mid 8 u>> inc or 0x9F22 i>a i8!
+end
+
+hot fn gfxpx ( x :i y :i )
+  x 0 < x __x16_w >= or y 0 < y __x16_h >= or or if return then
+  x y 0 __x16_set_addr
+  __x16_col 0x9F23 i>a i8!
+end
+
+hot fn gfxhline ( x :i y :i w :i )
+  y 0 < y __x16_h >= or if return then
+  x 0 < if w x + -> w 0 -> x then
+  x w + __x16_w > if __x16_w x - -> w then
+  w 0 <= if return then
+  x y 0x10 __x16_set_addr
+  begin w 0 > while
+    __x16_col 0x9F23 i>a i8!
+    w 1 - -> w
+  repeat
+end
+
+fn gfxvline ( x :i y :i h :i )
+  x 0 < x __x16_w >= or if return then
+  y 0 < if h y + -> h 0 -> y then
+  y h + __x16_h > if __x16_h y - -> h then
+  h 0 <= if return then
+  x y 0xE0 __x16_set_addr
+  begin h 0 > while
+    __x16_col 0x9F23 i>a i8!
+    h 1 - -> h
+  repeat
+end
+
+fn gfxclear ( )
+  var row :i
+  var col :i
+  0 0 0x10 __x16_set_addr
+  __x16_h -> row
+  begin row 0 > while
+    320 -> col
+    begin col 0 > while
+      __x16_col 0x9F23 i>a i8!
+      col 1 - -> col
+    repeat
+    row 1 - -> row
+  repeat
+end

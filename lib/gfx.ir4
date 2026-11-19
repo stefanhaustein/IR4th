@@ -22,6 +22,7 @@ end
 
 default fn gfxwidth ( -> :i ) __gfx_w end
 default fn gfxheight ( -> :i ) __gfx_h end
+\ Per-pixel color depth in bits (1 on attribute-cell targets like C64/Spectrum, where gfxrgb may still return palette colors per cell)
 default fn gfxdepth ( -> :i ) 3 end
 default fn gfxvsync ( ) end
 
@@ -84,7 +85,8 @@ default fn gfxinit ( w :i h :i depth :i )
   best_mode gfxmode
 end
 
-\ Map 8-bit RGB (0..255) to the platform's native color value for gfxcolor
+\ Map 8-bit RGB (0..255) to the platform's native color value for gfxcolor.
+\ On attribute-cell targets (gfxdepth = 1), non-zero colors may still set per-cell attributes.
 default fn gfxrgb ( r :i g :i b :i -> :i )
   var c :i
   0 -> c
@@ -181,4 +183,32 @@ default fn gfxclear ( )
   __gfx_fb __gfx_w termheight * __gfx_col 4 << __gfx_col or fillchar
   __gfx_col bgcolor
   cls
+end
+
+\ Draw a circle outline of radius r centered at (cx, cy) using the midpoint algorithm
+default fn gfxcircle ( cx :i cy :i r :i )
+  var x :i
+  var y :i
+  var err :i
+  r 0 < if return then
+  r -> x
+  0 -> y
+  1 r - -> err
+  begin x y >= while
+    cx x + cy y + gfxpx
+    cx y + cy x + gfxpx
+    cx y - cy x + gfxpx
+    cx x - cy y + gfxpx
+    cx x - cy y - gfxpx
+    cx y - cy x - gfxpx
+    cx y + cy x - gfxpx
+    cx x + cy y - gfxpx
+    y 1 + -> y
+    err 0 < if
+      err y 1 << + 1 + -> err
+    else
+      x 1 - -> x
+      err y x - 1 << + 1 + -> err
+    then
+  repeat
 end

@@ -12,6 +12,7 @@
 #include <math.h>
 
 static u8 zp_scratch = 0xFB;
+static int zp_explicit = 0;
 static u8 stack_zp_base = 0;
 static u8 stack_zp_init_x = 0;
 static int stack_zp_explicit = 0;
@@ -40,7 +41,16 @@ static void m6502_bc_local_op(LocalOp op, size_t slot, StackType type);
 static void m6502_bc_stack_op(StackOp op, StackType t1, StackType t2);
 static void m6502_bc_op(IrOp op);
 
-void be_6502_set_zp(u8 zp) { zp_scratch = zp; }
+void be_6502_set_zp(u8 zp) {
+    zp_scratch = zp;
+    zp_explicit = 1;
+}
+
+void be_6502_set_default_zp(u8 zp) {
+    if (!zp_explicit) {
+        zp_scratch = zp;
+    }
+}
 
 void be_6502_set_stack_zp(u8 base, u8 init_x) {
     stack_zp_base = base;

@@ -90,7 +90,7 @@ fn render_mandel ( )
 end
 
 fn main ( -> :i )
-  0 0 0 gfxinit
+  160 120 8 gfxinit
   init_pal
   render_mandel
   key drop

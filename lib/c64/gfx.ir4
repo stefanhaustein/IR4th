@@ -1,5 +1,16 @@
-\ c64/gfx.ir4 - Commodore 64 VIC-II Hires Bitmap (320x200) in VIC Bank 1 ($4000-$7FFF)
-\ Screen RAM at $4400 (1000 bytes), Bitmap at $6000 (8000 bytes), leaves $0801-$43FF for code.
+\ c64/gfx.ir4 - Commodore 64 VIC-II Hires Bitmap (320x200) in VIC Bank 3 ($C000-$FFFF)
+\
+\ Memory layout:
+\   $0801-$CBFF (~49 KB) : Unbroken Code + BSS + Heap + bfp frame stack (ram_top = $CC00)
+\   $CC00-$CFE7 (1000 B) : VIC Character RAM (foreground/background 8x8 color attributes)
+\   $D000-$DFFF          : VIC / SID / CIA I/O
+\   $E000-$FF3F (8000 B) : VIC Graphics RAM (underneath KERNAL ROM; CPU writes go to RAM,
+\                          reads use __c64_peek_under with $01=$35 while IRQs are disabled)
+\
+\ Color model:
+\   gfxdepth returns 1 (1 bpp pixel density, so B/W-aware apps like mandel avoid clash),
+\   while gfxrgb maps RGB to 8 C64 colors and gfxpx/gfxhline/gfxvline update the 8x8 cell
+\   foreground attribute in $CC00 (ZX Spectrum-style attribute clash; bg stays color 0).
 
 data __c64_modes
   0 :i16 320 :i16 200 :i16 1 :i16
@@ -10,6 +21,18 @@ data __c64_gfx_pal
 end
 
 var __c64_col :i
+
+\ Read 1 byte from RAM underneath KERNAL ROM ($E000-$FFFF) with IRQs disabled
+code __c64_peek_under ( p :a -> :i )
+  0xBD :i8 0 :as 0x85 :i8 0x02 :i8
+  0xBD :i8 1 :as 0x85 :i8 0x03 :i8
+  0x78 :i8 0xA9 :i8 0x35 :i8 0x85 :i8 0x01 :i8
+  0xA0 :i8 0x00 :i8 0xB1 :i8 0x02 :i8 0xA8 :i8
+  0xA9 :i8 0x36 :i8 0x85 :i8 0x01 :i8 0x58 :i8
+  0x98 :i8 0x9D :i8 0 :as
+  0xA9 :i8 0x00 :i8 0x9D :i8 1 :as
+  0x60 :i8
+end
 
 fn gfxmodes ( -> :a :i )
   __c64_modes 1
@@ -22,10 +45,10 @@ fn gfxdepth ( -> :i ) 1 end
 fn gfxmode ( mode :i )
   mode drop
   1 -> __c64_col
-  \ Select VIC bank 1 ($4000-$7FFF): CIA2 $DD00 bits 0..1 = 2
-  56576 i>a u8@ 252 and 2 or 56576 i>a i8!
-  \ Screen at $4400 ($0400 in bank), bitmap at $6000 ($2000 in bank): $D018 = $18
-  24 53272 i>a i8!
+  \ Select VIC bank 3 ($C000-$FFFF): CIA2 $DD00 bits 0..1 = 0
+  56576 i>a u8@ 252 and 56576 i>a i8!
+  \ Character RAM at $CC00 ($0C00 in bank), Graphics RAM at $E000 ($2000 in bank): $D018 = $38
+  56 53272 i>a i8!
   \ Enable bitmap mode: $D011 = $3B
   59 53265 i>a i8!
 end
@@ -58,7 +81,7 @@ fn gfxclear ( )
   var p :a
   var n :i
   var attr :i
-  0x6000 i>a -> p
+  0xE000 i>a -> p
   8000 -> n
   begin n 0 > while
     0 p i8!
@@ -66,7 +89,7 @@ fn gfxclear ( )
     n 1 - -> n
   repeat
   __c64_col 0 = if 0 else __c64_col 4 << then -> attr
-  0x4400 i>a -> p
+  0xCC00 i>a -> p
   1000 -> n
   begin n 0 > while
     attr p i8!
@@ -86,14 +109,14 @@ hot fn gfxpx ( x :i y :i )
   y 3 u>> -> row
   x 3 u>> -> col
   row 8 << row 6 << + col 3 << + y 7 and + -> off
-  0x6000 i>a off a+ -> p
+  0xE000 i>a off a+ -> p
   128 x 7 and u>> -> mask
   __c64_col 0 <> if
-    p u8@ mask or p i8!
-    0x4400 i>a row 5 << row 3 << + col + a+ -> cell
+    p __c64_peek_under mask or p i8!
+    0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
     cell u8@ 15 and __c64_col 4 << or cell i8!
   else
-    p u8@ mask 255 xor and p i8!
+    p __c64_peek_under mask 255 xor and p i8!
   then
 end
 
@@ -111,10 +134,10 @@ hot fn gfxhline ( x :i y :i w :i )
   begin w 0 > while
     x 7 and 0 = w 8 >= and if
       x 3 u>> -> col
-      0x6000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
+      0xE000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
       __c64_col 0 <> if
         255 p i8!
-        0x4400 i>a row 5 << row 3 << + col + a+ -> cell
+        0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
         cell u8@ 15 and __c64_col 4 << or cell i8!
       else
         0 p i8!
@@ -123,14 +146,14 @@ hot fn gfxhline ( x :i y :i w :i )
       w 8 - -> w
     else
       x 3 u>> -> col
-      0x6000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
+      0xE000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
       128 x 7 and u>> -> mask
       __c64_col 0 <> if
-        p u8@ mask or p i8!
-        0x4400 i>a row 5 << row 3 << + col + a+ -> cell
+        p __c64_peek_under mask or p i8!
+        0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
         cell u8@ 15 and __c64_col 4 << or cell i8!
       else
-        p u8@ mask 255 xor and p i8!
+        p __c64_peek_under mask 255 xor and p i8!
       then
       x 1 + -> x
       w 1 - -> w
@@ -138,7 +161,7 @@ hot fn gfxhline ( x :i y :i w :i )
   repeat
 end
 
-hot fn gfxvline ( x :i y :i h :i )
+fn gfxvline ( x :i y :i h :i )
   var row :i
   var col :i
   var ry :i
@@ -153,8 +176,8 @@ hot fn gfxvline ( x :i y :i h :i )
   y 3 u>> -> row
   x 3 u>> -> col
   y 7 and -> ry
-  0x6000 i>a row 8 << row 6 << + col 3 << + ry + a+ -> p
-  0x4400 i>a row 5 << row 3 << + col + a+ -> cell
+  0xE000 i>a row 8 << row 6 << + col 3 << + ry + a+ -> p
+  0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
   128 x 7 and u>> -> mask
   mask 255 xor -> nmask
   __c64_col 0 <> if
@@ -162,9 +185,9 @@ hot fn gfxvline ( x :i y :i h :i )
   then
   begin h 0 > while
     __c64_col 0 <> if
-      p u8@ mask or p i8!
+      p __c64_peek_under mask or p i8!
     else
-      p u8@ nmask and p i8!
+      p __c64_peek_under nmask and p i8!
     then
     h 1 - -> h
     h 0 > if
