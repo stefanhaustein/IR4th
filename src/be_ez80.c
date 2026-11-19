@@ -497,10 +497,18 @@ static void ez_ensure_sdivmod24(void) {
     ez_ld_data_hl(ez_tmp_off);
     emit8(EZ80_EX_DE_HL);
     ez_ld_data_hl(ez_tmp_off + 3);
-    /* Sign of dividend = tmp+2 bit 7 */
+    /* Save original sign bytes in B (dividend) and C (divisor) */
     emit8(EZ80_LD_A_NN);
     cb_add_data_reloc24(cb_pc(), ez_tmp_off + 2);
     emit24(0);
+    emit8(EZ80_LD_B_A);
+    emit8(EZ80_LD_A_NN);
+    cb_add_data_reloc24(cb_pc(), ez_tmp_off + 5);
+    emit24(0);
+    emit8(EZ80_LD_C_A);
+    emit8(EZ80_PUSH_BC);
+    /* Negate dividend if < 0 */
+    emit8(EZ80_LD_A_B);
     emit8(EZ80_OR_A);
     emit8(EZ80_JP_P);
     pos_a = (u16)cb_pc();
@@ -514,9 +522,7 @@ static void ez_ensure_sdivmod24(void) {
     ez_ld_data_hl(ez_tmp_off);
     patch24(pos_a, (u32)cb_cur_addr());
 
-    emit8(EZ80_LD_A_NN);
-    cb_add_data_reloc24(cb_pc(), ez_tmp_off + 5);
-    emit24(0);
+    emit8(EZ80_LD_A_C);
     emit8(EZ80_OR_A);
     emit8(EZ80_JP_P);
     pos_b = (u16)cb_pc();
@@ -536,15 +542,9 @@ static void ez_ensure_sdivmod24(void) {
     emit8(EZ80_PUSH_HL);
     emit8(EZ80_POP_BC); /* BC = |divisor| */
     emit8_24(EZ80_CALL, (u32)ez_udivmod24_addr);
-    /* Check if signs differed */
-    emit8(EZ80_LD_A_NN);
-    cb_add_data_reloc24(cb_pc(), ez_tmp_off + 2);
-    emit24(0);
-    emit8(EZ80_LD_B_A);
-    emit8(EZ80_LD_A_NN);
-    cb_add_data_reloc24(cb_pc(), ez_tmp_off + 5);
-    emit24(0);
-    emit8(EZ80_XOR_B);
+    emit8(EZ80_POP_BC); /* B = dividend sign, C = divisor sign */
+    emit8(EZ80_LD_A_B);
+    emit8(EZ80_XOR_C);
     emit8(EZ80_JP_P);
     pos_q = (u16)cb_pc();
     emit24(0);
