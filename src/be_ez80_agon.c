@@ -1,4 +1,5 @@
 /* be_ez80_agon.c - Agon MOS (eZ80 ADL) executable stub for IR4th (Strict C89) */
+#include "be_ez80.h"
 #include "codebuf.h"
 #include "frontend.h"
 
@@ -9,7 +10,7 @@ static void agon_begin(size_t base) {
     size_t i;
     (void)base;
     /* Reserve JP start (4 bytes) + pad to 0x40 + "MOS" header (5 bytes) */
-    emit8(0xC3);
+    emit8(EZ80_JP);
     emit24(0);
     for (i = 4; i < 0x40; i++)
         emit8(0x00);
@@ -34,22 +35,22 @@ static void agon_end(int main_idx) {
     patch24(1, entry);
 
     /* Initialize BSS return stack pointer */
-    emit8(0x21); /* LD HL, rstack_top */
+    emit8(EZ80_LD_HL_N24);
     cb_add_data_reloc24(cb_pc(), rtop_off);
     emit24(0);
-    emit8(0x22); /* LD (rsp), HL */
+    emit8(EZ80_LD_NN_HL);
     cb_add_data_reloc24(cb_pc(), rsp_off);
     emit24(0);
 
-    emit8(0xCD);
+    emit8(EZ80_CALL);
     emit24((u32)sig->addr);
 
     if (sig->out_types.len == 1) {
-        emit8(0xE1); /* POP HL (discard return value for now) */
+        emit8(EZ80_POP_HL); /* discard return value for now */
     }
-    emit8(0x21);
-    emit24(0);   /* LD HL, 0 (MOS exit code) */
-    emit8(0xC9); /* RET */
+    emit8(EZ80_LD_HL_N24);
+    emit24(0); /* MOS exit code */
+    emit8(EZ80_RET);
 }
 
 const Platform plat_ez80_agon = {"--agon", &be_ez80, 0x040000UL, "agon", true,

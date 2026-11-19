@@ -4,6 +4,7 @@
  *   - Return stack: dedicated 24-bit BSS stack pointed to by BSS rsp_off
  *   - Locals: static BSS for non-recursive functions; SP-relative for recursive
  */
+#include "be_ez80.h"
 #include "be_ez80_rt.h"
 #include "codebuf.h"
 #include "vec.h"
@@ -26,7 +27,7 @@ static void ez_ensure_rt(void) {
     size_t base_pc, i;
     if (ez_rt_addr != 0)
         return;
-    emit8(0xC3);
+    emit8(EZ80_JP);
     skip = (u16)cb_pc();
     emit24(0);
     ez_rt_addr = cb_cur_addr();
@@ -69,19 +70,19 @@ static void emit8_24(u8 op, u32 val) {
 }
 
 static void ez_ld_hl_data(size_t data_off) {
-    emit8(0x21); /* LD HL, imm24 */
+    emit8(EZ80_LD_HL_N24);
     cb_add_data_reloc24(cb_pc(), data_off);
     emit24(0);
 }
 
 static void ez_ld_hl_ind_data(size_t data_off) {
-    emit8(0x2A); /* LD HL, (addr24) */
+    emit8(EZ80_LD_HL_NN);
     cb_add_data_reloc24(cb_pc(), data_off);
     emit24(0);
 }
 
 static void ez_ld_data_hl(size_t data_off) {
-    emit8(0x22); /* LD (addr24), HL */
+    emit8(EZ80_LD_NN_HL);
     cb_add_data_reloc24(cb_pc(), data_off);
     emit24(0);
 }
@@ -89,17 +90,17 @@ static void ez_ld_data_hl(size_t data_off) {
 static size_t ez_stack_bytes = 0;
 
 static void ez_push_hl(void) {
-    emit8(0xE5);
+    emit8(EZ80_PUSH_HL);
     ez_stack_bytes += 3;
 }
 
 static void ez_pop_hl(void) {
-    emit8(0xE1);
+    emit8(EZ80_POP_HL);
     ez_stack_bytes -= 3;
 }
 
 static void ez_pop_de(void) {
-    emit8(0xD1);
+    emit8(EZ80_POP_DE);
     ez_stack_bytes -= 3;
 }
 
@@ -146,40 +147,40 @@ static void ez_local_op(LocalOp op, size_t slot, StackType type, size_t stack_by
 
     off = ez_local_off.data[slot] + ez_stack_bytes;
     if (op == LOCAL_ADDR) {
-        emit8_24(0x21, (u32)off); /* LD HL, off */
-        emit8(0x39);              /* ADD HL, SP */
+        emit8_24(EZ80_LD_HL_N24, (u32)off);
+        emit8(EZ80_ADD_HL_SP);
         ez_push_hl();
     } else if (op == LOCAL_GET) {
         if (is4) {
-            emit8_24(0x21, (u32)(off + 3));
-            emit8(0x39);
-            emit8_8(0xED, 0x27); /* LD HL, (HL) */
+            emit8_24(EZ80_LD_HL_N24, (u32)(off + 3));
+            emit8(EZ80_ADD_HL_SP);
+            emit8_8(EZ80_ED, EZ80_ED_LD_HL_MHL);
             ez_push_hl();
-            emit8_24(0x21, (u32)(off + 3));
-            emit8(0x39);
-            emit8_8(0xED, 0x27);
+            emit8_24(EZ80_LD_HL_N24, (u32)(off + 3));
+            emit8(EZ80_ADD_HL_SP);
+            emit8_8(EZ80_ED, EZ80_ED_LD_HL_MHL);
             ez_push_hl();
         } else {
-            emit8_24(0x21, (u32)off);
-            emit8(0x39);
-            emit8_8(0xED, 0x27); /* LD HL, (HL) */
+            emit8_24(EZ80_LD_HL_N24, (u32)off);
+            emit8(EZ80_ADD_HL_SP);
+            emit8_8(EZ80_ED, EZ80_ED_LD_HL_MHL);
             ez_push_hl();
         }
     } else {
         if (is4) {
             ez_pop_de();
-            emit8_24(0x21, (u32)(off - 3));
-            emit8(0x39);
-            emit8_8(0xED, 0x1F); /* LD (HL), DE */
+            emit8_24(EZ80_LD_HL_N24, (u32)(off - 3));
+            emit8(EZ80_ADD_HL_SP);
+            emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
             ez_pop_de();
-            emit8_24(0x21, (u32)off);
-            emit8(0x39);
-            emit8_8(0xED, 0x1F);
+            emit8_24(EZ80_LD_HL_N24, (u32)off);
+            emit8(EZ80_ADD_HL_SP);
+            emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
         } else {
             ez_pop_de();
-            emit8_24(0x21, (u32)off);
-            emit8(0x39);
-            emit8_8(0xED, 0x1F); /* LD (HL), DE */
+            emit8_24(EZ80_LD_HL_N24, (u32)off);
+            emit8(EZ80_ADD_HL_SP);
+            emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
         }
     }
 }
@@ -192,13 +193,13 @@ static void ez_fn_begin(const char *name, size_t param_cnt, const LocalVar *loca
     ez_stack_bytes = 0;
 
     /* Save 3-byte return address from SP onto BSS rstack */
-    emit8(0xD1); /* POP DE */
+    emit8(EZ80_POP_DE);
     ez_ld_hl_ind_data(ez_rsp_off);
-    emit8(0x2B); /* DEC HL */
-    emit8(0x2B);
-    emit8(0x2B);
+    emit8(EZ80_DEC_HL);
+    emit8(EZ80_DEC_HL);
+    emit8(EZ80_DEC_HL);
     ez_ld_data_hl(ez_rsp_off);
-    emit8_8(0xED, 0x1F); /* LD (HL), DE */
+    emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
 
     VEC_ENSURE(ez_local_off, total_locals);
     VEC_ENSURE(ez_is_static, total_locals);
@@ -220,9 +221,9 @@ static void ez_fn_begin(const char *name, size_t param_cnt, const LocalVar *loca
     } else {
         if (ez_frame_bytes > 0) {
             /* Allocate frame on SP */
-            emit8_24(0x21, (u32)(0x1000000UL - (ez_frame_bytes & 0xFFFFFFUL)));
-            emit8(0x39); /* ADD HL, SP */
-            emit8(0xF9); /* LD SP, HL */
+            emit8_24(EZ80_LD_HL_N24, (u32)(0x1000000UL - (ez_frame_bytes & 0xFFFFFFUL)));
+            emit8(EZ80_ADD_HL_SP);
+            emit8(EZ80_LD_SP_HL);
         }
         /* Pop params from above frame into frame slots */
         for (i = param_cnt; i > 0; i--) {
@@ -231,32 +232,32 @@ static void ez_fn_begin(const char *name, size_t param_cnt, const LocalVar *loca
             size_t src_off = ez_frame_bytes;
             size_t dst_off = ez_local_off.data[p];
             if (sz == 6) {
-                emit8_24(0x21, (u32)src_off);
-                emit8(0x39);
-                emit8_8(0xED, 0x17); /* LD DE, (HL) */
-                emit8_24(0x21, (u32)dst_off);
-                emit8(0x39);
-                emit8_8(0xED, 0x1F); /* LD (HL), DE */
-                emit8_24(0x21, (u32)(src_off + 3));
-                emit8(0x39);
-                emit8_8(0xED, 0x17);
-                emit8_24(0x21, (u32)(dst_off + 3));
-                emit8(0x39);
-                emit8_8(0xED, 0x1F);
+                emit8_24(EZ80_LD_HL_N24, (u32)src_off);
+                emit8(EZ80_ADD_HL_SP);
+                emit8_8(EZ80_ED, EZ80_ED_LD_DE_MHL);
+                emit8_24(EZ80_LD_HL_N24, (u32)dst_off);
+                emit8(EZ80_ADD_HL_SP);
+                emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
+                emit8_24(EZ80_LD_HL_N24, (u32)(src_off + 3));
+                emit8(EZ80_ADD_HL_SP);
+                emit8_8(EZ80_ED, EZ80_ED_LD_DE_MHL);
+                emit8_24(EZ80_LD_HL_N24, (u32)(dst_off + 3));
+                emit8(EZ80_ADD_HL_SP);
+                emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
             } else {
-                emit8_24(0x21, (u32)src_off);
-                emit8(0x39);
-                emit8_8(0xED, 0x17);
-                emit8_24(0x21, (u32)dst_off);
-                emit8(0x39);
-                emit8_8(0xED, 0x1F);
+                emit8_24(EZ80_LD_HL_N24, (u32)src_off);
+                emit8(EZ80_ADD_HL_SP);
+                emit8_8(EZ80_ED, EZ80_ED_LD_DE_MHL);
+                emit8_24(EZ80_LD_HL_N24, (u32)dst_off);
+                emit8(EZ80_ADD_HL_SP);
+                emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
             }
             /* Collapse parameter slot by moving frame up? Easier: just use SP+off for frame */
             if (sz == 6) {
-                emit8(0xE1);
-                emit8(0xE1);
+                emit8(EZ80_POP_HL);
+                emit8(EZ80_POP_HL);
             } else {
-                emit8(0xE1);
+                emit8(EZ80_POP_HL);
             }
         }
     }
@@ -270,53 +271,53 @@ static void ez_fn_end(const FuncSig *sig, const LocalVar *locals, size_t total_l
         if (sig->out_types.len == 1) {
             int out4 = (sig->out_types.data[0] == TY_F || sig->out_types.data[0] == TY_I32);
             if (out4) {
-                emit8(0xE1);
-                emit8(0xD1);
+                emit8(EZ80_POP_HL);
+                emit8(EZ80_POP_DE);
             } else {
-                emit8(0xD1);
+                emit8(EZ80_POP_DE);
             }
-            emit8_24(0x21, (u32)ez_frame_bytes);
-            emit8(0x39);
-            emit8(0xF9);
+            emit8_24(EZ80_LD_HL_N24, (u32)ez_frame_bytes);
+            emit8(EZ80_ADD_HL_SP);
+            emit8(EZ80_LD_SP_HL);
             if (out4) {
-                emit8(0xD5);
-                emit8(0xE5);
+                emit8(EZ80_PUSH_DE);
+                emit8(EZ80_PUSH_HL);
             } else {
-                emit8(0xD5);
+                emit8(EZ80_PUSH_DE);
             }
         } else {
-            emit8_24(0x21, (u32)ez_frame_bytes);
-            emit8(0x39);
-            emit8(0xF9);
+            emit8_24(EZ80_LD_HL_N24, (u32)ez_frame_bytes);
+            emit8(EZ80_ADD_HL_SP);
+            emit8(EZ80_LD_SP_HL);
         }
     }
 
     /* Pop return address from BSS rstack and JP (HL) */
     ez_ld_hl_ind_data(ez_rsp_off);
-    emit8_8(0xED, 0x17); /* LD DE, (HL) */
-    emit8(0x23);         /* INC HL */
-    emit8(0x23);
-    emit8(0x23);
+    emit8_8(EZ80_ED, EZ80_ED_LD_DE_MHL);
+    emit8(EZ80_INC_HL);
+    emit8(EZ80_INC_HL);
+    emit8(EZ80_INC_HL);
     ez_ld_data_hl(ez_rsp_off);
-    emit8(0xEB); /* EX DE, HL */
-    emit8(0xE9); /* JP (HL) */
+    emit8(EZ80_EX_DE_HL);
+    emit8(EZ80_JP_MHL);
 }
 
-static void ez_call(size_t target_addr) { emit8_24(0xCD, (u32)target_addr); }
+static void ez_call(size_t target_addr) { emit8_24(EZ80_CALL, (u32)target_addr); }
 
 static void ez_call_extern(const FuncSig *sig) {
     if (!sig->has_addr)
         ir4_die("eZ80 extern requires fixed address");
-    emit8_24(0xCD, (u32)sig->addr);
+    emit8_24(EZ80_CALL, (u32)sig->addr);
 }
 
 static void ez_push_w(i32 val) {
-    emit8_24(0x21, (u32)val & 0xFFFFFFUL);
+    emit8_24(EZ80_LD_HL_N24, (u32)val & 0xFFFFFFUL);
     ez_push_hl();
 }
 
 static void ez_push_a(u32 val) {
-    emit8_24(0x21, val & 0xFFFFFFUL);
+    emit8_24(EZ80_LD_HL_N24, val & 0xFFFFFFUL);
     ez_push_hl();
 }
 
@@ -324,17 +325,17 @@ static void ez_push_f(double val) {
     float f = (float)val;
     u32 bits;
     memcpy(&bits, &f, 4);
-    emit8_24(0x21, (bits >> 24) & 0xFFUL);
+    emit8_24(EZ80_LD_HL_N24, (bits >> 24) & 0xFFUL);
     ez_push_hl();
-    emit8_24(0x21, bits & 0xFFFFFFUL);
+    emit8_24(EZ80_LD_HL_N24, bits & 0xFFFFFFUL);
     ez_push_hl();
 }
 
 static void ez_push_i32(i32 val) {
     u32 u = (u32)val;
-    emit8_24(0x21, (u >> 24) & 0xFFUL);
+    emit8_24(EZ80_LD_HL_N24, (u >> 24) & 0xFFUL);
     ez_push_hl();
-    emit8_24(0x21, u & 0xFFFFFFUL);
+    emit8_24(EZ80_LD_HL_N24, u & 0xFFFFFFUL);
     ez_push_hl();
 }
 
@@ -349,16 +350,16 @@ static void ez_stack_op(StackOp op, StackType t1, StackType t2) {
     switch (op) {
     case OP_DUP:
         if (!is4_1) {
-            emit8(0xE1);
-            emit8(0xE5);
+            emit8(EZ80_POP_HL);
+            emit8(EZ80_PUSH_HL);
             ez_push_hl();
         } else {
-            emit8(0xE1);
-            emit8(0xD1);
-            emit8(0xD5);
-            emit8(0xE5);
-            emit8(0xD5);
-            emit8(0xE5);
+            emit8(EZ80_POP_HL);
+            emit8(EZ80_POP_DE);
+            emit8(EZ80_PUSH_DE);
+            emit8(EZ80_PUSH_HL);
+            emit8(EZ80_PUSH_DE);
+            emit8(EZ80_PUSH_HL);
             ez_stack_bytes += 6;
         }
         break;
@@ -372,38 +373,38 @@ static void ez_stack_op(StackOp op, StackType t1, StackType t2) {
         break;
     case OP_SWAP:
         if (!is4_1 && !is4_2) {
-            emit8(0xE1);
-            emit8(0xD1);
-            emit8(0xE5);
-            emit8(0xD5);
+            emit8(EZ80_POP_HL);
+            emit8(EZ80_POP_DE);
+            emit8(EZ80_PUSH_HL);
+            emit8(EZ80_PUSH_DE);
         } else if (is4_1 && !is4_2) {
-            emit8(0xE1); /* lo */
-            emit8(0xD1); /* hi */
-            emit8(0xC1); /* w */
-            emit8(0xD5); /* PUSH hi */
-            emit8(0xE5); /* PUSH lo */
-            emit8(0xC5); /* PUSH w */
+            emit8(EZ80_POP_HL); /* lo */
+            emit8(EZ80_POP_DE); /* hi */
+            emit8(EZ80_POP_BC); /* w */
+            emit8(EZ80_PUSH_DE); /* hi */
+            emit8(EZ80_PUSH_HL); /* lo */
+            emit8(EZ80_PUSH_BC);
         } else if (!is4_1 && is4_2) {
-            emit8(0xC1); /* w */
-            emit8(0xE1); /* lo */
-            emit8(0xD1); /* hi */
-            emit8(0xC5); /* PUSH w */
-            emit8(0xD5); /* PUSH hi */
-            emit8(0xE5); /* PUSH lo */
+            emit8(EZ80_POP_BC); /* w */
+            emit8(EZ80_POP_HL); /* lo */
+            emit8(EZ80_POP_DE); /* hi */
+            emit8(EZ80_PUSH_BC);
+            emit8(EZ80_PUSH_DE); /* hi */
+            emit8(EZ80_PUSH_HL); /* lo */
         } else {
             ez_ensure_rt_data();
-            emit8(0xE1); /* a_lo */
+            emit8(EZ80_POP_HL); /* a_lo */
             ez_ld_data_hl(ez_tmp_off);
-            emit8(0xE1); /* a_hi */
+            emit8(EZ80_POP_HL); /* a_hi */
             ez_ld_data_hl(ez_tmp_off + 3);
-            emit8(0xD1); /* b_lo */
-            emit8(0xC1); /* b_hi */
+            emit8(EZ80_POP_DE); /* b_lo */
+            emit8(EZ80_POP_BC); /* b_hi */
             ez_ld_hl_ind_data(ez_tmp_off + 3);
-            emit8(0xE5); /* PUSH a_hi */
+            emit8(EZ80_PUSH_HL); /* a_hi */
             ez_ld_hl_ind_data(ez_tmp_off);
-            emit8(0xE5); /* PUSH a_lo */
-            emit8(0xC5); /* PUSH b_hi */
-            emit8(0xD5); /* PUSH b_lo */
+            emit8(EZ80_PUSH_HL); /* a_lo */
+            emit8(EZ80_PUSH_BC); /* b_hi */
+            emit8(EZ80_PUSH_DE); /* b_lo */
         }
         break;
     }
@@ -413,28 +414,28 @@ static void ez_ensure_mul24(void) {
     u16 loop_pc;
     if (ez_mul24_addr != 0)
         return;
-    emit8(0xC3);
+    emit8(EZ80_JP);
     loop_pc = (u16)cb_pc();
     emit24(0);
     ez_mul24_addr = cb_cur_addr();
     /* HL = DE * BC (24-bit) */
-    emit8_24(0x21, 0); /* LD HL, 0 */
-    emit8_8(0x3E, 24); /* LD A, 24 */
+    emit8_24(EZ80_LD_HL_N24, 0);
+    emit8_8(EZ80_LD_A_N, 24);
     {
         size_t l = cb_cur_addr();
         u16 skip_add;
-        emit8(0x29); /* ADD HL, HL */
-        emit8(0xEB); /* EX DE, HL */
-        emit8(0x29); /* ADD HL, HL */
-        emit8(0xEB); /* EX DE, HL */
-        emit8(0xD2); /* JP NC, skip */
+        emit8(EZ80_ADD_HL_HL);
+        emit8(EZ80_EX_DE_HL);
+        emit8(EZ80_ADD_HL_HL);
+        emit8(EZ80_EX_DE_HL);
+        emit8(EZ80_JP_NC);
         skip_add = (u16)cb_pc();
         emit24(0);
-        emit8(0x09); /* ADD HL, BC */
+        emit8(EZ80_ADD_HL_BC);
         patch24(skip_add, (u32)cb_cur_addr());
-        emit8(0x3D); /* DEC A */
-        emit8_24(0xC2, (u32)l); /* JP NZ, l */
-        emit8(0xC9); /* RET */
+        emit8(EZ80_DEC_A);
+        emit8_24(EZ80_JP_NZ, (u32)l);
+        emit8(EZ80_RET);
     }
     patch24(loop_pc, (u32)cb_cur_addr());
 }
@@ -443,40 +444,40 @@ static void ez_ensure_udivmod24(void) {
     u16 skip;
     if (ez_udivmod24_addr != 0)
         return;
-    emit8(0xC3);
+    emit8(EZ80_JP);
     skip = (u16)cb_pc();
     emit24(0);
     ez_udivmod24_addr = cb_cur_addr();
     /* DE = dividend, BC = divisor -> DE = quotient, HL = remainder */
-    emit8_24(0x21, 0); /* LD HL, 0 */
-    emit8_8(0x3E, 24); /* LD A, 24 */
+    emit8_24(EZ80_LD_HL_N24, 0);
+    emit8_8(EZ80_LD_A_N, 24);
     {
         size_t l = cb_cur_addr();
         u16 no_sub;
-        emit8(0xEB); /* EX DE, HL */
-        emit8(0x29); /* ADD HL, HL */
-        emit8(0xEB); /* EX DE, HL */
-        emit8(0xED);
-        emit8(0x6A); /* ADC HL, HL */
-        emit8(0xB7); /* OR A */
-        emit8(0xED);
-        emit8(0x42); /* SBC HL, BC */
-        emit8(0xD2); /* JP NC, + */
+        emit8(EZ80_EX_DE_HL);
+        emit8(EZ80_ADD_HL_HL);
+        emit8(EZ80_EX_DE_HL);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_ADC_HL_HL);
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_BC);
+        emit8(EZ80_JP_NC);
         no_sub = (u16)cb_pc();
         emit24(0);
-        emit8(0x09); /* ADD HL, BC */
+        emit8(EZ80_ADD_HL_BC);
         {
             u16 done = (u16)cb_pc();
-            emit8(0xC3);
+            emit8(EZ80_JP);
             done = (u16)cb_pc();
             emit24(0);
             patch24(no_sub, (u32)cb_cur_addr());
-            emit8(0x13); /* INC DE */
+            emit8(EZ80_INC_DE);
             patch24(done, (u32)cb_cur_addr());
         }
-        emit8(0x3D); /* DEC A */
-        emit8_24(0xC2, (u32)l);
-        emit8(0xC9);
+        emit8(EZ80_DEC_A);
+        emit8_24(EZ80_JP_NZ, (u32)l);
+        emit8(EZ80_RET);
     }
     patch24(skip, (u32)cb_cur_addr());
 }
@@ -486,7 +487,7 @@ static void ez_ensure_sdivmod24(void) {
     ez_ensure_udivmod24();
     if (ez_sdivmod24_addr != 0)
         return;
-    emit8(0xC3);
+    emit8(EZ80_JP);
     skip = (u16)cb_pc();
     emit24(0);
     ez_sdivmod24_addr = cb_cur_addr();
@@ -494,68 +495,68 @@ static void ez_ensure_sdivmod24(void) {
     ez_ensure_rt_data();
     /* HL=dividend, DE=divisor */
     ez_ld_data_hl(ez_tmp_off);
-    emit8(0xEB);
+    emit8(EZ80_EX_DE_HL);
     ez_ld_data_hl(ez_tmp_off + 3);
     /* Sign of dividend = tmp+2 bit 7 */
-    emit8(0x3A);
+    emit8(EZ80_LD_A_NN);
     cb_add_data_reloc24(cb_pc(), ez_tmp_off + 2);
     emit24(0);
-    emit8(0xB7); /* OR A */
-    emit8(0xF2); /* JP P, pos_a */
+    emit8(EZ80_OR_A);
+    emit8(EZ80_JP_P);
     pos_a = (u16)cb_pc();
     emit24(0);
     ez_ld_hl_ind_data(ez_tmp_off);
-    emit8(0xEB);
-    emit8_24(0x21, 0);
-    emit8(0xB7);
-    emit8(0xED);
-    emit8(0x52); /* SBC HL, DE */
+    emit8(EZ80_EX_DE_HL);
+    emit8_24(EZ80_LD_HL_N24, 0);
+    emit8(EZ80_OR_A);
+    emit8(EZ80_ED);
+    emit8(EZ80_ED_SBC_HL_DE);
     ez_ld_data_hl(ez_tmp_off);
     patch24(pos_a, (u32)cb_cur_addr());
 
-    emit8(0x3A);
+    emit8(EZ80_LD_A_NN);
     cb_add_data_reloc24(cb_pc(), ez_tmp_off + 5);
     emit24(0);
-    emit8(0xB7);
-    emit8(0xF2);
+    emit8(EZ80_OR_A);
+    emit8(EZ80_JP_P);
     pos_b = (u16)cb_pc();
     emit24(0);
     ez_ld_hl_ind_data(ez_tmp_off + 3);
-    emit8(0xEB);
-    emit8_24(0x21, 0);
-    emit8(0xB7);
-    emit8(0xED);
-    emit8(0x52);
+    emit8(EZ80_EX_DE_HL);
+    emit8_24(EZ80_LD_HL_N24, 0);
+    emit8(EZ80_OR_A);
+    emit8(EZ80_ED);
+    emit8(EZ80_ED_SBC_HL_DE);
     ez_ld_data_hl(ez_tmp_off + 3);
     patch24(pos_b, (u32)cb_cur_addr());
 
     ez_ld_hl_ind_data(ez_tmp_off);
-    emit8(0xEB); /* DE = |dividend| */
+    emit8(EZ80_EX_DE_HL); /* DE = |dividend| */
     ez_ld_hl_ind_data(ez_tmp_off + 3);
-    emit8(0xE5); /* PUSH HL */
-    emit8(0xC1); /* BC = |divisor| */
-    emit8_24(0xCD, (u32)ez_udivmod24_addr);
+    emit8(EZ80_PUSH_HL);
+    emit8(EZ80_POP_BC); /* BC = |divisor| */
+    emit8_24(EZ80_CALL, (u32)ez_udivmod24_addr);
     /* Check if signs differed */
-    emit8(0x3A);
+    emit8(EZ80_LD_A_NN);
     cb_add_data_reloc24(cb_pc(), ez_tmp_off + 2);
     emit24(0);
-    emit8(0x47); /* LD B, A */
-    emit8(0x3A);
+    emit8(EZ80_LD_B_A);
+    emit8(EZ80_LD_A_NN);
     cb_add_data_reloc24(cb_pc(), ez_tmp_off + 5);
     emit24(0);
-    emit8(0xA8); /* XOR B */
-    emit8(0xF2);
+    emit8(EZ80_XOR_B);
+    emit8(EZ80_JP_P);
     pos_q = (u16)cb_pc();
     emit24(0);
-    emit8(0xE5); /* save rem */
-    emit8_24(0x21, 0);
-    emit8(0xB7);
-    emit8(0xED);
-    emit8(0x52);
-    emit8(0xEB); /* DE = -quot */
-    emit8(0xE1); /* restore rem */
+    emit8(EZ80_PUSH_HL); /* save rem */
+    emit8_24(EZ80_LD_HL_N24, 0);
+    emit8(EZ80_OR_A);
+    emit8(EZ80_ED);
+    emit8(EZ80_ED_SBC_HL_DE);
+    emit8(EZ80_EX_DE_HL); /* DE = -quot */
+    emit8(EZ80_POP_HL); /* restore rem */
     patch24(pos_q, (u32)cb_cur_addr());
-    emit8(0xC9);
+    emit8(EZ80_RET);
     patch24(skip, (u32)cb_cur_addr());
 }
 
@@ -564,70 +565,70 @@ static void ez_ensure_shifts(void) {
     if (ez_shl24_addr != 0)
         return;
     ez_ensure_rt_data();
-    emit8(0xC3);
+    emit8(EZ80_JP);
     skip = (u16)cb_pc();
     emit24(0);
 
     /* shl24: HL << A */
     ez_shl24_addr = cb_cur_addr();
-    emit8(0xB7);
-    emit8(0xCA);
+    emit8(EZ80_OR_A);
+    emit8(EZ80_JP_Z);
     done1 = (u16)cb_pc();
     emit24(0);
     {
         size_t l = cb_cur_addr();
-        emit8(0x29); /* ADD HL, HL */
-        emit8(0x3D);
-        emit8_24(0xC2, (u32)l);
+        emit8(EZ80_ADD_HL_HL);
+        emit8(EZ80_DEC_A);
+        emit8_24(EZ80_JP_NZ, (u32)l);
     }
     patch24(done1, (u32)cb_cur_addr());
-    emit8(0xC9);
+    emit8(EZ80_RET);
 
     /* shr24: HL >> A (unsigned) */
     ez_shr24_addr = cb_cur_addr();
-    emit8(0xB7);
-    emit8(0xCA);
+    emit8(EZ80_OR_A);
+    emit8(EZ80_JP_Z);
     done2 = (u16)cb_pc();
     emit24(0);
     ez_ld_data_hl(ez_tmp_off);
-    emit8(0x47); /* LD B, A */
+    emit8(EZ80_LD_B_A);
     {
         size_t l = cb_cur_addr();
         ez_ld_hl_data(ez_tmp_off + 2);
-        emit8_8(0xCB, 0x3E); /* SRL (HL) */
-        emit8(0x2B);
-        emit8_8(0xCB, 0x1E); /* RR (HL) */
-        emit8(0x2B);
-        emit8_8(0xCB, 0x1E); /* RR (HL) */
-        emit8(0x10);
+        emit8_8(EZ80_CB, EZ80_CB_SRL_MHL);
+        emit8(EZ80_DEC_HL);
+        emit8_8(EZ80_CB, EZ80_CB_RR_MHL);
+        emit8(EZ80_DEC_HL);
+        emit8_8(EZ80_CB, EZ80_CB_RR_MHL);
+        emit8(EZ80_DJNZ);
         emit8((u8)((i8)((int)l - (int)(cb_cur_addr() + 1))));
     }
     ez_ld_hl_ind_data(ez_tmp_off);
     patch24(done2, (u32)cb_cur_addr());
-    emit8(0xC9);
+    emit8(EZ80_RET);
 
     /* ashr24: HL >> A (signed) */
     ez_ashr24_addr = cb_cur_addr();
-    emit8(0xB7);
-    emit8(0xCA);
+    emit8(EZ80_OR_A);
+    emit8(EZ80_JP_Z);
     done3 = (u16)cb_pc();
     emit24(0);
     ez_ld_data_hl(ez_tmp_off);
-    emit8(0x47);
+    emit8(EZ80_LD_B_A);
     {
         size_t l = cb_cur_addr();
         ez_ld_hl_data(ez_tmp_off + 2);
-        emit8_8(0xCB, 0x2E); /* SRA (HL) */
-        emit8(0x2B);
-        emit8_8(0xCB, 0x1E); /* RR (HL) */
-        emit8(0x2B);
-        emit8_8(0xCB, 0x1E); /* RR (HL) */
-        emit8(0x10);
+        emit8_8(EZ80_CB, EZ80_CB_SRA_MHL);
+        emit8(EZ80_DEC_HL);
+        emit8_8(EZ80_CB, EZ80_CB_RR_MHL);
+        emit8(EZ80_DEC_HL);
+        emit8_8(EZ80_CB, EZ80_CB_RR_MHL);
+        emit8(EZ80_DJNZ);
         emit8((u8)((i8)((int)l - (int)(cb_cur_addr() + 1))));
     }
     ez_ld_hl_ind_data(ez_tmp_off);
     patch24(done3, (u32)cb_cur_addr());
-    emit8(0xC9);
+    emit8(EZ80_RET);
 
     patch24(skip, (u32)cb_cur_addr());
 }
@@ -638,7 +639,7 @@ static void ez_op(IrOp op) {
     case OP_AADD:
         ez_pop_de();
         ez_pop_hl();
-        emit8(0x19); /* ADD HL, DE */
+        emit8(EZ80_ADD_HL_DE);
         ez_push_hl();
         break;
     case OP_SUB:
@@ -646,28 +647,28 @@ static void ez_op(IrOp op) {
     case OP_ADIFF:
         ez_pop_de();
         ez_pop_hl();
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x52); /* SBC HL, DE */
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE);
         ez_push_hl();
         break;
     case OP_MUL:
         ez_ensure_mul24();
-        emit8(0xC1);
-        emit8(0xD1);
+        emit8(EZ80_POP_BC);
+        emit8(EZ80_POP_DE);
         ez_stack_bytes -= 6;
-        emit8_24(0xCD, (u32)ez_mul24_addr);
+        emit8_24(EZ80_CALL, (u32)ez_mul24_addr);
         ez_push_hl();
         break;
     case OP_UDIV:
     case OP_UMOD:
         ez_ensure_udivmod24();
-        emit8(0xC1); /* BC = divisor */
-        emit8(0xD1); /* DE = dividend */
+        emit8(EZ80_POP_BC); /* BC = divisor */
+        emit8(EZ80_POP_DE); /* DE = dividend */
         ez_stack_bytes -= 6;
-        emit8_24(0xCD, (u32)ez_udivmod24_addr);
+        emit8_24(EZ80_CALL, (u32)ez_udivmod24_addr);
         if (op == OP_UDIV)
-            emit8(0xEB);
+            emit8(EZ80_EX_DE_HL);
         ez_push_hl();
         break;
     case OP_DIV:
@@ -675,9 +676,9 @@ static void ez_op(IrOp op) {
         ez_ensure_sdivmod24();
         ez_pop_de();
         ez_pop_hl();
-        emit8_24(0xCD, (u32)ez_sdivmod24_addr);
+        emit8_24(EZ80_CALL, (u32)ez_sdivmod24_addr);
         if (op == OP_DIV)
-            emit8(0xEB);
+            emit8(EZ80_EX_DE_HL);
         ez_push_hl();
         break;
     case OP_AND:
@@ -692,15 +693,15 @@ static void ez_op(IrOp op) {
         {
             u8 i;
             for (i = 0; i < 3; i++) {
-                emit8(0x3A);
+                emit8(EZ80_LD_A_NN);
                 cb_add_data_reloc24(cb_pc(), ez_tmp_off + i);
                 emit24(0);
-                emit8(0x47); /* LD B, A */
-                emit8(0x3A);
+                emit8(EZ80_LD_B_A);
+                emit8(EZ80_LD_A_NN);
                 cb_add_data_reloc24(cb_pc(), ez_tmp_off + 3 + i);
                 emit24(0);
                 emit8(b_op);
-                emit8(0x32);
+                emit8(EZ80_LD_NN_A);
                 cb_add_data_reloc24(cb_pc(), ez_tmp_off + 3 + i);
                 emit24(0);
             }
@@ -711,11 +712,11 @@ static void ez_op(IrOp op) {
     }
     case OP_INVERT:
         ez_pop_hl();
-        emit8(0xEB);
-        emit8_24(0x21, 0xFFFFFFUL);
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x52);
+        emit8(EZ80_EX_DE_HL);
+        emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE);
         ez_push_hl();
         break;
     case OP_LSHIFT:
@@ -724,9 +725,9 @@ static void ez_op(IrOp op) {
         ez_ensure_shifts();
         ez_pop_de();
         ez_pop_hl();
-        emit8(0x7B); /* LD A, E */
-        emit8_8(0xE6, 31);
-        emit8_24(0xCD, (u32)(op == OP_LSHIFT ? ez_shl24_addr
+        emit8(EZ80_LD_A_E);
+        emit8_8(EZ80_AND_N, 31);
+        emit8_24(EZ80_CALL, (u32)(op == OP_LSHIFT ? ez_shl24_addr
                                               : (op == OP_RSHIFT ? ez_shr24_addr : ez_ashr24_addr)));
         ez_push_hl();
         break;
@@ -753,178 +754,178 @@ static void ez_op(IrOp op) {
             ez_pop_de();
             ez_pop_hl();
         }
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x52); /* SBC HL, DE */
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE);
         if (op == OP_EQ || op == OP_AEQ)
-            jcc = 0xCA;
+            jcc = EZ80_JP_Z;
         else if (op == OP_NE || op == OP_ANE)
-            jcc = 0xC2;
+            jcc = EZ80_JP_NZ;
         else if (op == OP_ULT || op == OP_UGT || op == OP_ALT || op == OP_AGT)
-            jcc = 0xDA;
+            jcc = EZ80_JP_C;
         else if (op == OP_ULE || op == OP_UGE)
-            jcc = 0xD2;
+            jcc = EZ80_JP_NC;
         else {
             /* Signed: (S ^ P/V) == 1 for LT/GT, 0 for GE/LE */
             u16 ov_pc, done_pc, t_pc;
-            u8 j_noov = (op == OP_LT || op == OP_GT) ? 0xFA : 0xF2;
-            u8 j_ov = (op == OP_LT || op == OP_GT) ? 0xF2 : 0xFA;
-            emit8(0xEA); /* JP PE, ov */
+            u8 j_noov = (op == OP_LT || op == OP_GT) ? EZ80_JP_M : EZ80_JP_P;
+            u8 j_ov = (op == OP_LT || op == OP_GT) ? EZ80_JP_P : EZ80_JP_M;
+            emit8(EZ80_JP_PE); /* ov */
             ov_pc = (u16)cb_pc();
             emit24(0);
-            emit8_24(0x21, 0xFFFFFFUL);
+            emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
             emit8(j_noov);
             t_pc = (u16)cb_pc();
             emit24(0);
-            emit8_24(0x21, 0);
-            emit8(0xC3);
+            emit8_24(EZ80_LD_HL_N24, 0);
+            emit8(EZ80_JP);
             done_pc = (u16)cb_pc();
             emit24(0);
             patch24(ov_pc, (u32)cb_cur_addr());
-            emit8_24(0x21, 0xFFFFFFUL);
+            emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
             emit8(j_ov);
             skip_t = (u16)cb_pc();
             emit24(0);
-            emit8_24(0x21, 0);
+            emit8_24(EZ80_LD_HL_N24, 0);
             patch24(t_pc, (u32)cb_cur_addr());
             patch24(done_pc, (u32)cb_cur_addr());
             patch24(skip_t, (u32)cb_cur_addr());
             ez_push_hl();
             break;
         }
-        emit8_24(0x21, 0xFFFFFFUL);
+        emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
         emit8(jcc);
         skip_t = (u16)cb_pc();
         emit24(0);
-        emit8_24(0x21, 0);
+        emit8_24(EZ80_LD_HL_N24, 0);
         patch24(skip_t, (u32)cb_cur_addr());
         ez_push_hl();
         break;
     }
     case OP_U8FETCH:
         ez_pop_hl();
-        emit8(0x7E); /* LD A, (HL) */
-        emit8_24(0x21, 0);
-        emit8(0x6F); /* LD L, A */
+        emit8(EZ80_LD_A_MHL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
         break;
     case OP_I8FETCH: {
         u16 pos;
         ez_pop_hl();
-        emit8(0x7E);
-        emit8(0xB7);
-        emit8_24(0x21, 0);
-        emit8(0xF2);
+        emit8(EZ80_LD_A_MHL);
+        emit8(EZ80_OR_A);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_JP_P);
         pos = (u16)cb_pc();
         emit24(0);
-        emit8_24(0x21, 0xFFFFFFUL);
+        emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
         patch24(pos, (u32)cb_cur_addr());
-        emit8(0x6F);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
         break;
     }
     case OP_I8STORE:
         ez_pop_hl();
         ez_pop_de();
-        emit8(0x73); /* LD (HL), E */
+        emit8(EZ80_LD_MHL_E);
         break;
     case OP_SI8STORE:
         ez_pop_de();
         ez_pop_hl();
-        emit8(0x73);
+        emit8(EZ80_LD_MHL_E);
         break;
     case OP_FETCH:
     case OP_AFETCH:
         ez_pop_hl();
-        emit8_8(0xED, 0x27); /* LD HL, (HL) */
+        emit8_8(EZ80_ED, EZ80_ED_LD_HL_MHL);
         ez_push_hl();
         break;
     case OP_STORE:
     case OP_ASTORE:
         ez_pop_hl();
         ez_pop_de();
-        emit8_8(0xED, 0x1F); /* LD (HL), DE */
+        emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
         break;
     case OP_SSTORE:
     case OP_SASTORE:
         ez_pop_de();
         ez_pop_hl();
-        emit8_8(0xED, 0x1F);
+        emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
         break;
     case OP_U16FETCH:
         ez_pop_hl();
-        emit8(0x5E); /* LD E, (HL) */
-        emit8(0x23);
-        emit8(0x56); /* LD D, (HL) */
-        emit8_24(0x21, 0);
-        emit8(0x6B); /* LD L, E */
-        emit8(0x62); /* LD H, D */
+        emit8(EZ80_LD_E_MHL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_LD_D_MHL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_E);
+        emit8(EZ80_LD_H_D);
         ez_push_hl();
         break;
     case OP_I16FETCH: {
         u16 pos;
         ez_pop_hl();
-        emit8(0x5E); /* LD E, (HL) */
-        emit8(0x23);
-        emit8(0x56); /* LD D, (HL) */
-        emit8(0x7A); /* LD A, D */
-        emit8(0xB7); /* OR A */
-        emit8_24(0x21, 0);
-        emit8(0xF2); /* JP P, pos */
+        emit8(EZ80_LD_E_MHL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_LD_D_MHL);
+        emit8(EZ80_LD_A_D);
+        emit8(EZ80_OR_A);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_JP_P);
         pos = (u16)cb_pc();
         emit24(0);
-        emit8_24(0x21, 0xFFFFFFUL);
+        emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
         patch24(pos, (u32)cb_cur_addr());
-        emit8(0x6B); /* LD L, E */
-        emit8(0x62); /* LD H, D */
+        emit8(EZ80_LD_L_E);
+        emit8(EZ80_LD_H_D);
         ez_push_hl();
         break;
     }
     case OP_I16STORE:
         ez_pop_hl();
         ez_pop_de();
-        emit8(0x73);
-        emit8(0x23);
-        emit8(0x72);
+        emit8(EZ80_LD_MHL_E);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_LD_MHL_D);
         break;
     case OP_SEXT: {
         u16 pos;
         ez_pop_hl();
-        emit8(0x7D); /* LD A, L */
-        emit8(0xB7); /* OR A */
-        emit8_24(0x21, 0);
-        emit8(0xF2); /* JP P, pos */
+        emit8(EZ80_LD_A_L);
+        emit8(EZ80_OR_A);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_JP_P);
         pos = (u16)cb_pc();
         emit24(0);
-        emit8_24(0x21, 0xFFFFFFUL);
+        emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
         patch24(pos, (u32)cb_cur_addr());
-        emit8(0x6F); /* LD L, A */
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
         break;
     }
     case OP_SI16STORE:
         ez_pop_de();
         ez_pop_hl();
-        emit8(0x73);
-        emit8(0x23);
-        emit8(0x72);
+        emit8(EZ80_LD_MHL_E);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_LD_MHL_D);
         break;
     case OP_BCOPY: {
         u16 skip;
-        emit8(0xC1); /* BC = len */
-        emit8(0xE1); /* HL = src */
-        emit8(0xD1); /* DE = dst */
+        emit8(EZ80_POP_BC); /* BC = len */
+        emit8(EZ80_POP_HL); /* HL = src */
+        emit8(EZ80_POP_DE); /* DE = dst */
         ez_stack_bytes -= 9;
-        emit8(0xE5);
-        emit8_24(0x21, 0);
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x42); /* SBC HL, BC */
-        emit8(0xE1);
-        emit8(0xCA);
+        emit8(EZ80_PUSH_HL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_BC);
+        emit8(EZ80_POP_HL);
+        emit8(EZ80_JP_Z);
         skip = (u16)cb_pc();
         emit24(0);
-        emit8_8(0xED, 0xB0); /* LDIR */
+        emit8_8(EZ80_ED, EZ80_ED_LDIR);
         patch24(skip, (u32)cb_cur_addr());
         break;
     }
@@ -933,21 +934,21 @@ static void ez_op(IrOp op) {
         break;
     case OP_W2I32:
         ez_pop_de();
-        emit8(0xD5); /* PUSH DE */
-        emit8(0xE1); /* POP HL */
-        emit8(0x29); /* ADD HL, HL -> C = sign */
-        emit8(0x9F); /* SBC A, A -> 0xFF or 0x00 */
-        emit8_24(0x21, 0);
-        emit8(0x6F); /* LD L, A */
+        emit8(EZ80_PUSH_DE);
+        emit8(EZ80_POP_HL);
+        emit8(EZ80_ADD_HL_HL); /* C = sign */
+        emit8(EZ80_SBC_A_A); /* 0xFF or 0x00 */
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
-        emit8(0xD5); /* PUSH DE */
+        emit8(EZ80_PUSH_DE);
         ez_stack_bytes += 3;
         break;
     case OP_U2I32:
         ez_pop_de();
-        emit8_24(0x21, 0);
+        emit8_24(EZ80_LD_HL_N24, 0);
         ez_push_hl();
-        emit8(0xD5);
+        emit8(EZ80_PUSH_DE);
         ez_stack_bytes += 3;
         break;
     case OP_I322W:
@@ -958,39 +959,39 @@ static void ez_op(IrOp op) {
     case OP_I32FETCH:
     case OP_FFETCH:
         ez_pop_hl();
-        emit8_8(0xED, 0x17); /* LD DE, (HL) */
-        emit8(0x23);
-        emit8(0x23);
-        emit8(0x23);
-        emit8(0x7E); /* LD A, (HL) */
-        emit8_24(0x21, 0);
-        emit8(0x6F);
+        emit8_8(EZ80_ED, EZ80_ED_LD_DE_MHL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_LD_A_MHL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
-        emit8(0xD5);
+        emit8(EZ80_PUSH_DE);
         ez_stack_bytes += 3;
         break;
     case OP_I32STORE:
     case OP_FSTORE:
         ez_pop_hl(); /* addr */
         ez_pop_de(); /* lo 24 */
-        emit8(0xC1); /* hi 8 in C */
+        emit8(EZ80_POP_BC); /* hi 8 in C */
         ez_stack_bytes -= 3;
-        emit8_8(0xED, 0x1F); /* LD (HL), DE */
-        emit8(0x23);
-        emit8(0x23);
-        emit8(0x23);
-        emit8(0x71); /* LD (HL), C */
+        emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_LD_MHL_C);
         break;
     case OP_SFSTORE:
         ez_pop_de(); /* lo 24 */
-        emit8(0xC1); /* hi 8 in C */
+        emit8(EZ80_POP_BC); /* hi 8 in C */
         ez_stack_bytes -= 3;
         ez_pop_hl(); /* addr */
-        emit8_8(0xED, 0x1F); /* LD (HL), DE */
-        emit8(0x23);
-        emit8(0x23);
-        emit8(0x23);
-        emit8(0x71); /* LD (HL), C */
+        emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_INC_HL);
+        emit8(EZ80_LD_MHL_C);
         break;
     case OP_ADD32:
         ez_ensure_rt_data();
@@ -998,17 +999,17 @@ static void ez_op(IrOp op) {
         ez_pop_hl(); /* b_hi */
         ez_ld_data_hl(ez_tmp_off);
         ez_pop_hl(); /* a_lo */
-        emit8(0xC1); /* a_hi in C */
+        emit8(EZ80_POP_BC); /* a_hi in C */
         ez_stack_bytes -= 3;
-        emit8(0x19); /* ADD HL, DE */
-        emit8(0xEB); /* DE = sum_lo, C preserved */
+        emit8(EZ80_ADD_HL_DE);
+        emit8(EZ80_EX_DE_HL); /* DE = sum_lo, C preserved */
         ez_ld_hl_data(ez_tmp_off);
-        emit8(0x79); /* LD A, C */
-        emit8(0x8E); /* ADC A, (HL) */
-        emit8_24(0x21, 0);
-        emit8(0x6F);
+        emit8(EZ80_LD_A_C);
+        emit8(EZ80_ADC_A_MHL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
-        emit8(0xD5);
+        emit8(EZ80_PUSH_DE);
         ez_stack_bytes += 3;
         break;
     case OP_SUB32:
@@ -1017,68 +1018,66 @@ static void ez_op(IrOp op) {
         ez_pop_hl(); /* b_hi */
         ez_ld_data_hl(ez_tmp_off);
         ez_pop_hl(); /* a_lo */
-        emit8(0xC1); /* a_hi in C */
+        emit8(EZ80_POP_BC); /* a_hi in C */
         ez_stack_bytes -= 3;
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x52); /* SBC HL, DE */
-        emit8(0xEB); /* DE = diff_lo, C preserved */
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE);
+        emit8(EZ80_EX_DE_HL); /* DE = diff_lo, C preserved */
         ez_ld_hl_data(ez_tmp_off);
-        emit8(0x79); /* LD A, C */
-        emit8(0x9E); /* SBC A, (HL) */
-        emit8_24(0x21, 0);
-        emit8(0x6F);
+        emit8(EZ80_LD_A_C);
+        emit8(EZ80_SBC_A_MHL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
-        emit8(0xD5);
+        emit8(EZ80_PUSH_DE);
         ez_stack_bytes += 3;
         break;
     case OP_INV32:
         ez_pop_de(); /* lo */
         ez_pop_hl(); /* hi */
-        emit8(0x7D); /* LD A, L */
-        emit8(0x2F); /* CPL */
-        emit8_24(0x21, 0);
-        emit8(0x6F);
+        emit8(EZ80_LD_A_L);
+        emit8(EZ80_CPL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
-        emit8_24(0x21, 0xFFFFFFUL);
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x52); /* SBC HL, DE */
+        emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE);
         ez_push_hl();
         break;
     case OP_AND32:
     case OP_OR32:
     case OP_XOR32: {
-        u8 alu_op = (op == OP_AND32) ? 0xA6 : ((op == OP_OR32) ? 0xB6 : 0xAE);
+        u8 alu_op = (op == OP_AND32) ? EZ80_AND_MHL : ((op == OP_OR32) ? EZ80_OR_MHL : EZ80_XOR_MHL);
         u8 back;
         ez_ensure_rt_data();
         /* Pop b (lo 3 bytes, hi 1 byte) to ez_tmp_off..ez_tmp_off+3 */
         ez_pop_hl();
         ez_ld_data_hl(ez_tmp_off);
         ez_pop_hl();
-        emit8(0x7D); /* LD A, L */
-        emit8(0x32);
+        emit8(EZ80_LD_A_L);
+        emit8(EZ80_LD_NN_A);
         cb_add_data_reloc24(cb_pc(), ez_tmp_off + 3);
         emit24(0);
         /* Pop a_lo to ez_tmp_off+4? Use SP directly: a_lo at [SP+0..2], a_hi at [SP+3] */
         ez_ld_hl_data(ez_tmp_off); /* HL = &b[0] */
-        emit8_24(0xED, 0x07); /* nope, use DE = SP: LD HL, 0; ADD HL, SP; EX DE, HL */
-        cb_rewind(4);
-        emit8_24(0x21, 0);
-        emit8(0x39); /* ADD HL, SP -> HL = &a[0] */
-        emit8(0xEB); /* DE = &a[0] */
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_ADD_HL_SP); /* HL = &a[0] */
+        emit8(EZ80_EX_DE_HL); /* DE = &a[0] */
         ez_ld_hl_data(ez_tmp_off); /* HL = &b[0] */
-        emit8_8(0x06, 4); /* LD B, 4 */
+        emit8_8(EZ80_LD_B_N, 4);
         back = (u8)cb_cur_addr(); /* wait, use relative */
         (void)back;
         {
             size_t l = cb_cur_addr();
-            emit8(0x1A); /* LD A, (DE) */
+            emit8(EZ80_LD_A_MDE);
             emit8(alu_op); /* AND/OR/XOR (HL) */
-            emit8(0x12); /* LD (DE), A */
-            emit8(0x13); /* INC DE */
-            emit8(0x23); /* INC HL */
-            emit8(0x10); /* DJNZ l */
+            emit8(EZ80_LD_MDE_A);
+            emit8(EZ80_INC_DE);
+            emit8(EZ80_INC_HL);
+            emit8(EZ80_DJNZ);
             emit8((u8)((i8)((int)l - (int)(cb_cur_addr() + 1))));
         }
         break;
@@ -1103,25 +1102,24 @@ static void ez_op(IrOp op) {
             ez_pop_hl(); /* b_hi */
             ez_ld_data_hl(ez_tmp_off + 3);
             ez_pop_hl(); /* a_lo -> DE */
-            emit8(0xEB);
+            emit8(EZ80_EX_DE_HL);
             ez_pop_hl(); /* a_hi -> C */
-            emit8(0x4D); /* LD C, L */
+            emit8(EZ80_LD_C_L);
             ez_ld_hl_data(ez_tmp_off); /* wait: we need lhs=b, rhs=a */
             /* Swap: b_lo -> HL, b_hi -> E, a_lo -> tmp, a_hi -> tmp+3 */
-            emit8(0xEB); /* HL = a_lo */
-            emit8(0xC5); /* PUSH BC (a_hi) */
-            emit8(0xE5); /* PUSH HL (a_lo) */
+            emit8(EZ80_EX_DE_HL); /* HL = a_lo */
+            emit8(EZ80_PUSH_BC); /* a_hi */
+            emit8(EZ80_PUSH_HL); /* a_lo */
             ez_ld_hl_ind_data(ez_tmp_off); /* HL = b_lo */
-            emit8(0xEB); /* DE = b_lo */
+            emit8(EZ80_EX_DE_HL); /* DE = b_lo */
             ez_ld_hl_ind_data(ez_tmp_off + 3); /* L = b_hi */
-            emit8(0x45); /* B = b_hi? C = b_hi? LD B, L */
-            emit8(0x4D); /* LD C, L */
-            emit8(0xE1); /* HL = a_lo */
+            emit8(EZ80_LD_C_L);
+            emit8(EZ80_POP_HL); /* HL = a_lo */
             ez_ld_data_hl(ez_tmp_off);
-            emit8(0xE1); /* HL = a_hi */
+            emit8(EZ80_POP_HL); /* HL = a_hi */
             ez_ld_data_hl(ez_tmp_off + 3);
-            emit8(0xEB); /* HL = b_lo */
-            emit8(0x59); /* LD E, C (b_hi) */
+            emit8(EZ80_EX_DE_HL); /* HL = b_lo */
+            emit8(EZ80_LD_E_C); /* b_hi) */
         } else {
             ez_pop_hl(); /* b_lo */
             ez_ld_data_hl(ez_tmp_off);
@@ -1131,43 +1129,43 @@ static void ez_op(IrOp op) {
             ez_pop_de(); /* a_hi in E */
         }
         /* Now HL = lhs_lo, E = lhs_hi, tmp = rhs_lo, tmp+3 = rhs_hi */
-        emit8(0xE5); /* PUSH HL (save lhs_lo) */
+        emit8(EZ80_PUSH_HL); /* save lhs_lo */
         ez_ld_hl_data(ez_tmp_off + 3);
-        emit8(0x7B); /* LD A, E (lhs_hi) */
-        emit8(0xBE); /* CP (HL) (lhs_hi - rhs_hi) */
-        emit8(0xE1); /* POP HL (lhs_lo, flags preserved) */
-        emit8(0xCA); /* JP Z, cmp_lo */
+        emit8(EZ80_LD_A_E); /* lhs_hi) */
+        emit8(EZ80_CP_MHL); /* lhs_hi - rhs_hi */
+        emit8(EZ80_POP_HL); /* lhs_lo, flags preserved */
+        emit8(EZ80_JP_Z); /* cmp_lo */
         cmp_lo_pc = (u16)cb_pc();
         emit24(0);
         /* High bytes differ */
         if (op == OP_EQ32) {
-            emit8(0xC3);
+            emit8(EZ80_JP);
             ret_f_pc = (u16)cb_pc();
             emit24(0);
         } else if (op == OP_NE32) {
-            emit8(0xC3);
+            emit8(EZ80_JP);
             ret_t_pc = (u16)cb_pc();
             emit24(0);
         } else if (op == OP_ULT32 || op == OP_UGT32 || op == OP_ULE32 || op == OP_UGE32) {
-            u8 jcc = (op == OP_ULT32 || op == OP_UGT32) ? 0xDA : 0xD2; /* JC or JNC */
+            u8 jcc = (op == OP_ULT32 || op == OP_UGT32) ? EZ80_JP_C : EZ80_JP_NC; /* JC or JNC */
             emit8(jcc);
             ret_t_pc = (u16)cb_pc();
             emit24(0);
-            emit8(0xC3);
+            emit8(EZ80_JP);
             ret_f_pc = (u16)cb_pc();
             emit24(0);
         } else {
             /* Signed 8-bit compare on high bytes: (S ^ P/V) == 1 for LT/GT */
             u16 ov_pc;
-            u8 j_noov = (op == OP_LT32 || op == OP_GT32) ? 0xFA : 0xF2;
-            u8 j_ov = (op == OP_LT32 || op == OP_GT32) ? 0xF2 : 0xFA;
-            emit8(0xEA); /* JP PE, ov */
+            u8 j_noov = (op == OP_LT32 || op == OP_GT32) ? EZ80_JP_M : EZ80_JP_P;
+            u8 j_ov = (op == OP_LT32 || op == OP_GT32) ? EZ80_JP_P : EZ80_JP_M;
+            emit8(EZ80_JP_PE); /* ov */
             ov_pc = (u16)cb_pc();
             emit24(0);
             emit8(j_noov);
             ret_t_pc = (u16)cb_pc();
             emit24(0);
-            emit8(0xC3);
+            emit8(EZ80_JP);
             ret_f_pc = (u16)cb_pc();
             emit24(0);
             patch24(ov_pc, (u32)cb_cur_addr());
@@ -1176,48 +1174,48 @@ static void ez_op(IrOp op) {
             {
                 u16 t2 = (u16)cb_pc();
                 emit24(0);
-                emit8(0xC3);
+                emit8(EZ80_JP);
                 {
                     u16 f2 = (u16)cb_pc();
                     emit24(0);
                     patch24(cmp_lo_pc, (u32)cb_cur_addr());
                     /* Compare unsigned 24-bit HL vs (tmp) */
-                    emit8(0xEB); /* DE = lhs_lo */
+                    emit8(EZ80_EX_DE_HL); /* DE = lhs_lo */
                     ez_ld_hl_ind_data(ez_tmp_off); /* HL = rhs_lo */
-                    emit8(0xEB); /* HL = lhs_lo, DE = rhs_lo */
-                    emit8(0xB7);
-                    emit8(0xED);
-                    emit8(0x52); /* SBC HL, DE */
+                    emit8(EZ80_EX_DE_HL); /* HL = lhs_lo, DE = rhs_lo */
+                    emit8(EZ80_OR_A);
+                    emit8(EZ80_ED);
+                    emit8(EZ80_ED_SBC_HL_DE);
                     if (op == OP_EQ32) {
-                        emit8(0xCA);
+                        emit8(EZ80_JP_Z);
                         ret_t_pc = (u16)cb_pc();
                         emit24(0);
-                        emit8(0xC3);
+                        emit8(EZ80_JP);
                         ret_f_pc = (u16)cb_pc();
                         emit24(0);
                     } else if (op == OP_NE32) {
-                        emit8(0xC2);
+                        emit8(EZ80_JP_NZ);
                         ret_t_pc = (u16)cb_pc();
                         emit24(0);
-                        emit8(0xC3);
+                        emit8(EZ80_JP);
                         ret_f_pc = (u16)cb_pc();
                         emit24(0);
                     } else {
-                        u8 jcc = (op == OP_LT32 || op == OP_GT32) ? 0xDA : 0xD2;
+                        u8 jcc = (op == OP_LT32 || op == OP_GT32) ? EZ80_JP_C : EZ80_JP_NC;
                         emit8(jcc);
                         {
                             u16 t3 = (u16)cb_pc();
                             emit24(0);
                             patch24(ret_f_pc, (u32)cb_cur_addr());
                             patch24(f2, (u32)cb_cur_addr());
-                            emit8_24(0x21, 0);
-                            emit8(0xC3);
+                            emit8_24(EZ80_LD_HL_N24, 0);
+                            emit8(EZ80_JP);
                             done_pc = (u16)cb_pc();
                             emit24(0);
                             patch24(ret_t_pc, (u32)cb_cur_addr());
                             patch24(t2, (u32)cb_cur_addr());
                             patch24(t3, (u32)cb_cur_addr());
-                            emit8_24(0x21, 0xFFFFFFUL);
+                            emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
                             patch24(done_pc, (u32)cb_cur_addr());
                         }
                     }
@@ -1230,32 +1228,32 @@ static void ez_op(IrOp op) {
             break;
         }
         patch24(cmp_lo_pc, (u32)cb_cur_addr());
-        emit8(0xEB);
+        emit8(EZ80_EX_DE_HL);
         ez_ld_hl_ind_data(ez_tmp_off);
-        emit8(0xEB);
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x52);
+        emit8(EZ80_EX_DE_HL);
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE);
         {
             u8 jcc = (op == OP_EQ32)
-                         ? 0xCA
+                         ? EZ80_JP_Z
                          : ((op == OP_NE32)
-                                ? 0xC2
-                                : ((op == OP_ULT32 || op == OP_UGT32) ? 0xDA : 0xD2));
+                                ? EZ80_JP_NZ
+                                : ((op == OP_ULT32 || op == OP_UGT32) ? EZ80_JP_C : EZ80_JP_NC));
             u16 t3;
             emit8(jcc);
             t3 = (u16)cb_pc();
             emit24(0);
             if (op != OP_NE32)
                 patch24(ret_f_pc, (u32)cb_cur_addr());
-            emit8_24(0x21, 0);
-            emit8(0xC3);
+            emit8_24(EZ80_LD_HL_N24, 0);
+            emit8(EZ80_JP);
             done_pc = (u16)cb_pc();
             emit24(0);
             if (op != OP_EQ32)
                 patch24(ret_t_pc, (u32)cb_cur_addr());
             patch24(t3, (u32)cb_cur_addr());
-            emit8_24(0x21, 0xFFFFFFUL);
+            emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
             patch24(done_pc, (u32)cb_cur_addr());
         }
         ez_push_hl();
@@ -1264,12 +1262,12 @@ static void ez_op(IrOp op) {
     case OP_FNEG:
         ez_pop_de(); /* lo */
         ez_pop_hl(); /* hi */
-        emit8(0x7D); /* LD A, L */
-        emit8_8(0xEE, 0x80); /* XOR 0x80 */
-        emit8_24(0x21, 0);
-        emit8(0x6F);
+        emit8(EZ80_LD_A_L);
+        emit8_8(EZ80_XOR_N, 0x80);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
-        emit8(0xD5);
+        emit8(EZ80_PUSH_DE);
         ez_stack_bytes += 3;
         break;
     case OP_FADD:
@@ -1284,18 +1282,18 @@ static void ez_op(IrOp op) {
         /* Pop b into E:HL, a into A:BC */
         ez_pop_de();
         ez_pop_hl();
-        emit8(0xEB); /* HL = b_lo, E = b_hi */
-        emit8(0xC1); /* BC = a_lo */
+        emit8(EZ80_EX_DE_HL); /* HL = b_lo, E = b_hi */
+        emit8(EZ80_POP_BC); /* BC = a_lo */
         ez_stack_bytes -= 3;
-        emit8(0xE3); /* EX (SP), HL -> HL = a_hi, [SP] = b_lo */
-        emit8(0x7D); /* LD A, L -> a_hi */
-        emit8(0xE1); /* POP HL -> b_lo */
+        emit8(EZ80_EX_SP_HL); /* HL = a_hi, [SP] = b_lo */
+        emit8(EZ80_LD_A_L); /* a_hi */
+        emit8(EZ80_POP_HL); /* b_lo */
         ez_stack_bytes -= 3;
-        emit8_24(0xCD, (u32)(ez_rt_addr + entry));
-        emit8_24(0x21, 0);
-        emit8(0x6F); /* LD L, A */
+        emit8_24(EZ80_CALL, (u32)(ez_rt_addr + entry));
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
-        emit8(0xC5); /* PUSH BC */
+        emit8(EZ80_PUSH_BC);
         ez_stack_bytes += 3;
         break;
     }
@@ -1304,34 +1302,34 @@ static void ez_op(IrOp op) {
     case OP_FLT:
     case OP_FGT: {
         u16 skip_t;
-        u8 jcc = (op == OP_FEQ) ? 0xCA : ((op == OP_FNE) ? 0xC2 : 0xFA);
+        u8 jcc = (op == OP_FEQ) ? EZ80_JP_Z : ((op == OP_FNE) ? EZ80_JP_NZ : EZ80_JP_M);
         ez_ensure_rt();
         if (op == OP_FLT) {
             /* __fcmp computes E:HL - A:BC; for FLT we want E:HL=a, A:BC=b */
-            emit8(0xC1); /* BC = b_lo */
-            emit8(0xE1); /* L = b_hi */
+            emit8(EZ80_POP_BC); /* BC = b_lo */
+            emit8(EZ80_POP_HL); /* L = b_hi */
             ez_stack_bytes -= 6;
-            emit8(0x7D); /* A = b_hi */
+            emit8(EZ80_LD_A_L); /* A = b_hi */
             ez_pop_de(); /* DE = a_lo */
             ez_pop_hl(); /* L = a_hi */
-            emit8(0xEB); /* HL = a_lo, E = a_hi */
+            emit8(EZ80_EX_DE_HL); /* HL = a_lo, E = a_hi */
         } else {
             ez_pop_de();
             ez_pop_hl();
-            emit8(0xEB); /* HL = b_lo, E = b_hi */
-            emit8(0xC1); /* BC = a_lo */
+            emit8(EZ80_EX_DE_HL); /* HL = b_lo, E = b_hi */
+            emit8(EZ80_POP_BC); /* BC = a_lo */
             ez_stack_bytes -= 3;
-            emit8(0xE3);
-            emit8(0x7D);
-            emit8(0xE1);
+            emit8(EZ80_EX_SP_HL);
+            emit8(EZ80_LD_A_L);
+            emit8(EZ80_POP_HL);
             ez_stack_bytes -= 3;
         }
-        emit8_24(0xCD, (u32)(ez_rt_addr + EZ80_RT_FCMP));
-        emit8_24(0x21, 0xFFFFFFUL);
+        emit8_24(EZ80_CALL, (u32)(ez_rt_addr + EZ80_RT_FCMP));
+        emit8_24(EZ80_LD_HL_N24, 0xFFFFFFUL);
         emit8(jcc);
         skip_t = (u16)cb_pc();
         emit24(0);
-        emit8_24(0x21, 0);
+        emit8_24(EZ80_LD_HL_N24, 0);
         patch24(skip_t, (u32)cb_cur_addr());
         ez_push_hl();
         break;
@@ -1339,45 +1337,45 @@ static void ez_op(IrOp op) {
     case OP_W2F:
         ez_ensure_rt();
         ez_pop_hl();
-        emit8(0xE5);
-        emit8(0xC1); /* BC = HL */
-        emit8(0x29); /* ADD HL, HL -> C = sign */
-        emit8(0x9F); /* SBC A, A */
-        emit8_24(0xCD, (u32)(ez_rt_addr + EZ80_RT_LTOF));
-        emit8_24(0x21, 0);
-        emit8(0x6F);
+        emit8(EZ80_PUSH_HL);
+        emit8(EZ80_POP_BC); /* BC = HL */
+        emit8(EZ80_ADD_HL_HL); /* C = sign */
+        emit8(EZ80_SBC_A_A);
+        emit8_24(EZ80_CALL, (u32)(ez_rt_addr + EZ80_RT_LTOF));
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_LD_L_A);
         ez_push_hl();
-        emit8(0xC5);
+        emit8(EZ80_PUSH_BC);
         ez_stack_bytes += 3;
         break;
     case OP_F2W:
         ez_ensure_rt();
-        emit8(0xC1); /* BC = lo */
+        emit8(EZ80_POP_BC); /* BC = lo */
         ez_pop_hl(); /* L = hi */
         ez_stack_bytes -= 3;
-        emit8(0x7D); /* LD A, L */
-        emit8_24(0xCD, (u32)(ez_rt_addr + EZ80_RT_FTOL));
-        emit8(0xC5); /* PUSH BC */
+        emit8(EZ80_LD_A_L);
+        emit8_24(EZ80_CALL, (u32)(ez_rt_addr + EZ80_RT_FTOL));
+        emit8(EZ80_PUSH_BC);
         ez_stack_bytes += 3;
         break;
     case OP_MUL32:
         ez_ensure_rt();
         ez_pop_de();
         ez_pop_hl();
-        emit8(0xEB);
-        emit8(0xC1);
+        emit8(EZ80_EX_DE_HL);
+        emit8(EZ80_POP_BC);
         ez_stack_bytes -= 3;
-        emit8(0xE3);
-        emit8(0x7D);
-        emit8(0xE1);
+        emit8(EZ80_EX_SP_HL);
+        emit8(EZ80_LD_A_L);
+        emit8(EZ80_POP_HL);
         ez_stack_bytes -= 3;
-        emit8_24(0xCD, (u32)(ez_rt_addr + EZ80_RT_LMULS));
+        emit8_24(EZ80_CALL, (u32)(ez_rt_addr + EZ80_RT_LMULS));
         /* Result in E:HL */
-        emit8(0x01);
+        emit8(EZ80_LD_BC_N24);
         emit24(0);
-        emit8(0x4B); /* LD C, E */
-        emit8(0xC5); /* PUSH BC */
-        emit8(0xE5); /* PUSH HL */
+        emit8(EZ80_LD_C_E);
+        emit8(EZ80_PUSH_BC);
+        emit8(EZ80_PUSH_HL);
         ez_stack_bytes += 6;
         break;
     case OP_UDIV32:
@@ -1390,19 +1388,19 @@ static void ez_op(IrOp op) {
                                         : EZ80_RT_LREMS;
         ez_ensure_rt();
         /* E:HL = a, A:BC = b */
-        emit8(0xC1); /* BC = b_lo */
+        emit8(EZ80_POP_BC); /* BC = b_lo */
         ez_pop_hl(); /* L = b_hi */
         ez_stack_bytes -= 3;
-        emit8(0x7D); /* A = b_hi */
+        emit8(EZ80_LD_A_L); /* A = b_hi */
         ez_pop_de(); /* DE = a_lo */
         ez_pop_hl(); /* L = a_hi */
-        emit8(0xEB); /* HL = a_lo, E = a_hi */
-        emit8_24(0xCD, (u32)(ez_rt_addr + entry));
-        emit8(0x01);
+        emit8(EZ80_EX_DE_HL); /* HL = a_lo, E = a_hi */
+        emit8_24(EZ80_CALL, (u32)(ez_rt_addr + entry));
+        emit8(EZ80_LD_BC_N24);
         emit24(0);
-        emit8(0x4B); /* LD C, E */
-        emit8(0xC5); /* PUSH BC */
-        emit8(0xE5); /* PUSH HL */
+        emit8(EZ80_LD_C_E);
+        emit8(EZ80_PUSH_BC);
+        emit8(EZ80_PUSH_HL);
         ez_stack_bytes += 6;
         break;
     }
@@ -1412,39 +1410,39 @@ static void ez_op(IrOp op) {
         u16 skip;
         size_t l;
         ez_pop_hl(); /* cnt */
-        emit8(0x7D); /* LD A, L */
-        emit8_8(0xE6, 31);
-        emit8(0xCA);
+        emit8(EZ80_LD_A_L);
+        emit8_8(EZ80_AND_N, 31);
+        emit8(EZ80_JP_Z);
         skip = (u16)cb_pc();
         emit24(0);
-        emit8(0x47); /* LD B, A */
-        emit8_24(0x21, (op == OP_SHL32) ? 0 : 3);
-        emit8(0x39); /* ADD HL, SP */
+        emit8(EZ80_LD_B_A);
+        emit8_24(EZ80_LD_HL_N24, (op == OP_SHL32) ? 0 : 3);
+        emit8(EZ80_ADD_HL_SP);
         l = cb_cur_addr();
         if (op == OP_SHL32) {
-            emit8_8(0xCB, 0x26); /* SLA (HL) */
-            emit8(0x23);
-            emit8_8(0xCB, 0x16); /* RL (HL) */
-            emit8(0x23);
-            emit8_8(0xCB, 0x16);
-            emit8(0x23);
-            emit8_8(0xCB, 0x16);
-            emit8(0x2B);
-            emit8(0x2B);
-            emit8(0x2B);
+            emit8_8(EZ80_CB, EZ80_CB_SLA_MHL);
+            emit8(EZ80_INC_HL);
+            emit8_8(EZ80_CB, EZ80_CB_RL_MHL);
+            emit8(EZ80_INC_HL);
+            emit8_8(EZ80_CB, EZ80_CB_RL_MHL);
+            emit8(EZ80_INC_HL);
+            emit8_8(EZ80_CB, EZ80_CB_RL_MHL);
+            emit8(EZ80_DEC_HL);
+            emit8(EZ80_DEC_HL);
+            emit8(EZ80_DEC_HL);
         } else {
-            emit8_8(0xCB, (op == OP_RSHR32) ? 0x3E : 0x2E); /* SRL / SRA (HL) */
-            emit8(0x2B);
-            emit8_8(0xCB, 0x1E); /* RR (HL) */
-            emit8(0x2B);
-            emit8_8(0xCB, 0x1E);
-            emit8(0x2B);
-            emit8_8(0xCB, 0x1E);
-            emit8(0x23);
-            emit8(0x23);
-            emit8(0x23);
+            emit8_8(EZ80_CB, (op == OP_RSHR32) ? 0x3E : 0x2E);
+            emit8(EZ80_DEC_HL);
+            emit8_8(EZ80_CB, EZ80_CB_RR_MHL);
+            emit8(EZ80_DEC_HL);
+            emit8_8(EZ80_CB, EZ80_CB_RR_MHL);
+            emit8(EZ80_DEC_HL);
+            emit8_8(EZ80_CB, EZ80_CB_RR_MHL);
+            emit8(EZ80_INC_HL);
+            emit8(EZ80_INC_HL);
+            emit8(EZ80_INC_HL);
         }
-        emit8(0x10); /* DJNZ */
+        emit8(EZ80_DJNZ);
         emit8((u8)((i8)((int)l - (int)(cb_cur_addr() + 1))));
         patch24(skip, (u32)cb_cur_addr());
         break;
@@ -1495,17 +1493,17 @@ static size_t ez_emit_br_fwd(BranchCond cond) {
     size_t pos;
     if (cond == BR_JZ) {
         ez_pop_hl();
-        emit8(0xEB);
-        emit8_24(0x21, 0);
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x52); /* SBC HL, DE */
-        emit8(0xCA); /* JP Z, target */
+        emit8(EZ80_EX_DE_HL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE);
+        emit8(EZ80_JP_Z);
         pos = cb_pc();
         emit24(0);
         return pos;
     }
-    emit8(0xC3); /* JP target */
+    emit8(EZ80_JP);
     pos = cb_pc();
     emit24(0);
     return pos;
@@ -1514,14 +1512,14 @@ static size_t ez_emit_br_fwd(BranchCond cond) {
 static void ez_emit_br_back(BranchCond cond, size_t target_addr) {
     if (cond == BR_JZ) {
         ez_pop_hl();
-        emit8(0xEB);
-        emit8_24(0x21, 0);
-        emit8(0xB7);
-        emit8(0xED);
-        emit8(0x52);
-        emit8_24(0xCA, (u32)target_addr);
+        emit8(EZ80_EX_DE_HL);
+        emit8_24(EZ80_LD_HL_N24, 0);
+        emit8(EZ80_OR_A);
+        emit8(EZ80_ED);
+        emit8(EZ80_ED_SBC_HL_DE);
+        emit8_24(EZ80_JP_Z, (u32)target_addr);
     } else {
-        emit8_24(0xC3, (u32)target_addr);
+        emit8_24(EZ80_JP, (u32)target_addr);
     }
 }
 
@@ -1534,7 +1532,7 @@ static void ez_patch_call(size_t call_pc, size_t call_addr, size_t target_addr) 
 
 static size_t ez_push_fn(size_t target_addr) {
     size_t pos;
-    emit8(0x21);
+    emit8(EZ80_LD_HL_N24);
     pos = cb_pc();
     emit24((u32)target_addr);
     ez_push_hl();
@@ -1549,10 +1547,10 @@ static void ez_patch_fn(size_t patch_pc, size_t patch_addr, size_t target_addr) 
 static void ez_icall(void) {
     u16 ret_pc;
     ez_pop_hl();
-    emit8_24(0x11, 0); /* LD DE, ret_addr */
+    emit8_24(EZ80_LD_DE_N24, 0); /* ret_addr */
     ret_pc = (u16)(cb_pc() - 3);
-    emit8(0xD5); /* PUSH DE */
-    emit8(0xE9); /* JP (HL) */
+    emit8(EZ80_PUSH_DE);
+    emit8(EZ80_JP_MHL);
     patch24(ret_pc, (u32)cb_cur_addr());
 }
 
