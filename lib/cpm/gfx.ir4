@@ -1,40 +1,39 @@
 \ cpm/gfx.ir4 - CP/M VT52 ASCII brightness graphics (80x24, 8 shades)
 
-code __cpm_emit ( c :i )
-  0xD1 :i8 0xE1 :i8 0xD5 :i8 0x5D :i8 0x0E :i8 0x02 :i8 0xC3 :i8 0x05 :i8 0x00 :i8
-end
+require "stdio.ir4"
 
 data __cpm_ramp
   " .:+*%#@"
 end
 
-data __cpm_modes
-  0 :i16 80 :i16 24 :i16 3 :i16
-end
-
+var __cpm_modes :bytes 8
+var __cpm_w :i
+var __cpm_h :i
 var __cpm_col :i
 
-fn __cpm_gotoxy ( x :i y :i )
-  27 __cpm_emit 89 __cpm_emit y 32 + __cpm_emit x 32 + __cpm_emit
-end
-
 fn gfxmodes ( -> :a :i )
+  0 __cpm_modes i16!
+  termwidth __cpm_modes 2 a+ i16!
+  termheight __cpm_modes 4 a+ i16!
+  3 __cpm_modes 6 a+ i16!
   __cpm_modes 1
 end
 
-fn gfxwidth ( -> :i ) 80 end
-fn gfxheight ( -> :i ) 24 end
+fn gfxwidth ( -> :i ) __cpm_w end
+fn gfxheight ( -> :i ) __cpm_h end
 fn gfxdepth ( -> :i ) 3 end
 
 fn gfxmode ( mode :i )
   mode drop
+  termwidth -> __cpm_w
+  termheight -> __cpm_h
   7 -> __cpm_col
-  27 __cpm_emit 72 __cpm_emit 27 __cpm_emit 74 __cpm_emit
+  cls
 end
 
 fn gfxdone ( )
-  0 23 __cpm_gotoxy
-  10 __cpm_emit
+  0 __cpm_h 1 - gotoxy
+  cr
 end
 
 fn gfxrgb ( r :i g :i b :i -> :i )
@@ -49,25 +48,25 @@ fn gfxcolor ( c :i )
 end
 
 fn gfxpx ( x :i y :i )
-  x 0 < x 80 >= or y 0 < y 24 >= or or if return then
-  x y __cpm_gotoxy
-  __cpm_ramp __cpm_col a+ u8@ __cpm_emit
+  x 0 < x __cpm_w >= or y 0 < y __cpm_h >= or or if return then
+  x y gotoxy
+  __cpm_ramp __cpm_col a+ u8@ emit
 end
 
 fn gfxhline ( x :i y :i w :i )
   var ch :i
-  y 0 < y 24 >= or if return then
+  y 0 < y __cpm_h >= or if return then
   x 0 < if w x + -> w 0 -> x then
-  x w + 80 > if 80 x - -> w then
+  x w + __cpm_w > if __cpm_w x - -> w then
   w 0 <= if return then
   __cpm_ramp __cpm_col a+ u8@ -> ch
-  x y __cpm_gotoxy
+  x y gotoxy
   begin w 0 > while
-    ch __cpm_emit
+    ch emit
     w 1 - -> w
   repeat
 end
 
 fn gfxclear ( )
-  27 __cpm_emit 72 __cpm_emit 27 __cpm_emit 74 __cpm_emit
+  cls
 end

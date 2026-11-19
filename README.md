@@ -79,7 +79,7 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 ## Repository Layout
 
 - [src/](src/) — Compiler frontend, code buffer, and target backends
-- [lib/](lib/) — Portable standard library and platform I/O modules
+- [lib/](lib/) — Standard library (`stdio.ir4`, `gfx.ir4`, `mem.ir4`, `math.ir4`, `i32.ir4`, plus platform overrides), with functions documented inline
 - [examples/](examples/) — Standalone example programs
 - [tests/](tests/) — Cross-target test suite and negative compiler tests in [tests/errors/](tests/errors/)
 - [tools/](tools/) — Relocatable runtime generators

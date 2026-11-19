@@ -323,7 +323,7 @@ static void push_require_ex(const char *name, int lib_only) {
     }
     cands[n_cands++] = intern_str(name);
 
-    if (!lib_only) {
+    if (!lib_only && src_stack.data[src_stack.len - 1].req_group == 0) {
         for (c = 0; c < n_cands; c++) {
             const char *path = path_resolve(src_stack.data[src_stack.len - 1].path, cands[c]);
             int seen = 0;
@@ -368,6 +368,22 @@ static void push_require_ex(const char *name, int lib_only) {
             }
         }
         free(roots.data);
+    }
+
+    if (!lib_only && found_cnt == 0 && seen_cnt == 0 &&
+        src_stack.data[src_stack.len - 1].req_group != 0) {
+        for (c = 0; c < n_cands; c++) {
+            const char *path = path_resolve(src_stack.data[src_stack.len - 1].path, cands[c]);
+            int seen = 0;
+            FILE *fp = try_open_require(path, &seen);
+            if (seen)
+                seen_cnt++;
+            else if (fp) {
+                found_fps[found_cnt] = fp;
+                found_paths[found_cnt] = path;
+                found_cnt++;
+            }
+        }
     }
 
     if (found_cnt > 0) {

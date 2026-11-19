@@ -1,5 +1,7 @@
 \ agon/gfx.ir4 - Agon VDP stateful graphics
 
+require "stdio.ir4"
+
 data __agon_modes
   8  :i16 320 :i16 240 :i16 6 :i16
   9  :i16 320 :i16 240 :i16 4 :i16
@@ -17,17 +19,13 @@ var __gw :i
 var __gh :i
 var __gd :i
 
-code __vdu ( b :i )
-  0xD1 :i8 0xE1 :i8 0xD5 :i8 0x7D :i8 0x5B :i8 0xD7 :i8 0xC9 :i8
-end
-
 fn __vdu16 ( v :i )
-  v 255 and __vdu
-  v 8 >> 255 and __vdu
+  v 255 and emit
+  v 8 >> 255 and emit
 end
 
 fn __vdu_plot ( m :i x :i y :i )
-  25 __vdu m __vdu x __vdu16 y __vdu16
+  25 emit m emit x __vdu16 y __vdu16
 end
 
 fn gfxmodes ( -> :a :i )
@@ -57,22 +55,22 @@ fn gfxmode ( mode :i )
       n 1 - -> n
     then
   repeat
-  22 __vdu mode __vdu
-  23 __vdu 0 __vdu 192 __vdu 0 __vdu
-  23 __vdu 1 __vdu 0 __vdu
+  22 emit mode emit
+  23 emit 0 emit 192 emit 0 emit
+  23 emit 1 emit 0 emit
 end
 
 fn gfxdone ( )
-  22 __vdu 0 __vdu
-  23 __vdu 1 __vdu 1 __vdu
+  22 emit 0 emit
+  23 emit 1 emit 1 emit
 end
 
 fn gfxvsync ( )
-  23 __vdu 0 __vdu 195 __vdu
+  23 emit 0 emit 195 emit
 end
 
 fn gfxcolor ( c :i )
-  18 __vdu 0 __vdu c __vdu
+  18 emit 0 emit c emit
 end
 
 fn gfxpx ( x :i y :i )
