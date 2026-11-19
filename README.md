@@ -89,8 +89,8 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 
 | Target | Mandelbrot ([mandel.ir4](examples/mandel.ir4)) | TV Test Card ([testcard.ir4](examples/testcard.ir4)) |
 |---|---|---|
-| **Commander X16 (`--x16`)** | *(not yet captured)* | ![Commander X16 testcard](docs/imgs/testcard_x16.png) |
-| **Commodore 64 (`--c64`)** | ![C64 Mandelbrot](docs/imgs/mandel_c64.png) | ![C64 testcard](docs/imgs/testcard_c64.png) |
+| **Commander X16 ** | *(not yet captured)* | ![Commander X16 testcard](docs/imgs/testcard_x16.png) |
+| **Commodore 64 ** | ![C64 Mandelbrot](docs/imgs/mandel_c64.png) | ![C64 testcard](docs/imgs/testcard_c64.png) |
 | **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/imgs/mandel_arm64.png) | ![ANSI terminal testcard](docs/imgs/testcard_ansi.png) |
 
 ## License
