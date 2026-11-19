@@ -1,0 +1,370 @@
+\ Telefunken FuBK-inspired TV test card using gfx.ir4
+\ Centered grid, overlapping outer gfxcircle, 8 EBU bars, 7-step gray,
+\ center black bar + frequency grating + amber + pointer, and RGB/gray gradients.
+
+require "stdio.ir4"
+require "gfx.ir4"
+
+var w :i
+var h :i
+var cx :i
+var cy :i
+var step :i
+var rw :i
+var rh :i
+var rx :i
+var ry :i
+var r :i
+
+var c_black :i
+var c_dgray :i
+var c_gray :i
+var c_lgray :i
+var c_white :i
+var c_yellow :i
+var c_cyan :i
+var c_green :i
+var c_magenta :i
+var c_red :i
+var c_blue :i
+var c_amber :i
+
+fn init_colors ( )
+  0 0 0 gfxrgb -> c_black
+  64 64 64 gfxrgb -> c_dgray
+  128 128 128 gfxrgb -> c_gray
+  192 192 192 gfxrgb -> c_lgray
+  255 255 255 gfxrgb -> c_white
+  255 255 0 gfxrgb -> c_yellow
+  0 255 255 gfxrgb -> c_cyan
+  0 255 0 gfxrgb -> c_green
+  255 0 255 gfxrgb -> c_magenta
+  255 0 0 gfxrgb -> c_red
+  0 0 255 gfxrgb -> c_blue
+  200 140 0 gfxrgb -> c_amber
+end
+
+fn ebu_color ( idx :i -> :i )
+  idx 0 = if c_lgray return then
+  idx 1 = if c_yellow return then
+  idx 2 = if c_cyan return then
+  idx 3 = if c_green return then
+  idx 4 = if c_magenta return then
+  idx 5 = if c_red return then
+  idx 6 = if c_blue return then
+  c_black
+end
+
+\ Compute grid step and centered card bounds aligned to (w/termwidth, h/termheight) cells
+fn init_geom ( )
+  var cw :i
+  var ch :i
+  gfxwidth -> w
+  gfxheight -> h
+  w termwidth / -> cw
+  cw 1 < if 1 -> cw then
+  h termheight / -> ch
+  ch 1 < if 1 -> ch then
+
+  h 16 / cw + 1 - cw / cw * -> step
+  step 4 < if 4 -> step then
+  step 12 * -> rw
+  step 10 * -> rh
+  rw w 4 - > if w 4 - -> rw then
+  rh h 4 - > if h 4 - -> rh then
+  step 20 * 3 / -> r
+
+  w 1 u>> cw / cw * -> cx
+  h 1 u>> ch / ch * -> cy
+  cx rw 1 u>> - -> rx
+  cy rh 1 u>> - -> ry
+end
+
+fn draw_background ( )
+  var x :i
+  var y :i
+
+  c_dgray gfxcolor
+  gfxclear
+
+  w 120 < if return then
+
+  c_white gfxcolor
+  cx step mod -> x
+  begin x w < while
+    x 0 h gfxvline
+    x step + -> x
+  repeat
+  cy step mod -> y
+  begin y h < while
+    0 y w gfxhline
+    y step + -> y
+  repeat
+  cx cy r gfxcircle
+end
+
+\ Row 1: 8 EBU color bars
+fn draw_ebu_bars ( rx :i ry :i rw :i rh :i )
+  var i :i
+  var x0 :i
+  var x1 :i
+  0 -> i
+  begin i 8 < while
+    rx rw i * 8 / + -> x0
+    i 7 = if rx rw + else rx rw i 1 + * 8 / + then -> x1
+    i ebu_color gfxcolor
+    x0 ry x1 x0 - rh gfxfillrect
+    i 1 + -> i
+  repeat
+end
+
+\ Row 2: 5 equal-width grayscale blocks (Black -> White)
+fn draw_gray_steps ( rx :i ry :i rw :i rh :i )
+  var i :i
+  var x0 :i
+  var x1 :i
+  var v :i
+  0 -> i
+  begin i 5 < while
+    rx rw i * 5 / + -> x0
+    i 4 = if rx rw + else rx rw i 1 + * 5 / + then -> x1
+    i 4 = if 255 else i 6 << then -> v
+    v v v gfxrgb gfxcolor
+    x0 ry x1 x0 - rh gfxfillrect
+    i 1 + -> i
+  repeat
+end
+
+\ Draw "IR" left of cx and "4" right of cx inside the black bar using lines
+fn draw_ir4_label ( cx :i ry :i bar_h :i )
+  var lh :i
+  var lw :i
+  var y0 :i
+  var ym :i
+  var y1 :i
+  var x :i
+  bar_h 7 < if return then
+  bar_h 4 - -> lh
+  lh 2 * 3 / -> lw
+  lw 4 < if 4 -> lw then
+  ry bar_h lh - 1 u>> + -> y0
+  y0 lh 1 u>> + -> ym
+  y0 lh + 1 - -> y1
+
+  c_white gfxcolor
+  \ 'R' left of cx
+  cx 5 - lw - -> x
+  x y0 lh gfxvline
+  x y0 lw gfxhline
+  x lw + 1 - y0 ym y0 - 1 + gfxvline
+  x ym lw gfxhline
+  x lw 1 u>> + ym x lw + 1 - y1 gfxline
+
+  \ 'I' left of 'R'
+  x 8 - -> x
+  x y0 5 gfxhline
+  x y1 5 gfxhline
+  x 2 + y0 lh gfxvline
+
+  \ '4' right of cx
+  cx 5 + -> x
+  x lw + 2 - y0 x ym 1 + gfxline
+  x ym 1 + lw gfxhline
+  x lw + 2 - y0 lh gfxvline
+end
+
+\ Row 3: White field with black bar, 3-zone frequency grating (1&2 left of cx, 3 right of cx) + amber, and center pointer
+fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
+  var bar_h :i
+  var bar_w :i
+  var bar_x :i
+  var gr_y :i
+  var gr_h :i
+  var gr_x :i
+  var gr_w :i
+  var b1_w :i
+  var b2_w :i
+  var b3_w :i
+  var amb_w :i
+  var x :i
+  var period :i
+  var tri_y :i
+  var tri_h :i
+  var dy :i
+  var tw :i
+
+  c_white gfxcolor
+  rx ry rw rh gfxfillrect
+
+  \ Black horizontal bar (top third, aligned to the middle 3 of the 5 gray blocks)
+  rh 3 / -> bar_h
+  bar_h 2 < if 2 -> bar_h then
+  rx rw 5 / + -> bar_x
+  rx rw 4 * 5 / + bar_x - -> bar_w
+  c_black gfxcolor
+  bar_x ry bar_w bar_h gfxfillrect
+
+  \ Frequency grating on gray background: starts at yellow box (rx + rw/8), blocks 1 & 2 left of cx, block 3 right of cx
+  ry bar_h + -> gr_y
+  rh 3 / -> gr_h
+  gr_h 2 < if 2 -> gr_h then
+  rx rw 8 / + -> gr_x
+  cx gr_x - 1 u>> -> b1_w
+  cx gr_x - b1_w - -> b2_w
+  b1_w -> b3_w
+  b1_w b2_w + b3_w + -> gr_w
+
+  c_gray gfxcolor
+  gr_x gr_y rx rw + gr_x - gr_h gfxfillrect
+
+  \ Block 1 (coarse): [0 .. b1_w)
+  3 -> x
+  begin x b1_w 2 - < while
+    x 6 mod -> period
+    period 0 = period 5 = or if c_black else
+    period 2 = period 3 = or if c_white else c_gray then then
+    gfxcolor
+    gr_x x + gr_y gr_h gfxvline
+    x 1 + -> x
+  repeat
+
+  \ Block 2 (medium): [b1_w .. b1_w + b2_w), ends at cx
+  b1_w 2 + -> x
+  begin x b1_w b2_w + 2 - < while
+    x 4 mod -> period
+    period 0 = if c_black else period 2 = if c_white else c_gray then then
+    gfxcolor
+    gr_x x + gr_y gr_h gfxvline
+    x 1 + -> x
+  repeat
+
+  \ Block 3 (fine): [b1_w + b2_w .. gr_w), symmetric 3 px right of cx
+  b1_w b2_w + 3 + -> x
+  begin x gr_w 2 - < while
+    x 1 and 0 = if c_dgray else c_lgray then
+    gfxcolor
+    gr_x x + gr_y gr_h gfxvline
+    x 1 + -> x
+  repeat
+
+  \ Amber block to the right of Block 3
+  step 3 * -> amb_w
+  gr_x gr_w + amb_w + rx rw + > if rx rw + gr_x gr_w + - -> amb_w then
+  amb_w 0 > if
+    c_amber gfxcolor
+    gr_x gr_w + gr_y amb_w gr_h gfxfillrect
+  then
+
+  \ Small one-sided (right-half) black downward pointer centered around cx
+  gr_y gr_h + -> tri_y
+  ry rh + tri_y - -> tri_h
+  c_black gfxcolor
+  0 -> dy
+  begin dy tri_h < while
+    tri_h dy - 1 + 1 u>> -> tw
+    tw 0 > if
+      cx tri_h 2 u>> - tri_y dy + tw gfxhline
+    then
+    dy 1 + -> dy
+  repeat
+
+  \ White vertical center line through black bar and gap between blocks 2 & 3 to meet arrow
+  c_white gfxcolor
+  cx ry bar_h gr_h + gfxvline
+  cx ry bar_h draw_ir4_label
+end
+
+\ Smooth 6-segment RGB rainbow gradient (16-bit safe)
+fn draw_color_grad ( rx :i ry :i rw :i rh :i )
+  var x :i
+  var p :i
+  var seg :i
+  var up :i
+  var dn :i
+  var r :i
+  var g :i
+  var b :i
+  0 -> x
+  begin x rw < while
+    x 6 * -> p
+    p rw / -> seg
+    p rw mod 127 * rw / 1 << -> up
+    255 up - -> dn
+    seg 0 = if 255 -> r  up -> g  0 -> b else
+    seg 1 = if dn -> r  255 -> g  0 -> b else
+    seg 2 = if 0 -> r  255 -> g  up -> b else
+    seg 3 = if 0 -> r  dn -> g  255 -> b else
+    seg 4 = if up -> r  0 -> g  255 -> b else
+               255 -> r  0 -> g  dn -> b
+    then then then then then
+    r g b gfxrgb gfxcolor
+    rx x + ry rh gfxvline
+    x 1 + -> x
+  repeat
+end
+
+\ Smooth 0..254 grayscale gradient (16-bit safe)
+fn draw_gray_grad ( rx :i ry :i rw :i rh :i )
+  var x :i
+  var d :i
+  var v :i
+  rw 1 - -> d
+  d 1 < if 1 -> d then
+  0 -> x
+  begin x rw < while
+    x 127 * d / 1 << -> v
+    v v v gfxrgb gfxcolor
+    rx x + ry rh gfxvline
+    x 1 + -> x
+  repeat
+end
+
+fn draw_testcard ( )
+  var y0 :i
+  var bh :i
+  var gh :i
+
+  \ Row 1: 8 EBU color bars (3 grid cells)
+  step 3 * -> bh
+  ry -> y0
+  rx y0 rw bh draw_ebu_bars
+  y0 bh + -> y0
+
+  \ Row 2: 7-step grayscale ramp (2 grid cells) + white center line
+  step 1 << -> bh
+  rx y0 rw bh draw_gray_steps
+  c_white gfxcolor
+  cx y0 bh gfxvline
+  y0 bh + -> y0
+
+  \ Row 3: Center black bar + frequency grating + amber + pointer (3 grid cells)
+  step 3 * -> bh
+  rx y0 rw bh cx step draw_center_band
+  y0 bh + -> y0
+
+  \ Row 4: Stacked RGB rainbow + smooth grayscale gradients (2 grid cells)
+  ry rh + y0 - -> bh
+  bh 1 u>> -> gh
+  gh 0 > if
+    rx y0 rw gh draw_color_grad
+    rx y0 gh + rw bh gh - draw_gray_grad
+  then
+
+  \ Redraw horizontal center line + frame center rectangle with white (skip frame on 1-bpp attribute targets)
+  c_white gfxcolor
+  rx cy rw gfxhline
+  gfxdepth 1 > if
+    rx ry rw 1 + rh 1 + gfxrect
+  then
+end
+
+fn main ( -> :i )
+  320 240 8 gfxinit
+  init_geom
+  init_colors
+  draw_background
+  draw_testcard
+  key drop
+  gfxdone
+  0
+end
