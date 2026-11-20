@@ -80,7 +80,7 @@ fn gfxrgb ( r :i g :i b :i -> :i )
   __c64_gfx_pal idx a+ u8@
 end
 
-fn gfxcolor ( c :i )
+hot fn gfxcolor ( c :i )
   c 15 and -> __c64_col
 end
 

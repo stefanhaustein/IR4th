@@ -1,5 +1,4 @@
 \ lib/sprite.ir4 - Portable hardware sprite API (optional override per platform)
-\ Platform implementations: lib/agon/sprite.ir4, lib/c64/sprite.ir4, lib/x16/sprite.ir4
 
 require "gfx.ir4"
 

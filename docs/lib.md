@@ -15,7 +15,7 @@
 ## `lib/stdio.ir4`
 
 stdio.ir4 - Portable console/terminal I/O, formatting, and screen control
-Platform files provide raw emit (and optionally key, inkey, xemit, cls, gotoxy, termwidth, termheight, fgcolor, bgcolor).
+Platform overrides implement raw `emit` (and optionally the `default fn` entries below).
 
 | Function | Description |
 | --- | --- |
@@ -76,8 +76,7 @@ i32.ir4 - Portable 32-bit signed division and modulo fallbacks (auto-required wh
 ## `lib/gfx.ir4`
 
 gfx.ir4 - Portable stateful pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
-Platform overrides (e.g. agon/gfx.ir4, c64/gfx.ir4) implement gfxmodes, gfxmode, gfxdone,
-gfxwidth, gfxheight, gfxdepth, gfxvsync, gfxrgb, gfxcolor, gfxpx (and optionally gfxclear, gfxline, gfxhline, gfxvline, gfxfillrect).
+Platform overrides implement the `default fn` entries below.
 
 | Function | Description |
 | --- | --- |
@@ -102,8 +101,6 @@ gfxwidth, gfxheight, gfxdepth, gfxvsync, gfxrgb, gfxcolor, gfxpx (and optionally
 | `gfxcircle ( cx :i cy :i r :i )` | Draw a circle outline of radius r centered at (cx, cy) using the midpoint algorithm |
 
 ## `lib/sprite.ir4`
-
-Platform implementations: lib/agon/sprite.ir4, lib/c64/sprite.ir4, lib/x16/sprite.ir4
 
 | Function | Description |
 | --- | --- |

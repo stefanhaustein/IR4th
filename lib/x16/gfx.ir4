@@ -88,7 +88,7 @@ fn gfxrgb ( r :i g :i b :i -> :i )
   16 +
 end
 
-fn gfxcolor ( c :i )
+hot fn gfxcolor ( c :i )
   c 255 and -> __x16_col
 end
 
@@ -123,7 +123,7 @@ hot fn gfxhline ( x :i y :i w :i )
   repeat
 end
 
-fn gfxvline ( x :i y :i h :i )
+hot fn gfxvline ( x :i y :i h :i )
   x 0 < x __x16_w >= or if return then
   y 0 < if h y + -> h 0 -> y then
   y h + __x16_h > if __x16_h y - -> h then
