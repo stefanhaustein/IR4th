@@ -1,26 +1,26 @@
 # IR4th Standard Library Reference
 
-> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`.
+> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`. Functions marked `default` may be overridden by platform/architecture modules.
 
 ## Modules
 
-- [`lib/stdio.ir4`](#stdioir4) — stdio.ir4 - Portable console/terminal I/O, formatting, and screen control
-- [`lib/mem.ir4`](#memir4) — mem.ir4 - Memory operations and first-fit heap allocator starting at __heap_start
+- [`lib/stdio.ir4`](#stdioir4) — Portable console/terminal I/O, formatting, and screen control
+- [`lib/mem.ir4`](#memir4) — Memory operations and first-fit heap allocator starting at __heap_start
 - [`lib/math.ir4`](#mathir4) — Portable floating-point math library for IR4th
-- [`lib/i32.ir4`](#i32ir4) — i32.ir4 - Portable 32-bit signed division and modulo fallbacks (auto-required when i32/ or i32mod is used)
-- [`lib/gfx.ir4`](#gfxir4) — gfx.ir4 - Portable stateful pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
+- [`lib/i32.ir4`](#i32ir4) — Portable 32-bit signed division and modulo fallbacks (auto-required when i32/ or i32mod is used)
+- [`lib/gfx.ir4`](#gfxir4) — Portable stateful pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
 - [`lib/sprite.ir4`](#spriteir4) — Portable hardware sprite API (optional override per platform)
 - [`lib/sfx.ir4`](#sfxir4) — Portable minimal sound effects API (optional override per platform)
 
 ## `lib/stdio.ir4`
 
-stdio.ir4 - Portable console/terminal I/O, formatting, and screen control
+Portable console/terminal I/O, formatting, and screen control
 Platform overrides implement raw `emit` (and optionally the `default fn` entries below).
 
 | Function | Description |
 | --- | --- |
-| `xemit ( c :i )` | Emit character c with platform text mapping (defaults to raw emit; PETSCII on C64) |
-| `cr (  )` | Emit a newline |
+| `default xemit ( c :i )` | Emit character c with platform text mapping (defaults to raw emit; PETSCII on C64) |
+| `cr ( )` | Emit a newline |
 | `type ( s :a len :i )` | Print len bytes starting at s |
 | `type0 ( s :a )` | Print NUL-terminated string at s |
 | `typeu ( n :i )` | Print n as minimal unsigned decimal |
@@ -28,27 +28,29 @@ Platform overrides implement raw `emit` (and optionally the `default fn` entries
 | `typei_w ( n :i w :i )` | Print n as signed decimal, right-aligned with spaces to width w |
 | `typeh_w ( n :i w :i )` | Print n as w zero-padded uppercase hex digits |
 | `typeh ( n :i )` | Print n as minimal uppercase hex |
-| `cls (  )` | Clear screen and home cursor (ANSI default) |
-| `gotoxy ( x :i y :i )` | Move text cursor to 0-based column x, row y (ANSI default) |
-| `termwidth ( -> :i )` | Return terminal width in columns |
-| `termheight ( -> :i )` | Return terminal height in rows |
-| `fgcolor ( c :i )` | Set foreground text color using ANSI color index (0..7, 8..15 bright) |
-| `bgcolor ( c :i )` | Set background text color using ANSI color index (0..7, 8..15 bright) |
+| `default cls ( )` | Clear screen and home cursor (ANSI default) |
+| `default gotoxy ( x :i y :i )` | Move text cursor to 0-based column x, row y (ANSI default) |
+| `default termwidth ( -> :i )` | Return terminal width in columns (default: 80) |
+| `default termheight ( -> :i )` | Return terminal height in rows (default: 24) |
+| `default fgcolor ( c :i )` | Set foreground text color using ANSI color index (0..7, 8..15 bright; ANSI default) |
+| `default bgcolor ( c :i )` | Set background text color using ANSI color index (0..7, 8..15 bright; ANSI default) |
 
 ## `lib/mem.ir4`
 
-mem.ir4 - Memory operations and first-fit heap allocator starting at __heap_start
+Memory operations and first-fit heap allocator starting at __heap_start
 
 | Function | Description |
 | --- | --- |
-| `fillchar ( dst :a len :i val :i )` | Fill len bytes starting at dst with byte value val |
-| `memcpy ( dst :a src :a len :i )` | Copy len bytes from src to dst (overlap-safe) |
-| `memcmp ( a :a b :a len :i -> :i )` | Compare len bytes at a and b; returns first nonzero (a[i] - b[i]) or 0 if equal |
-| `heap_reset (  )` | Reset the heap to empty (invalidates all prior allocations) |
+| `default fillchar ( dst :a len :i val :i )` | Fill len bytes starting at dst with byte value val |
+| `default memcpy ( dst :a src :a len :i )` | Copy len bytes from src to dst (overlap-safe) |
+| `default memcmp ( a :a b :a len :i -> :i )` | Compare len bytes at a and b; returns first nonzero (a[i] - b[i]) or 0 if equal |
+| `heap_reset ( )` | Reset the heap to empty (invalidates all prior allocations) |
 | `heap_alloc ( bytes :i -> :a )` | Allocate at least bytes bytes on the heap; returns block address |
 | `heap_free ( p :a )` | Free a block previously returned by heap_alloc (coalesces adjacent free blocks) |
 
 ## `lib/math.ir4`
+
+Portable floating-point math library for IR4th
 
 | Function | Description |
 | --- | --- |
@@ -66,61 +68,64 @@ mem.ir4 - Memory operations and first-fit heap allocator starting at __heap_star
 
 ## `lib/i32.ir4`
 
-i32.ir4 - Portable 32-bit signed division and modulo fallbacks (auto-required when i32/ or i32mod is used)
+Portable 32-bit signed division and modulo fallbacks (auto-required when i32/ or i32mod is used)
 
 | Function | Description |
 | --- | --- |
-| `i32/ ( a :i32 b :i32 -> :i32 )` | Signed 32-bit truncating division: a / b |
-| `i32mod ( a :i32 b :i32 -> :i32 )` | Signed 32-bit remainder (sign matches dividend a): a mod b |
+| `default i32/ ( a :i32 b :i32 -> :i32 )` | Signed 32-bit truncating division: a / b |
+| `default i32mod ( a :i32 b :i32 -> :i32 )` | Signed 32-bit remainder (sign matches dividend a): a mod b |
 
 ## `lib/gfx.ir4`
 
-gfx.ir4 - Portable stateful pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
+Portable stateful pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
 Platform overrides implement the `default fn` entries below.
 
 | Function | Description |
 | --- | --- |
-| `gfxmodes ( -> :a :i )` | Returns (addr, count) of :i16 4-tuples: (mode, width, height, depth_bpp) |
-| `gfxwidth ( -> :i )` | Current graphics screen width in pixels |
-| `gfxheight ( -> :i )` | Current graphics screen height in pixels |
-| `gfxdepth ( -> :i )` | Per-pixel color depth in bits (1 on attribute-cell targets like C64/Spectrum, where gfxrgb may still return palette colors per cell) |
-| `gfxvsync (  )` | Wait for vertical blank / next frame sync |
-| `gfxticks ( -> :i )` | Return platform tick counter (wraps monotonically; used for frame timing) |
-| `gfxmode ( mode :i )` | Switch to graphics mode index `mode` |
-| `gfxdone (  )` | Restore text mode and release graphics resources |
-| `gfxinit ( w :i h :i depth :i )` | Enter best-matching mode from gfxmodes for (w, h, depth_bpp); (0, 0, 0) selects entry 0 |
-| `gfxrgb ( r :i g :i b :i -> :i )` | Map 8-bit RGB (0..255) to the platform's native color value for gfxcolor. On attribute-cell targets (gfxdepth = 1), non-zero colors may still set per-cell attributes. |
-| `gfxcolor ( c :i )` | Set current drawing color (value returned by gfxrgb) |
-| `gfxpx ( x :i y :i )` | Plot a pixel at (x, y) in the current drawing color |
-| `gfxhline ( x :i y :i w :i )` | Draw a horizontal line of width w starting at (x, y) |
-| `gfxvline ( x :i y :i h :i )` | Draw a vertical line of height h starting at (x, y) |
-| `gfxline ( x1 :i y1 :i x2 :i y2 :i )` | Draw a line from (x1, y1) to (x2, y2) |
-| `gfxrect ( x :i y :i w :i h :i )` | Draw a rectangle outline at (x, y) with size w x h |
-| `gfxfillrect ( x :i y :i w :i h :i )` | Draw a filled rectangle at (x, y) with size w x h |
-| `gfxclear (  )` | Clear the graphics screen to the current drawing color |
-| `gfxcircle ( cx :i cy :i r :i )` | Draw a circle outline of radius r centered at (cx, cy) using the midpoint algorithm |
+| `default gfxmodes ( -> :a :i )` | Returns (addr, count) of :i16 4-tuples: (mode, width, height, depth_bpp) |
+| `default gfxwidth ( -> :i )` | Current graphics screen width in pixels |
+| `default gfxheight ( -> :i )` | Current graphics screen height in pixels |
+| `default gfxdepth ( -> :i )` | Per-pixel color depth in bits (1 on attribute-cell targets like C64/Spectrum, where gfxrgb may still return palette colors per cell) |
+| `default gfxvsync ( )` | Wait for vertical blank / next frame sync (default: no-op) |
+| `default gfxticks ( -> :i )` | Return platform tick counter (wraps monotonically; default: 0) |
+| `default gfxmode ( mode :i )` | Switch to graphics mode index `mode` (default: ANSI half-block buffer) |
+| `default gfxdone ( )` | Restore text mode and release graphics resources |
+| `default gfxinit ( w :i h :i depth :i )` | Enter best-matching mode from gfxmodes for (w, h, depth_bpp); (0, 0, 0) selects entry 0 |
+| `default gfxrgb ( r :i g :i b :i -> :i )` | Map 8-bit RGB (0..255) to the platform's native color value for gfxcolor. On attribute-cell targets (gfxdepth = 1), non-zero colors may still set per-cell attributes. |
+| `default gfxcolor ( c :i )` | Set current drawing color (value returned by gfxrgb) |
+| `default gfxpx ( x :i y :i )` | Plot a pixel at (x, y) in the current drawing color |
+| `default gfxhline ( x :i y :i w :i )` | Draw a horizontal line of width w starting at (x, y) (default: gfxpx loop) |
+| `default gfxvline ( x :i y :i h :i )` | Draw a vertical line of height h starting at (x, y) (default: gfxpx loop) |
+| `default gfxline ( x1 :i y1 :i x2 :i y2 :i )` | Draw a line from (x1, y1) to (x2, y2) (default: Bresenham via gfxhline/gfxvline/gfxpx) |
+| `default gfxrect ( x :i y :i w :i h :i )` | Draw a rectangle outline at (x, y) with size w x h |
+| `default gfxfillrect ( x :i y :i w :i h :i )` | Draw a filled rectangle at (x, y) with size w x h (default: gfxhline loop) |
+| `default gfxclear ( )` | Clear the graphics screen to the current drawing color |
+| `default gfxcircle ( cx :i cy :i r :i )` | Draw a circle outline of radius r centered at (cx, cy) using the midpoint algorithm |
 
 ## `lib/sprite.ir4`
 
+Portable hardware sprite API (optional override per platform)
+
 | Function | Description |
 | --- | --- |
-| `sprcount ( -> :i )` | Number of hardware sprite slots (0 = hardware sprites unsupported) |
-| `sprdepth ( -> :i )` | Sprite color depth in bits per pixel |
-| `sprmaxw ( -> :i )` | Maximum sprite width in pixels |
-| `sprmaxh ( -> :i )` | Maximum sprite height in pixels |
-| `sprzdir ( -> :i )` | Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front |
-| `sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )` | Define sprite image/frame `img` of screen size w x h. `data` holds w * h unsigned bytes (0 = transparent, 1..ncolors = 1-based palette index). `pal` holds ncolors unsigned bytes (color values returned by gfxrgb). Returns -1 on success, 0 if unsupported or out of sprite resources. |
-| `sprset ( id :i img :i )` | Bind image `img` to hardware sprite `id` (see `sprzdir` for overlap priority). |
-| `sprpos ( id :i x :i y :i )` | Move sprite `id` to screen position (x, y) |
-| `sprshow ( id :i on :i )` | Show (on <> 0) or hide (on = 0) sprite `id` |
+| `default sprcount ( -> :i )` | Number of hardware sprite slots (0 = hardware sprites unsupported) |
+| `default sprdepth ( -> :i )` | Sprite color depth in bits per pixel (default: 0) |
+| `default sprmaxw ( -> :i )` | Maximum sprite width in pixels (default: 0) |
+| `default sprmaxh ( -> :i )` | Maximum sprite height in pixels (default: 0) |
+| `default sprzdir ( -> :i )` | Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front (default: 1) |
+| `default sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )` | Define sprite image/frame `img` of screen size w x h. `data` holds w * h unsigned bytes (0 = transparent, 1..ncolors = 1-based palette index). `pal` holds ncolors unsigned bytes (color values returned by gfxrgb). Returns -1 on success, 0 if unsupported or out of sprite resources. |
+| `default sprset ( id :i img :i )` | Bind image `img` to hardware sprite `id` (see `sprzdir` for overlap priority; default: no-op). |
+| `default sprpos ( id :i x :i y :i )` | Move sprite `id` to screen position (x, y) (default: no-op) |
+| `default sprshow ( id :i on :i )` | Show (on <> 0) or hide (on = 0) sprite `id` (default: no-op) |
 
 ## `lib/sfx.ir4`
 
+Portable minimal sound effects API (optional override per platform)
 Waveforms: 0 = pulse/square, 1 = sawtooth, 2 = triangle, 3 = noise.
 
 | Function | Description |
 | --- | --- |
-| `sfxcount ( -> :i )` | Query number of hardware sound channels (0 = sound unsupported) |
-| `sfxplay ( ch :i freq :i vol :i wave :i dur_ms :i )` | Play a tone on channel `ch` at `freq` Hz, volume `vol` (0..15), waveform `wave` (0..3), for `dur_ms` ms (0 = until sfxstop). |
-| `sfxstop ( ch :i )` | Silence channel `ch`. |
-| `sfxtick (  )` | Advance software duration timers once per frame (required on platforms without hardware duration, e.g. C64/X16). |
+| `default sfxcount ( -> :i )` | Query number of hardware sound channels (0 = sound unsupported) |
+| `default sfxplay ( ch :i freq :i vol :i wave :i dur_ms :i )` | Play a tone on channel `ch` at `freq` Hz, volume `vol` (0..15), waveform `wave` (0..3), for `dur_ms` ms (0 = until sfxstop; default: no-op). |
+| `default sfxstop ( ch :i )` | Silence channel `ch` (default: no-op). |
+| `default sfxtick ( )` | Advance software duration timers once per frame (required on platforms without hardware duration, e.g. C64/X16; default: no-op). |

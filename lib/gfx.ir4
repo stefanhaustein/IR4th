@@ -28,13 +28,13 @@ default fn gfxheight ( -> :i ) __gfx_h end
 \ Per-pixel color depth in bits (1 on attribute-cell targets like C64/Spectrum, where gfxrgb may still return palette colors per cell)
 default fn gfxdepth ( -> :i ) 3 end
 
-\ Wait for vertical blank / next frame sync
+\ Wait for vertical blank / next frame sync (default: no-op)
 default fn gfxvsync ( ) end
 
-\ Return platform tick counter (wraps monotonically; used for frame timing)
+\ Return platform tick counter (wraps monotonically; default: 0)
 default fn gfxticks ( -> :i ) 0 end
 
-\ Switch to graphics mode index `mode`
+\ Switch to graphics mode index `mode` (default: ANSI half-block buffer)
 default fn gfxmode ( mode :i )
   mode drop
   termwidth -> __gfx_w
@@ -120,7 +120,7 @@ default fn gfxpx ( x :i y :i )
   x y 1 u>> val __gfx_emit_cell
 end
 
-\ Draw a horizontal line of width w starting at (x, y)
+\ Draw a horizontal line of width w starting at (x, y) (default: gfxpx loop)
 default fn gfxhline ( x :i y :i w :i )
   begin w 0 > while
     x y gfxpx
@@ -129,7 +129,7 @@ default fn gfxhline ( x :i y :i w :i )
   repeat
 end
 
-\ Draw a vertical line of height h starting at (x, y)
+\ Draw a vertical line of height h starting at (x, y) (default: gfxpx loop)
 default fn gfxvline ( x :i y :i h :i )
   begin h 0 > while
     x y gfxpx
@@ -138,7 +138,7 @@ default fn gfxvline ( x :i y :i h :i )
   repeat
 end
 
-\ Draw a line from (x1, y1) to (x2, y2)
+\ Draw a line from (x1, y1) to (x2, y2) (default: Bresenham via gfxhline/gfxvline/gfxpx)
 default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
   y1 y2 = if
     x1 x2 > if x2 y1 x1 x2 - 1 + else x1 y1 x2 x1 - 1 + then gfxhline return
@@ -202,7 +202,7 @@ default fn gfxrect ( x :i y :i w :i h :i )
   x w + 1 - y h gfxvline
 end
 
-\ Draw a filled rectangle at (x, y) with size w x h
+\ Draw a filled rectangle at (x, y) with size w x h (default: gfxhline loop)
 default fn gfxfillrect ( x :i y :i w :i h :i )
   w 0 <= h 0 <= or if return then
   y h + -> var ye :i

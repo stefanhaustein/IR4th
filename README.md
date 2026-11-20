@@ -44,7 +44,7 @@ IR4(th) includes a minimal portable runtime library in [lib/](lib/).
 
 It uses `require` with a platform → architecture → generic fallback chain (`lib/<platform>/` → `lib/<arch>/` → `lib/`).
 
-The runtime library outside of stdio should be considered as a stub for experimentation
+The runtime library outside of stdio should be considered as a placeholder for experimentation
 and is not supposed to replace the runtime library of the frontend language.
 
 In particular, the graphics library is aimed at simplicity and portability rather

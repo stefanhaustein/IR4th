@@ -13,7 +13,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:i32`, `:a`, `:f`).
-* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `default`, `fwd`, `init`, `code`, `end`, `require`, `extern`, `var`, `:bytes`, `data`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`).
+* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `default`, `hot`, `fwd`, `init`, `code`, `inline`, `end`, `require`, `extern`, `var`, `:bytes`, `data`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a leading colon that is not a keyword.
 
@@ -110,8 +110,8 @@ require "<filename>"
 
 * `<filename>` is resolved by searching roots in order: the directory of the file containing `require`, any `-I <dir>` directories in CLI order, and finally the compiler's `lib/` roots.
 * Within the **first root** that contains at least one match, all matching specificity levels are loaded under a shared `require` group (most-specific parsed first):
-  1. `<root>/<platform>/<filename>` (when `--platform <name>`, `--cpm`, `--sim65`, or `--c64` is active, e.g. `cpm/io.ir4` or `c64/io.ir4`)
-  2. `<root>/<cpu>/<filename>` (e.g. `6502/i32.ir4` or `z80/mem.ir4`)
+  1. `<root>/<platform>/<filename>` and any parent platform directories (e.g. `-t x16` checks `x16/` then `c64/`, `-t agon` checks `agon/`)
+  2. `<root>/<cpu>/<filename>` (e.g. `6502/i32.ir4`, `z80/mem.ir4`, `ez80/...`)
   3. `<root>/<filename>` (portable fallback)
 * Functions declared with `default fn` may be overridden by a non-default `fn` or `code` definition with a matching signature within the same `require` group. Overrides outside that `require` group, duplicate `default fn`s, and duplicate non-default definitions are rejected.
 * Repeated `require` directives for an already-loaded file path are ignored.

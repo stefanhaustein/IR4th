@@ -18,7 +18,7 @@ ORDER = [
     "sfx.ir4",
 ]
 
-FN_RE = re.compile(r"^(?:(?:default|hot)\s+)*fn\s+(\S+)\s*\(([^)]*)\)")
+FN_RE = re.compile(r"^((?:(?:default|hot)\s+)*)fn\s+(\S+)\s*\(([^)]*)\)")
 
 
 def parse_lib(path: Path):
@@ -38,10 +38,12 @@ def parse_lib(path: Path):
             continue
         m = FN_RE.match(stripped)
         if m:
-            name, sig = m.group(1), m.group(2).strip()
+            mods, name, sig = m.group(1).split(), m.group(2), m.group(3).strip()
             if not name.startswith("__"):
                 doc = " ".join(pending)
-                entries.append((name, f"`{name} ( {sig} )`", doc))
+                prefix = "default " if "default" in mods else ""
+                sig_str = f"{name} ( {sig} )" if sig else f"{name} ( )"
+                entries.append((name, f"`{prefix}{sig_str}`", doc))
             pending = []
             continue
         if stripped == "":
@@ -49,6 +51,13 @@ def parse_lib(path: Path):
         elif not stripped.startswith(("var ", "data ", "require ", "fwd ")):
             pending = []
     return header, entries
+
+
+def strip_mod_prefix(line: str, name: str) -> str:
+    for pfx in (f"lib/{name} - ", f"{name} - "):
+        if line.startswith(pfx):
+            return line[len(pfx):]
+    return line
 
 
 def main():
@@ -59,7 +68,7 @@ def main():
     out = [
         "# IR4th Standard Library Reference",
         "",
-        "> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`.",
+        "> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`. Functions marked `default` may be overridden by platform/architecture modules.",
         "",
     ]
 
@@ -68,19 +77,16 @@ def main():
     out.append("")
     for p, header, _ in parsed:
         anchor = p.name.replace(".", "")
-        summary = header[0] if header else ""
-        if summary.startswith(f"lib/{p.name}"):
-            summary = summary.split(" - ", 1)[1] if " - " in summary else summary
+        summary = strip_mod_prefix(header[0], p.name) if header else ""
         out.append(f"- [`lib/{p.name}`](#{anchor}) — {summary}")
     out.append("")
 
     for p, header, entries in parsed:
         out.append(f"## `lib/{p.name}`")
         out.append("")
-        for h in header:
-            if not h.startswith(f"lib/{p.name}"):
-                out.append(h)
-        if any(not h.startswith(f"lib/{p.name}") for h in header):
+        body_hdr = [strip_mod_prefix(h, p.name) for h in header]
+        if body_hdr:
+            out.extend(body_hdr)
             out.append("")
         out.append("| Function | Description |")
         out.append("| --- | --- |")

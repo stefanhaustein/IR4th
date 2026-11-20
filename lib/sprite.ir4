@@ -5,16 +5,16 @@ require "gfx.ir4"
 \ Number of hardware sprite slots (0 = hardware sprites unsupported)
 default fn sprcount ( -> :i ) 0 end
 
-\ Sprite color depth in bits per pixel
+\ Sprite color depth in bits per pixel (default: 0)
 default fn sprdepth ( -> :i ) 0 end
 
-\ Maximum sprite width in pixels
+\ Maximum sprite width in pixels (default: 0)
 default fn sprmaxw  ( -> :i ) 0 end
 
-\ Maximum sprite height in pixels
+\ Maximum sprite height in pixels (default: 0)
 default fn sprmaxh  ( -> :i ) 0 end
 
-\ Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front
+\ Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front (default: 1)
 default fn sprzdir  ( -> :i ) 1 end
 
 \ Define sprite image/frame `img` of screen size w x h.
@@ -23,11 +23,11 @@ default fn sprzdir  ( -> :i ) 1 end
 \ Returns -1 on success, 0 if unsupported or out of sprite resources.
 default fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i ) 0 end
 
-\ Bind image `img` to hardware sprite `id` (see `sprzdir` for overlap priority).
+\ Bind image `img` to hardware sprite `id` (see `sprzdir` for overlap priority; default: no-op).
 default fn sprset ( id :i img :i ) end
 
-\ Move sprite `id` to screen position (x, y)
+\ Move sprite `id` to screen position (x, y) (default: no-op)
 default fn sprpos ( id :i x :i y :i ) end
 
-\ Show (on <> 0) or hide (on = 0) sprite `id`
+\ Show (on <> 0) or hide (on = 0) sprite `id` (default: no-op)
 default fn sprshow ( id :i on :i ) end
