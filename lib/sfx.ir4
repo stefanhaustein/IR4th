@@ -1,0 +1,15 @@
+\ lib/sfx.ir4 - Portable minimal sound effects API (optional override per platform)
+\ Platform implementations: lib/agon/sfx.ir4, lib/c64/sfx.ir4, lib/x16/sfx.ir4
+\ Waveforms: 0 = pulse/square, 1 = sawtooth, 2 = triangle, 3 = noise.
+
+\ Query number of hardware sound channels (0 = sound unsupported)
+default fn sfxcount ( -> :i ) 0 end
+
+\ Play a tone on channel `ch` at `freq` Hz, volume `vol` (0..15), waveform `wave` (0..3), for `dur_ms` ms (0 = until sfxstop).
+default fn sfxplay ( ch :i freq :i vol :i wave :i dur_ms :i ) end
+
+\ Silence channel `ch`.
+default fn sfxstop ( ch :i ) end
+
+\ Advance software duration timers once per frame (required on platforms without hardware duration, e.g. C64/X16).
+default fn sfxtick ( ) end

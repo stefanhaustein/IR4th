@@ -1,0 +1,26 @@
+\ lib/agon/sfx.ir4 - Agon VDP sound effects (VDU 23, 0, &85)
+
+require "stdio.ir4"
+
+data __agon_sfx_waves
+  0 :i8 2 :i8 1 :i8 3 :i8
+end
+
+fn sfxcount ( -> :i ) 32 end
+
+fn sfxplay ( ch :i freq :i vol :i wave :i dur_ms :i )
+  ch 0 < ch 31 > or if return then
+  vol 0 < if 0 -> vol then
+  vol 15 > if 15 -> vol then
+  23 emit 0 emit 0x85 emit ch emit 4 emit __agon_sfx_waves wave 3 and a+ u8@ emit
+  23 emit 0 emit 0x85 emit ch emit 0 emit vol 3 << emit
+  freq 255 and emit freq 8 >> 255 and emit
+  dur_ms 255 and emit dur_ms 8 >> 255 and emit
+end
+
+fn sfxstop ( ch :i )
+  ch 0 < ch 31 > or if return then
+  23 emit 0 emit 0x85 emit ch emit 2 emit 0 emit
+end
+
+fn sfxtick ( ) end

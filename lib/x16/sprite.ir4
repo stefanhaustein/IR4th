@@ -14,6 +14,7 @@ fn sprcount ( -> :i ) 128 end
 fn sprdepth ( -> :i ) 8 end
 fn sprmaxw  ( -> :i ) 64 end
 fn sprmaxh  ( -> :i ) 64 end
+fn sprzdir  ( -> :i ) -1 end
 
 fn __x16_spr_size_code ( n :i -> :i )
   n 8 <= if 0 return then
@@ -23,10 +24,9 @@ fn __x16_spr_size_code ( n :i -> :i )
 end
 
 fn __x16_spr_attr_addr ( id :i off :i )
-  127 id - -> var slot :i
   0 0x9F25 i>a i8!
-  slot 31 and 3 << off + 0x9F20 i>a i8!
-  0xFC slot 5 u>> + 0x9F21 i>a i8!
+  id 31 and 3 << off + 0x9F20 i>a i8!
+  0xFC id 5 u>> + 0x9F21 i>a i8!
   0x11 0x9F22 i>a i8!
 end
 

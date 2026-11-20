@@ -7,17 +7,18 @@ var __c64_img_mc  :bytes 48
 var __c64_img_col :bytes 48
 
 data __c64_spr_bit_tbl
-  128 :i8 64 :i8 32 :i8 16 :i8 8 :i8 4 :i8 2 :i8 1 :i8
+  1 :i8 2 :i8 4 :i8 8 :i8 16 :i8 32 :i8 64 :i8 128 :i8
 end
 
 data __c64_spr_inv_tbl
-  127 :i8 191 :i8 223 :i8 239 :i8 247 :i8 251 :i8 253 :i8 254 :i8
+  254 :i8 253 :i8 251 :i8 247 :i8 239 :i8 223 :i8 191 :i8 127 :i8
 end
 
 fn sprcount ( -> :i ) 8 end
 fn sprdepth ( -> :i ) 2 end
 fn sprmaxw  ( -> :i ) 24 end
 fn sprmaxh  ( -> :i ) 21 end
+fn sprzdir  ( -> :i ) -1 end
 
 fn __c64_spr_bit ( reg :i bit :i on :i )
   reg i>a -> var r :a
@@ -89,13 +90,12 @@ end
 
 fn sprset ( id :i img :i )
   id 0 < id 7 > or img 0 < or img 47 > or if return then
-  7 id - -> var hw :i
-  1 hw << -> var bit :i
+  __c64_spr_bit_tbl id a+ u8@ -> var bit :i
   0xD01D bit 0 __c64_spr_bit
   0xD017 bit 0 __c64_spr_bit
   0xD01C bit __c64_img_mc img a+ u8@ __c64_spr_bit
-  __c64_img_col img a+ u8@ 0xD027 hw + i>a i8!
-  img 0xCFF8 hw + i>a i8!
+  __c64_img_col img a+ u8@ 0xD027 id + i>a i8!
+  img 0xCFF8 id + i>a i8!
 end
 
 fn sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )
@@ -104,7 +104,7 @@ end
 
 hot fn sprpos ( id :i x :i y :i )
   id 0 < id 7 > or if return then
-  0xD00E id 1 << - i>a -> var reg :a
+  0xD000 id 1 << + i>a -> var reg :a
   x 24 + -> var sx :i
   sx reg i8!
   y 50 + reg 1 a+ i8!
@@ -120,12 +120,10 @@ end
 
 fn sprshow ( id :i on :i )
   id 0 < id 7 > or if return then
-  7 id - -> var hw :i
-  1 hw << -> var bit :i
   on 0 <> if
-    __c64_spr_vis bit or -> __c64_spr_vis
+    __c64_spr_vis __c64_spr_bit_tbl id a+ u8@ or -> __c64_spr_vis
   else
-    __c64_spr_vis bit 255 xor and -> __c64_spr_vis
+    __c64_spr_vis __c64_spr_inv_tbl id a+ u8@ and -> __c64_spr_vis
   then
   __c64_spr_vis 0xD015 i>a i8!
 end

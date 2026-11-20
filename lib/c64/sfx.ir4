@@ -1,0 +1,54 @@
+\ lib/c64/sfx.ir4 - Commodore 64 SID sound effects (3 voices at $D400)
+
+var __c64_sfx_tmr  :bytes 6
+var __c64_sfx_ctrl :bytes 3
+
+data __c64_sfx_waves
+  0x41 :i8 0x21 :i8 0x11 :i8 0x81 :i8
+end
+
+fn sfxcount ( -> :i ) 3 end
+
+fn sfxplay ( ch :i freq :i vol :i wave :i dur_ms :i )
+  ch 0 < ch 2 > or if return then
+  vol 0 < if 0 -> vol then
+  vol 15 > if 15 -> vol then
+  vol 0xD418 i>a i8!
+  0xD400 ch 7 * + i>a -> var v :a
+  freq 17 * -> var sf :i
+  sf 255 and v i8!
+  sf 8 u>> 255 and v 1 a+ i8!
+  0x00 v 2 a+ i8!
+  0x08 v 3 a+ i8!
+  0x04 v 5 a+ i8!
+  0xF4 v 6 a+ i8!
+  __c64_sfx_waves wave 3 and a+ u8@ -> var ctrl :i
+  ctrl __c64_sfx_ctrl ch a+ i8!
+  ctrl v 4 a+ i8!
+  0 -> var ticks :i
+  dur_ms 0 > if
+    dur_ms 4 u>> -> ticks
+    ticks 1 < if 1 -> ticks then
+  then
+  ticks __c64_sfx_tmr ch 1 << a+ i16!
+end
+
+fn sfxstop ( ch :i )
+  ch 0 < ch 2 > or if return then
+  __c64_sfx_ctrl ch a+ u8@ 0xFE and 0xD404 ch 7 * + i>a i8!
+  0 __c64_sfx_tmr ch 1 << a+ i16!
+end
+
+fn sfxtick ( )
+  0 -> var ch :i
+  begin ch 3 < while
+    __c64_sfx_tmr ch 1 << a+ -> var p :a
+    p i16@ -> var t :i
+    t 0 > if
+      t 1 - -> t
+      t p i16!
+      t 0 = if ch sfxstop then
+    then
+    ch 1 + -> ch
+  repeat
+end

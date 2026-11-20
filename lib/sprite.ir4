@@ -8,6 +8,8 @@ default fn sprcount ( -> :i ) 0 end
 default fn sprdepth ( -> :i ) 0 end
 default fn sprmaxw  ( -> :i ) 0 end
 default fn sprmaxh  ( -> :i ) 0 end
+\ Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front
+default fn sprzdir  ( -> :i ) 1 end
 
 \ Define sprite image/frame `img` of screen size w x h.
 \ `data` holds w * h unsigned bytes (0 = transparent, 1..ncolors = 1-based palette index).
@@ -15,7 +17,7 @@ default fn sprmaxh  ( -> :i ) 0 end
 \ Returns -1 on success, 0 if unsupported or out of sprite resources.
 default fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i ) 0 end
 
-\ Bind image `img` to hardware sprite `id` (higher id renders in front of lower id).
+\ Bind image `img` to hardware sprite `id` (see `sprzdir` for overlap priority).
 default fn sprset ( id :i img :i ) end
 
 \ Convenience: define image `id` and bind it to sprite `id`.

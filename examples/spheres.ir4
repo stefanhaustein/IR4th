@@ -2,6 +2,7 @@
 \ Draws unicolor 21x21 hires spheres (ncolors = 1, 24x21 native on C64) with a separate
 \ full-resolution white specular highlight sprite that shifts subtly with ball position.
 
+require "stdio.ir4"
 require "sprite.ir4"
 
 var spr_buf  :bytes 441
@@ -17,6 +18,8 @@ var bbounce :bytes 64
 var max_balls :i
 var active    :i
 var rng_state :i
+var ball_off  :i
+var hl_off    :i
 
 data sphere_rgb
   255 :i8   0 :i8   0 :i8   \ red
@@ -140,10 +143,10 @@ fn add_ball ( )
   i 1 << -> var sid :i
   x8 4 >> -> var sx :i
   -672 5 >> -> var sy :i
-  sid i 7 and 1 + sprset
-  sid 1 + 0 sprset
-  sid sx sy sprpos
-  sid 1 + sx 8 + sy 3 + sprpos
+  sid ball_off + i 7 and 1 + sprset
+  sid hl_off + 0 sprset
+  sid ball_off + sx sy sprpos
+  sid hl_off + sx 8 + sy 3 + sprpos
   sid 1 sprshow
   sid 1 + 1 sprshow
   active 1 + -> active
@@ -176,10 +179,14 @@ hot fn step_balls ( floor8 :i )
 
     x8 4 >> -> var sx :i
     y8 5 >> -> var sy :i
-    i 1 << -> var sid :i
-    sid sx sy sprpos
     sx 110 < if 10 else sx 190 > if 6 else 8 then then -> var hx :i
-    sid 1 + sx hx + sy 3 + sprpos
+    ball_off 0 <> if
+      off 1 + sx sy sprpos
+      off sx hx + sy 3 + sprpos
+    else
+      off sx sy sprpos
+      off 1 + sx hx + sy 3 + sprpos
+    then
     i 1 + -> i
   repeat
 end
@@ -219,7 +226,16 @@ hot fn run_loop ( floor8 :i )
   repeat
 end
 
+data err_msg
+  "Insufficient sprite size/count (need 21x21, 2 sprites)\n" 0 :i8
+end
+
 fn main ( -> :i )
+  sprmaxw 21 < sprmaxh 21 < or sprcount 2 < or if
+    err_msg type0
+    1 return
+  then
+  sprzdir 0 < if 1 -> ball_off 0 -> hl_off else 0 -> ball_off 1 -> hl_off then
   320 240 6 gfxinit
   draw_grid_bg
   setup_sprites

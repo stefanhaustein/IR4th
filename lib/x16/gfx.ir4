@@ -135,14 +135,17 @@ fn gfxvline ( x :i y :i h :i )
   repeat
 end
 
-fn gfxclear ( )
+hot fn gfxclear ( )
   0 0 0x10 __x16_set_addr
+  0x9F23 i>a -> var d0 :a
+  __x16_col -> var c :i
   __x16_h -> var row :i
   begin row 0 > while
-    320 -> var col :i
-    begin col 0 > while
-      __x16_col 0x9F23 i>a i8!
-      col 1 - -> col
+    40 -> var blk :i
+    begin blk 0 > while
+      c d0 i8! c d0 i8! c d0 i8! c d0 i8!
+      c d0 i8! c d0 i8! c d0 i8! c d0 i8!
+      blk 1 - -> blk
     repeat
     row 1 - -> row
   repeat
