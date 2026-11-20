@@ -112,18 +112,18 @@ fn setup_sprites ( )
   build_sphere_mask
   build_spec_sprite
   max_balls 8 < if max_balls else 8 then -> var ncols :i
+  0 -> var s :i
   0 -> var i :i
   begin i ncols < while
     sphere_rgb i 3 * a+ -> var p :a
     p u8@ p 1 a+ u8@ p 2 a+ u8@ gfxrgb pal_buf i8!
     i 1 + 21 21 spr_buf pal_buf 1 sprimg drop
-    i draw_grid_step
+    i 1 + 3 << -> var target_s :i
+    begin s ncols * target_s < while
+      s draw_grid_step
+      s 1 + -> s
+    repeat
     i 1 + -> i
-  repeat
-  ncols -> var s :i
-  begin s 8 < while
-    s draw_grid_step
-    s 1 + -> s
   repeat
 end
 
@@ -131,14 +131,19 @@ fn add_ball ( )
   active max_balls >= if return then
   active -> var i :i
   i 1 << -> var off :i
-  480 rng_next 3520 mod + bx off a+ i16!
+  480 rng_next 3520 mod + -> var x8 :i
+  x8 bx off a+ i16!
   -672 by8 off a+ i16!
   rng_next 5 mod 7 + rng_next 1 and 0 = if 0 swap - then bvx off a+ i16!
   0 bvy off a+ i16!
   rng_next 12 mod 95 - bbounce off a+ i16!
   i 1 << -> var sid :i
+  x8 4 >> -> var sx :i
+  -672 5 >> -> var sy :i
   sid i 7 and 1 + sprset
   sid 1 + 0 sprset
+  sid sx sy sprpos
+  sid 1 + sx 8 + sy 3 + sprpos
   sid 1 sprshow
   sid 1 + 1 sprshow
   active 1 + -> active
@@ -184,6 +189,7 @@ hot fn run_loop ( floor8 :i )
   gfxticks -> var prev_t :i
   0 -> var sum_dt :i
   0 -> var fcnt :i
+  0 -> var base_dt :i
   -1 -> var budget_ok :i
 
   begin inkey 0 = while
@@ -196,13 +202,19 @@ hot fn run_loop ( floor8 :i )
     sum_dt dt + -> sum_dt
     fcnt 1 + -> fcnt
     fcnt 16 >= if
-      sum_dt 24 > if 0 -> budget_ok then
+      base_dt 0 = if
+        sum_dt -> base_dt
+      else
+        sum_dt base_dt 2 + > if 0 -> budget_ok then
+      then
       0 -> sum_dt
       0 -> fcnt
     then
     budget_ok 0 <> elapsed 240 >= and if
       add_ball
       0 -> elapsed
+      0 -> sum_dt
+      0 -> fcnt
     then
   repeat
 end
