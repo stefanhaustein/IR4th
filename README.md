@@ -35,20 +35,21 @@ fn fib ( n :i -> :i )
 end
 ```
 
-See [examples/](examples/) and [tests/](tests/) for the full test suite.
+See [examples/](examples/) for more code examples and [tests/](tests/) for the full test suite.
 
 
 ## Runtime Library
 
-The portable runtime library in [lib/](lib/) uses `require` with a platform → architecture → generic fallback chain (`lib/<platform>/` → `lib/<arch>/` → `lib/`):
+IR4(th) includes a minimal portable runtime library in [lib/](lib/).
 
-- [lib/stdio.ir4](lib/stdio.ir4) — Portable console/terminal I/O, number/string formatting, and screen control (`emit`, `key`, `inkey`, `cls`, `gotoxy`, `fgcolor`, `bgcolor`)
-- [lib/gfx.ir4](lib/gfx.ir4) — Stateful pixel graphics (`gfxmode`, `gfxrgb`, `gfxcolor`, `gfxpx`, `gfxline`, `gfxhline`, `gfxvline`, `gfxfillrect`), defaulting to ANSI half-blocks with hardware backends in [lib/x16/](lib/x16/), [lib/c64/](lib/c64/), [lib/agon/](lib/agon/), [lib/cpm/](lib/cpm/), and [lib/zx81/](lib/zx81/)
-- [lib/mem.ir4](lib/mem.ir4) — Memory operations and first-fit heap allocator (`alloc`, `free`, etc.) starting at `__heap_start`
-- [lib/math.ir4](lib/math.ir4) — Portable floating-point math (`fabs`, `floor`, `ceil`, `round`, `sqrt`, trig/log/exp helpers)
-- [lib/i32.ir4](lib/i32.ir4) — Portable 32-bit signed division and modulo fallbacks (`i32/`, `i32mod`, auto-required when used)
-- [lib/sprite.ir4](lib/sprite.ir4) — Portable hardware sprite API (`sprimg`, `sprset`, `sprpos`, `sprshow`)
-- [lib/sfx.ir4](lib/sfx.ir4) — Portable minimal sound effects API (`sfxplay`, `sfxstop`, `sfxtick`)
+It uses `require` with a platform → architecture → generic fallback chain (`lib/<platform>/` → `lib/<arch>/` → `lib/`).
+
+The runtime library outside of stdio should be considered as a stub for experimentation
+and is not supposed to replace the runtime library of the frontend language.
+
+In particular, the graphics library is aimed at simplicity and portability rather
+than performance or completeness. Platform graphics modi or other features that seemed 
+inconvenient to support might be missing. 
 
 See [docs/lib.md](docs/lib.md) for the full Runtime Library API reference.
 
@@ -61,6 +62,7 @@ See [docs/lib.md](docs/lib.md) for the full Runtime Library API reference.
 - **Immediate lowering:** Constant-operand `+`/`-`, comparisons, shifts, and base+offset memory accesses emit immediate instructions where supported by the target.
 - **Static locals (Z80 / eZ80 / 6502):** Non-recursive functions place locals in static RAM rather than frame-pointer stacks.
 - **On-demand runtimes:** Math, `:i32`, and floating-point helpers are embedded only when referenced.
+
 
 ## Building & Testing
 
