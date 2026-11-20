@@ -1,0 +1,29 @@
+# Sinclair ZX81 (`--zx81`)
+
+## Compiler Flags
+
+```sh
+./build/ir4c -t z80 --zx81 -o out.p input.ir4
+```
+
+- **Target / Platform:** `-t z80 --zx81` (platform name `"zx81"`)
+- **Base address:** `0x4091` (`16529`) inside `2 REM` (autostarted by `1 RAND USR VAL "16529"` at `0x407D`)
+- **Fallback chain:** `lib/zx81/` → `lib/z80/` → `lib/`
+
+## Memory Layout
+
+- **`0x4009–0x407C`:** ZX81 system variables (`CDFLAG = 0x40` for SLOW mode, `NXTLIN = 0x407D` for autostart)
+- **`0x407D–0x4090`:** Line 1 (`1 RAND USR VAL "16529"`) + Line 2 `REM` header
+- **`0x4091+`:** Compiled Z80 machine code, initialized `data`, and BSS inside the `2 REM` line
+- **After `2 REM`:** Expanded `32×24` `D_FILE` (`793` bytes), `VARS` (`0x80`), and `E_LINE` (`0x76, 0x80`)
+- **RAM requirement:** Requires a 16 KB+ RAM pack (`0x4000–0x7FFF`+)
+
+## Assumptions & Notes
+
+- **`IX`/`IY` preservation:** The Z80 backend uses `SP`-relative locals and never touches `IX` or `IY`, keeping ZX81 SLOW-mode display interrupts intact.
+- **Terminal (`lib/zx81/stdio.ir4`):** `32×22` text area (`termwidth = 32`, `termheight = 22`), ASCII → ZX81 character set translation in `emit` (via ROM `RST $10`), `cls` (via ROM `$0A2A`), and `inkey`/`key` (via `LAST_K` at `0x4025`).
+- **Graphics (`lib/zx81/gfx.ir4`):** `64×48` 1-bit pixel graphics in `D_FILE` using ZX81's `2×2` block-mosaic characters (`$00–$07` and `$80–$87`).
+- **Running in ZEsarUX:**
+  ```sh
+  zesarux --noconfigfile --machine ZX81 --snap out.p
+  ```

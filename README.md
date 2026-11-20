@@ -62,7 +62,7 @@ make test-ez80    # Build Agon MOS binaries and run them via fab-agon-emulator (
 Compile with `ir4c`:
 
 ```sh
-./build/ir4c [-t z80|ez80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr[:init_x]] [--no-stack-zp] [--run] [--cpm] [--agon] [--sim65] [--c64] [--x16] [--x16-cart] [--virt] [--obj] <input.ir4>
+./build/ir4c [-t z80|ez80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr[:init_x]] [--no-stack-zp] [--run] [--cpm] [--zx81] [--agon] [--sim65] [--c64] [--x16] [--x16-cart] [--virt] [--obj] <input.ir4>
 ```
 
 Pass `-I dir` (repeatable) to add library search directories ahead of the built-in `lib/` directory.
@@ -70,7 +70,7 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 
 ## Targets
 
-- **Z80** (`-t z80`): Generates Z80 machine code, with [`--cpm`](docs/cpm/) for CP/M `.com` executables.
+- **Z80** (`-t z80`): Generates Z80 machine code, with [`--cpm`](docs/cpm/) for CP/M `.com` executables and [`--zx81`](docs/zx81/) for Sinclair ZX81 `.p` snapshots.
 - **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with [`--agon`](docs/agon/) for Agon Light / Console8 MOS executables.
 - **6502** (`-t 6502`): Generates 6502 machine code (configurable `--zp`, `--stack-zp`, `--no-stack-zp`), with `--sim65` for `cc65`'s `sim65` simulator, [`--c64`](docs/c64/) for Commodore 64 `.prg`, and [`--x16` / `--x16-cart`](docs/x16/) for Commander X16 `.prg` and banked `.crt` cartridges.
 - **ARM64** (`-t arm64`): Generates AArch64 machine code, with `--run` support for direct JIT execution on macOS Apple Silicon.
@@ -93,7 +93,7 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 The portable runtime library in [lib/](lib/) uses `require` with a platform → architecture → generic fallback chain (`lib/<platform>/` → `lib/<arch>/` → `lib/`):
 
 - [lib/stdio.ir4](lib/stdio.ir4) — Portable console/terminal I/O, number/string formatting, and screen control (`emit`, `key`, `inkey`, `cls`, `gotoxy`, `fgcolor`, `bgcolor`)
-- [lib/gfx.ir4](lib/gfx.ir4) — Stateful pixel graphics (`gfxmode`, `gfxrgb`, `gfxcolor`, `gfxpx`, `gfxline`, `gfxhline`, `gfxvline`, `gfxfillrect`), defaulting to ANSI half-blocks with hardware backends in [lib/x16/](lib/x16/), [lib/c64/](lib/c64/), [lib/agon/](lib/agon/), and [lib/cpm/](lib/cpm/)
+- [lib/gfx.ir4](lib/gfx.ir4) — Stateful pixel graphics (`gfxmode`, `gfxrgb`, `gfxcolor`, `gfxpx`, `gfxline`, `gfxhline`, `gfxvline`, `gfxfillrect`), defaulting to ANSI half-blocks with hardware backends in [lib/x16/](lib/x16/), [lib/c64/](lib/c64/), [lib/agon/](lib/agon/), [lib/cpm/](lib/cpm/), and [lib/zx81/](lib/zx81/)
 - [lib/mem.ir4](lib/mem.ir4) — Memory operations and first-fit heap allocator (`alloc`, `free`, etc.) starting at `__heap_start`
 - [lib/math.ir4](lib/math.ir4) — Portable floating-point math (`fabs`, `floor`, `ceil`, `round`, `sqrt`, trig/log/exp helpers)
 - [lib/i32.ir4](lib/i32.ir4) — Portable 32-bit signed division and modulo fallbacks (`i32/`, `i32mod`, auto-required when used)
@@ -106,6 +106,7 @@ The portable runtime library in [lib/](lib/) uses `require` with a platform → 
 | **Commodore 64** | ![C64 Mandelbrot](docs/img/mandel_c64.png) | ![C64 testcard](docs/img/testcard_c64.png) |
 | **Agon** | ![Agon Mandelbrot](docs/img/mandel_agon.png) | ![Agon testcard](docs/img/testcard_agon.png) |
 | **CP/M** | ![CP/M Mandelbrot](docs/img/mandel_cpm.png) | — |
+| **Sinclair ZX81** | ![ZX81 Mandelbrot](docs/img/mandel_zx81.png) | — |
 | **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/img/mandel_arm64.png) | ![ANSI terminal testcard](docs/img/testcard_ansi.png) |
 
 ## License
