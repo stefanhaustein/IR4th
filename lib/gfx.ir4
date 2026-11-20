@@ -142,23 +142,61 @@ end
 default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
   var dx :i
   var dy :i
-  var sx :i
-  var sy :i
+  var s :i
   var err :i
-  var e2 :i
+  var r :i
+  var p :i
+  y1 y2 = if
+    x1 x2 > if x2 y1 x1 x2 - 1 + else x1 y1 x2 x1 - 1 + then gfxhline return
+  then
+  x1 x2 = if
+    y1 y2 > if x1 y2 y1 y2 - 1 + else x1 y1 y2 y1 - 1 + then gfxvline return
+  then
   x2 x1 - -> dx
-  dx 0 < if 0 dx - -> dx -1 -> sx else 1 -> sx then
+  dx 0 < if 0 dx - -> dx then
   y2 y1 - -> dy
-  dy 0 < if 0 dy - -> dy -1 -> sy else 1 -> sy then
-  0 dy - -> dy
-  dx dy + -> err
-  begin -1 while
-    x1 y1 gfxpx
-    x1 x2 = y1 y2 = and if return then
-    err 1 << -> e2
-    e2 dy >= if err dy + -> err x1 sx + -> x1 then
-    e2 dx <= if err dx + -> err y1 sy + -> y1 then
-  repeat
+  dy 0 < if 0 dy - -> dy then
+  dx dy >= if
+    x1 x2 > if
+      x1 -> p x2 -> x1 p -> x2
+      y1 -> p y2 -> y1 p -> y2
+    then
+    y2 y1 < if -1 else 1 then -> s
+    dx 1 >> -> err
+    x1 -> r
+    x1 -> p
+    begin p x2 <= while
+      err dy - -> err
+      err 0 < if
+        r y1 p r - 1 + gfxhline
+        p 1 + -> r
+        y1 s + -> y1
+        err dx + -> err
+      then
+      p 1 + -> p
+    repeat
+    r x2 <= if r y1 x2 r - 1 + gfxhline then
+  else
+    y1 y2 > if
+      x1 -> p x2 -> x1 p -> x2
+      y1 -> p y2 -> y1 p -> y2
+    then
+    x2 x1 < if -1 else 1 then -> s
+    dy 1 >> -> err
+    y1 -> r
+    y1 -> p
+    begin p y2 <= while
+      err dx - -> err
+      err 0 < if
+        x1 r p r - 1 + gfxvline
+        p 1 + -> r
+        x1 s + -> x1
+        err dy + -> err
+      then
+      p 1 + -> p
+    repeat
+    r y2 <= if x1 r y2 r - 1 + gfxvline then
+  then
 end
 
 default fn gfxrect ( x :i y :i w :i h :i )
