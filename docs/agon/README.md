@@ -14,6 +14,7 @@
 
 - **24-bit eZ80 ADL mode:** `JP entry` at `0x40000`, `MOS\0\1` header at `0x40040`, code + data + BSS + return stack following.
 - **`main` signature:** 0 inputs, at most 1 output.
+- **Float runtime:** Uses the embedded AgDev `float32` runtime when floating-point words are referenced.
 
 ## Assumptions & Notes
 

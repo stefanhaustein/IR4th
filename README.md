@@ -9,15 +9,6 @@ See [spec.md](spec.md) for the full language specification.
 This project is based on [hi5](https://github.com/stefanhaustein/hi5), an earlier IR stack language prototype implemented in KMP with Z80 support.
 
 
-## Targets
-
-- **Z80** (`-t z80`): Generates Z80 machine code, with optional `--cpm` support to emit a CP/M `.com` entry stub that prints `main`'s return value.
-- **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with `--agon` for Agon Light / Console8 MOS executables (base `0x40000`, AgDev `float32` runtime).
-- **6502** (`-t 6502`): Generates 6502 machine code (BSS stack/locals by default, optional Zero Page data stack via `--stack-zp`, 4-byte Zero Page scratch configurable via `--zp`), with `--sim65` for `cc65`'s `sim65` simulator and `--c64` for Commodore 64 `.prg` output (BASIC `SYS` stub, KERNAL `CHROUT`, BASIC ROM unmapping, and `$20..$8F` ZP data stack by default; disable with `--no-stack-zp`).
-- **ARM64** (`-t arm64`): Generates AArch64 machine code, with `--run` support for direct JIT execution on macOS Apple Silicon.
-- **RISC-V RV32IM** (`-t rv32`): Generates RV32IM machine code, with `--virt` for standalone QEMU `virt` ELF32 execution and `--obj` for relocatable ELF32 `.o` output (linking `extern` symbols and `libgcc` soft-float).
-- **Bytecode VM** (`-t bc`): Emits portable IR4th bytecode, with `--run` to execute directly in the built-in stack VM.
-
 ## Examples
 
 Hello world ([examples/hello.ir4](examples/hello.ir4)):
@@ -44,7 +35,7 @@ fn fib ( n :i -> :i )
 end
 ```
 
-See [examples/](examples/) (including [agon_boing.ir4](examples/agon_boing.ir4) and [mandel.ir4](examples/mandel.ir4)) and [tests/](tests/) for the full test suite.
+See [examples/](examples/) and [tests/](tests/) for the full test suite.
 
 ## Compiler Optimizations
 
@@ -71,10 +62,21 @@ make test-ez80    # Build Agon MOS binaries and run them via fab-agon-emulator (
 Compile with `ir4c`:
 
 ```sh
-./build/ir4c [-t z80|ez80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr[:init_x]] [--no-stack-zp] [--run] [--cpm] [--agon] [--sim65] [--c64] [--virt] [--obj] <input.ir4>
+./build/ir4c [-t z80|ez80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr[:init_x]] [--no-stack-zp] [--run] [--cpm] [--agon] [--sim65] [--c64] [--x16] [--virt] [--obj] <input.ir4>
 ```
 
 Pass `-I dir` (repeatable) to add library search directories ahead of the built-in `lib/` directory.
+
+
+## Targets
+
+- **Z80** (`-t z80`): Generates Z80 machine code, with [`--cpm`](docs/cpm/) for CP/M `.com` executables.
+- **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with [`--agon`](docs/agon/) for Agon Light / Console8 MOS executables.
+- **6502** (`-t 6502`): Generates 6502 machine code (configurable `--zp`, `--stack-zp`, `--no-stack-zp`), with `--sim65` for `cc65`'s `sim65` simulator, [`--c64`](docs/c64/) for Commodore 64 `.prg`, and [`--x16`](docs/x16/) for Commander X16 `.prg`.
+- **ARM64** (`-t arm64`): Generates AArch64 machine code, with `--run` support for direct JIT execution on macOS Apple Silicon.
+- **RISC-V RV32IM** (`-t rv32`): Generates RV32IM machine code, with `--virt` for standalone QEMU `virt` ELF32 execution and `--obj` for relocatable ELF32 `.o` output (linking `extern` symbols and `libgcc` soft-float).
+- **Bytecode VM** (`-t bc`): Emits portable IR4th bytecode, with `--run` to execute directly in the built-in stack VM.
+
 
 ## Repository Layout
 
@@ -90,10 +92,10 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 
 | Target | Mandelbrot ([mandel.ir4](examples/mandel.ir4)) | TV Test Card ([testcard.ir4](examples/testcard.ir4)) |
 |---|---|---|
-| **[Commander X16](docs/x16/)** | ![Commander X16 Mandelbrot](docs/img/mandel_x16.png) | ![Commander X16 testcard](docs/img/testcard_x16.png) |
-| **[Commodore 64](docs/c64/)** | ![C64 Mandelbrot](docs/img/mandel_c64.png) | ![C64 testcard](docs/img/testcard_c64.png) |
-| **[Agon](docs/agon/)** | ![Agon Mandelbrot](docs/img/mandel_agon.png) | ![Agon testcard](docs/img/testcard_agon.png) |
-| **[CP/M](docs/cpm/)** | ![CP/M Mandelbrot](docs/img/mandel_cpm.png) | — |
+| **Commander X16** | ![Commander X16 Mandelbrot](docs/img/mandel_x16.png) | ![Commander X16 testcard](docs/img/testcard_x16.png) |
+| **Commodore 64** | ![C64 Mandelbrot](docs/img/mandel_c64.png) | ![C64 testcard](docs/img/testcard_c64.png) |
+| **Agon** | ![Agon Mandelbrot](docs/img/mandel_agon.png) | ![Agon testcard](docs/img/testcard_agon.png) |
+| **CP/M** | ![CP/M Mandelbrot](docs/img/mandel_cpm.png) | — |
 | **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/img/mandel_arm64.png) | ![ANSI terminal testcard](docs/img/testcard_ansi.png) |
 
 ## License
