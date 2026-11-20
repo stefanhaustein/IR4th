@@ -7,11 +7,9 @@ require "gfx.ir4"
 var pal :bytes 64
 
 fn init_pal ( )
-  var i :i
-  var d :i
-  gfxdepth -> d
+  gfxdepth -> var d :i
   0 pal i8!
-  1 -> i
+  1 -> var i :i
   begin i 32 < while
     d 1 = if
       i 1 and
@@ -27,17 +25,12 @@ fn init_pal ( )
 end
 
 hot fn mandel_px ( cr :i ci :i -> :i )
-  var zr :i
-  var zi :i
-  var zr2 :i
-  var zi2 :i
-  var it :i
-  0 -> zr
-  0 -> zi
-  0 -> it
+  0 -> var zr :i
+  0 -> var zi :i
+  0 -> var it :i
   begin it 32 < while
-    zr zr * 6 >> -> zr2
-    zi zi * 6 >> -> zi2
+    zr zr * 6 >> -> var zr2 :i
+    zi zi * 6 >> -> var zi2 :i
     zr2 zi2 + 256 > if
       it return
     then
@@ -49,28 +42,19 @@ hot fn mandel_px ( cr :i ci :i -> :i )
 end
 
 fn render_mandel ( )
-  var w :i
-  var h :i
-  var px :i
-  var py :i
-  var cr :i
-  var ci :i
-  var x0 :i
-  var c :i
-  var nc :i
-  gfxwidth -> w
-  gfxheight -> h
+  gfxwidth -> var w :i
+  gfxheight -> var h :i
   0 gfxcolor
   gfxclear
-  0 -> py
+  0 -> var py :i
   begin py h < while
-    py 36 * h 2 u>> / 72 - -> ci
-    0 -> px
-    0 -> x0
-    -1 -> c
+    py 36 * h 2 u>> / 72 - -> var ci :i
+    0 -> var px :i
+    0 -> var x0 :i
+    -1 -> var c :i
     begin px w < while
-      px 48 * w 2 u>> / 134 - -> cr
-      pal cr ci mandel_px a+ u8@ -> nc
+      px 48 * w 2 u>> / 134 - -> var cr :i
+      pal cr ci mandel_px a+ u8@ -> var nc :i
       nc c <> if
         c 0 > if
           c gfxcolor

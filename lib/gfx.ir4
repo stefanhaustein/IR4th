@@ -49,32 +49,20 @@ end
 
 \ Enter best-matching mode from gfxmodes for (w, h, depth_bpp); (0, 0, 0) selects entry 0
 default fn gfxinit ( w :i h :i depth :i )
-  var tbl :a
-  var cnt :i
-  var p :a
-  var best_mode :i
-  var best_score :i
-  var mw :i
-  var mh :i
-  var md :i
-  var dw :i
-  var dh :i
-  var dd :i
-  var score :i
-  gfxmodes -> cnt -> tbl
+  gfxmodes -> var cnt :i -> var tbl :a
   cnt 0 <= if 0 gfxmode return then
-  tbl i16@ -> best_mode
+  tbl i16@ -> var best_mode :i
   w 0 = h 0 = and depth 0 = and if best_mode gfxmode return then
-  32767 -> best_score
-  tbl -> p
+  32767 -> var best_score :i
+  tbl -> var p :a
   begin cnt 0 > while
-    p 2 a+ i16@ -> mw
-    p 4 a+ i16@ -> mh
-    p 6 a+ i16@ -> md
-    mw w - -> dw  dw 0 < if 0 dw - -> dw then
-    mh h - -> dh  dh 0 < if 0 dh - -> dh then
-    md depth - -> dd  dd 0 < if 0 dd - -> dd then
-    dw dh + dd 5 << + -> score
+    p 2 a+ i16@ -> var mw :i
+    p 4 a+ i16@ -> var mh :i
+    p 6 a+ i16@ -> var md :i
+    mw w - -> var dw :i  dw 0 < if 0 dw - -> dw then
+    mh h - -> var dh :i  dh 0 < if 0 dh - -> dh then
+    md depth - -> var dd :i  dd 0 < if 0 dd - -> dd then
+    dw dh + dd 5 << + -> var score :i
     score best_score < if
       score -> best_score
       p i16@ -> best_mode
@@ -88,8 +76,7 @@ end
 \ Map 8-bit RGB (0..255) to the platform's native color value for gfxcolor.
 \ On attribute-cell targets (gfxdepth = 1), non-zero colors may still set per-cell attributes.
 default fn gfxrgb ( r :i g :i b :i -> :i )
-  var c :i
-  0 -> c
+  0 -> var c :i
   r 128 >= if c 1 or -> c then
   g 128 >= if c 2 or -> c then
   b 128 >= if c 4 or -> c then
@@ -108,12 +95,10 @@ fn __gfx_emit_cell ( cx :i cy :i val :i )
 end
 
 default fn gfxpx ( x :i y :i )
-  var cell :a
-  var old :i
-  var val :i
   x 0 < x __gfx_w >= or y 0 < y __gfx_h >= or or if return then
-  __gfx_fb y 1 u>> __gfx_w * x + a+ -> cell
-  cell u8@ -> old
+  __gfx_fb y 1 u>> __gfx_w * x + a+ -> var cell :a
+  cell u8@ -> var old :i
+  0 -> var val :i
   y 1 and 0 = if
     old 15 and __gfx_col 4 << or -> val
   else
@@ -140,31 +125,25 @@ default fn gfxvline ( x :i y :i h :i )
 end
 
 default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
-  var dx :i
-  var dy :i
-  var s :i
-  var err :i
-  var r :i
-  var p :i
   y1 y2 = if
     x1 x2 > if x2 y1 x1 x2 - 1 + else x1 y1 x2 x1 - 1 + then gfxhline return
   then
   x1 x2 = if
     y1 y2 > if x1 y2 y1 y2 - 1 + else x1 y1 y2 y1 - 1 + then gfxvline return
   then
-  x2 x1 - -> dx
+  x2 x1 - -> var dx :i
   dx 0 < if 0 dx - -> dx then
-  y2 y1 - -> dy
+  y2 y1 - -> var dy :i
   dy 0 < if 0 dy - -> dy then
   dx dy >= if
     x1 x2 > if
-      x1 -> p x2 -> x1 p -> x2
-      y1 -> p y2 -> y1 p -> y2
+      x1 -> var tmp :i x2 -> x1 tmp -> x2
+      y1 -> tmp y2 -> y1 tmp -> y2
     then
-    y2 y1 < if -1 else 1 then -> s
-    dx 1 >> -> err
-    x1 -> r
-    x1 -> p
+    y2 y1 < if -1 else 1 then -> var s :i
+    dx 1 >> -> var err :i
+    x1 -> var r :i
+    x1 -> var p :i
     begin p x2 <= while
       err dy - -> err
       err 0 < if
@@ -178,8 +157,8 @@ default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
     r x2 <= if r y1 x2 r - 1 + gfxhline then
   else
     y1 y2 > if
-      x1 -> p x2 -> x1 p -> x2
-      y1 -> p y2 -> y1 p -> y2
+      x1 -> tmp x2 -> x1 tmp -> x2
+      y1 -> tmp y2 -> y1 tmp -> y2
     then
     x2 x1 < if -1 else 1 then -> s
     dy 1 >> -> err
@@ -208,9 +187,8 @@ default fn gfxrect ( x :i y :i w :i h :i )
 end
 
 default fn gfxfillrect ( x :i y :i w :i h :i )
-  var ye :i
   w 0 <= h 0 <= or if return then
-  y h + -> ye
+  y h + -> var ye :i
   begin y ye < while
     x y w gfxhline
     y 1 + -> y
@@ -225,13 +203,10 @@ end
 
 \ Draw a circle outline of radius r centered at (cx, cy) using the midpoint algorithm
 default fn gfxcircle ( cx :i cy :i r :i )
-  var x :i
-  var y :i
-  var err :i
   r 0 < if return then
-  r -> x
-  0 -> y
-  1 r - -> err
+  r -> var x :i
+  0 -> var y :i
+  1 r - -> var err :i
   begin x y >= while
     cx x + cy y + gfxpx
     cx y + cy x + gfxpx

@@ -2,7 +2,7 @@ extern emit 0xFFD2 ( A :i )
 extern inkey 0xFFE4 ( -> A :i )
 
 fn key ( -> :i )
-  var c :i
+  0 -> var c :i
   begin
     inkey -> c
     c 0 =

@@ -24,9 +24,8 @@ end
 
 \ Print NUL-terminated string at s
 fn type0 ( s :a )
-  var c :i
   begin
-    s u8@ -> c
+    s u8@ -> var c :i
     c 0 <>
   while
     c xemit
@@ -37,8 +36,7 @@ end
 \ Print n as minimal unsigned decimal
 fn typeu ( n :i )
   var buf :bytes 20
-  var len :i
-  0 -> len
+  0 -> var len :i
   n 0 = if 48 xemit return then
   begin
     n 0 <>
@@ -67,14 +65,11 @@ end
 
 \ Print n as signed decimal, right-aligned with spaces to width w
 fn typei_w ( n :i w :i )
-  var d :i
-  var t :i
-  n -> t
+  0 -> var d :i
+  n -> var t :i
   t 0 < if
     1 -> d
     0 t - -> t
-  else
-    0 -> d
   then
   t 0 = if
     d 1 + -> d
@@ -97,12 +92,11 @@ end
 
 \ Print n as w zero-padded uppercase hex digits
 fn typeh_w ( n :i w :i )
-  var d :i
   begin
     w 0 >
   while
     w 1 - -> w
-    n w 2 << u>> 15 and -> d
+    n w 2 << u>> 15 and -> var d :i
     d 10 < if
       d 48 + xemit
     else
@@ -113,10 +107,8 @@ end
 
 \ Print n as minimal uppercase hex
 fn typeh ( n :i )
-  var t :i
-  var w :i
-  n -> t
-  1 -> w
+  n -> var t :i
+  1 -> var w :i
   begin
     t 15 u>
   while

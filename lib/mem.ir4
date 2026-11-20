@@ -41,11 +41,10 @@ end
 
 \ Compare len bytes at a and b; returns first nonzero (a[i] - b[i]) or 0 if equal
 default fn memcmp ( a :a b :a len :i -> :i )
-  var d :i
   begin
     len 0 >
   while
-    a u8@ b u8@ - -> d
+    a u8@ b u8@ - -> var d :i
     d 0 <> if d return then
     a 1 a+ -> a
     b 1 a+ -> b
@@ -62,27 +61,20 @@ end
 
 \ Allocate at least bytes bytes on the heap; returns block address
 fn heap_alloc ( bytes :i -> :a )
-  var need :i
-  var prev :a
-  var cur :a
-  var bsz :i
-  var rem :i
-  var nxt :a
-  var split :a
   __heap_ptr 0 i>a a= if __heap_start -> __heap_ptr then
   bytes 8 < if 8 -> bytes then
-  bytes 7 + -8 and 8 + -> need
-  0 i>a -> prev
-  __heap_free -> cur
+  bytes 7 + -8 and 8 + -> var need :i
+  0 i>a -> var prev :a
+  __heap_free -> var cur :a
   begin
     cur 0 i>a a<>
   while
-    cur @ -> bsz
+    cur @ -> var bsz :i
     bsz need >= if
-      cur 8 a+ a@ -> nxt
-      bsz need - -> rem
+      cur 8 a+ a@ -> var nxt :a
+      bsz need - -> var rem :i
       rem 16 >= if
-        cur need a+ -> split
+        cur need a+ -> var split :a
         rem split !
         nxt split 8 a+ a!
         need cur !
@@ -102,13 +94,10 @@ end
 
 \ Free a block previously returned by heap_alloc (coalesces adjacent free blocks)
 fn heap_free ( p :a )
-  var blk :a
-  var prev :a
-  var cur :a
   p 0 i>a a= if return then
-  p 8 a- -> blk
-  0 i>a -> prev
-  __heap_free -> cur
+  p 8 a- -> var blk :a
+  0 i>a -> var prev :a
+  __heap_free -> var cur :a
   begin
     cur 0 i>a a<> if cur blk a< else 0 then
   while

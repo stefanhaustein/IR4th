@@ -65,8 +65,7 @@ fn gfxvsync ( )
 end
 
 fn gfxrgb ( r :i g :i b :i -> :i )
-  var idx :i
-  0 -> idx
+  0 -> var idx :i
   r 128 >= if idx 1 or -> idx then
   g 128 >= if idx 2 or -> idx then
   b 128 >= if idx 4 or -> idx then
@@ -78,17 +77,14 @@ fn gfxcolor ( c :i )
 end
 
 fn gfxclear ( )
-  var p :a
-  var n :i
-  var attr :i
-  0xE000 i>a -> p
-  8000 -> n
+  0xE000 i>a -> var p :a
+  8000 -> var n :i
   begin n 0 > while
     0 p i8!
     p 1 a+ -> p
     n 1 - -> n
   repeat
-  __c64_col 0 = if 0 else __c64_col 4 << then -> attr
+  __c64_col 0 = if 0 else __c64_col 4 << then -> var attr :i
   0xCC00 i>a -> p
   1000 -> n
   begin n 0 > while
@@ -99,21 +95,15 @@ fn gfxclear ( )
 end
 
 hot fn gfxpx ( x :i y :i )
-  var row :i
-  var col :i
-  var off :i
-  var p :a
-  var mask :i
-  var cell :a
   x 0 < x 320 >= or y 0 < y 200 >= or or if return then
-  y 3 u>> -> row
-  x 3 u>> -> col
-  row 8 << row 6 << + col 3 << + y 7 and + -> off
-  0xE000 i>a off a+ -> p
-  128 x 7 and u>> -> mask
+  y 3 u>> -> var row :i
+  x 3 u>> -> var col :i
+  row 8 << row 6 << + col 3 << + y 7 and + -> var off :i
+  0xE000 i>a off a+ -> var p :a
+  128 x 7 and u>> -> var mask :i
   __c64_col 0 <> if
     p __c64_peek_under mask or p i8!
-    0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
+    0xCC00 i>a row 5 << row 3 << + col + a+ -> var cell :a
     cell u8@ 15 and __c64_col 4 << or cell i8!
   else
     p __c64_peek_under mask 255 xor and p i8!
@@ -121,23 +111,18 @@ hot fn gfxpx ( x :i y :i )
 end
 
 hot fn gfxhline ( x :i y :i w :i )
-  var row :i
-  var col :i
-  var p :a
-  var cell :a
-  var mask :i
   y 0 < y 200 >= or if return then
   x 0 < if w x + -> w 0 -> x then
   x w + 320 > if 320 x - -> w then
   w 0 <= if return then
-  y 3 u>> -> row
+  y 3 u>> -> var row :i
   begin w 0 > while
     x 7 and 0 = w 8 >= and if
-      x 3 u>> -> col
-      0xE000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
+      x 3 u>> -> var col :i
+      0xE000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> var p :a
       __c64_col 0 <> if
         255 p i8!
-        0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
+        0xCC00 i>a row 5 << row 3 << + col + a+ -> var cell :a
         cell u8@ 15 and __c64_col 4 << or cell i8!
       else
         0 p i8!
@@ -147,7 +132,7 @@ hot fn gfxhline ( x :i y :i w :i )
     else
       x 3 u>> -> col
       0xE000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
-      128 x 7 and u>> -> mask
+      128 x 7 and u>> -> var mask :i
       __c64_col 0 <> if
         p __c64_peek_under mask or p i8!
         0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
@@ -162,13 +147,17 @@ hot fn gfxhline ( x :i y :i w :i )
 end
 
 fn gfxvline ( x :i y :i h :i )
-  var row :i
-  var col :i
-  var ry :i
-  var p :a
-  var cell :a
-  var mask :i
-  var nmask :i
+  x 0 < x 320 >= or if return then
+  y 0 < if h y + -> h 0 -> y then
+  y h + 200 > if 200 y - -> h then
+  h 0 <= if return then
+  y 3 u>> -> var row :i
+  x 3 u>> -> var col :i
+  y 7 and -> var ry :i
+  0xE000 i>a row 8 << row 6 << + col 3 << + ry + a+ -> var p :a
+  0xCC00 i>a row 5 << row 3 << + col + a+ -> var cell :a
+  128 x 7 and u>> -> var mask :i
+  mask 255 xor -> var nmask :i
   x 0 < x 320 >= or if return then
   y 0 < if h y + -> h 0 -> y then
   y h + 200 > if 200 y - -> h then

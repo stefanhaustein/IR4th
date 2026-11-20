@@ -57,13 +57,11 @@ end
 
 \ Compute grid step and centered card bounds aligned to (w/termwidth, h/termheight) cells
 fn init_geom ( )
-  var cw :i
-  var ch :i
   gfxwidth -> w
   gfxheight -> h
-  w termwidth / -> cw
+  w termwidth / -> var cw :i
   cw 1 < if 1 -> cw then
-  h termheight / -> ch
+  h termheight / -> var ch :i
   ch 1 < if 1 -> ch then
 
   h 16 / cw + 1 - cw / cw * -> step
@@ -81,21 +79,18 @@ fn init_geom ( )
 end
 
 fn draw_background ( )
-  var x :i
-  var y :i
-
   c_dgray gfxcolor
   gfxclear
 
   w 120 < if return then
 
   c_white gfxcolor
-  cx step mod -> x
+  cx step mod -> var x :i
   begin x w < while
     x 0 h gfxvline
     x step + -> x
   repeat
-  cy step mod -> y
+  cy step mod -> var y :i
   begin y h < while
     0 y w gfxhline
     y step + -> y
@@ -105,13 +100,10 @@ end
 
 \ Row 1: 8 EBU color bars
 fn draw_ebu_bars ( rx :i ry :i rw :i rh :i )
-  var i :i
-  var x0 :i
-  var x1 :i
-  0 -> i
+  0 -> var i :i
   begin i 8 < while
-    rx rw i * 8 / + -> x0
-    i 7 = if rx rw + else rx rw i 1 + * 8 / + then -> x1
+    rx rw i * 8 / + -> var x0 :i
+    i 7 = if rx rw + else rx rw i 1 + * 8 / + then -> var x1 :i
     i ebu_color gfxcolor
     x0 ry x1 x0 - rh gfxfillrect
     i 1 + -> i
@@ -120,15 +112,11 @@ end
 
 \ Row 2: 5 equal-width grayscale blocks (Black -> White)
 fn draw_gray_steps ( rx :i ry :i rw :i rh :i )
-  var i :i
-  var x0 :i
-  var x1 :i
-  var v :i
-  0 -> i
+  0 -> var i :i
   begin i 5 < while
-    rx rw i * 5 / + -> x0
-    i 4 = if rx rw + else rx rw i 1 + * 5 / + then -> x1
-    i 4 = if 255 else i 6 << then -> v
+    rx rw i * 5 / + -> var x0 :i
+    i 4 = if rx rw + else rx rw i 1 + * 5 / + then -> var x1 :i
+    i 4 = if 255 else i 6 << then -> var v :i
     v v v gfxrgb gfxcolor
     x0 ry x1 x0 - rh gfxfillrect
     i 1 + -> i
@@ -137,23 +125,17 @@ end
 
 \ Draw "IR" left of cx and "4" right of cx inside the black bar using lines
 fn draw_ir4_label ( cx :i ry :i bar_h :i )
-  var lh :i
-  var lw :i
-  var y0 :i
-  var ym :i
-  var y1 :i
-  var x :i
   bar_h 7 < if return then
-  bar_h 4 - -> lh
-  lh 2 * 3 / -> lw
+  bar_h 4 - -> var lh :i
+  lh 2 * 3 / -> var lw :i
   lw 4 < if 4 -> lw then
-  ry bar_h lh - 1 u>> + -> y0
-  y0 lh 1 u>> + -> ym
-  y0 lh + 1 - -> y1
+  ry bar_h lh - 1 u>> + -> var y0 :i
+  y0 lh 1 u>> + -> var ym :i
+  y0 lh + 1 - -> var y1 :i
 
   c_white gfxcolor
   \ 'R' left of cx
-  cx 5 - lw - -> x
+  cx 5 - lw - -> var x :i
   x y0 lh gfxvline
   x y0 lw gfxhline
   x lw + 1 - y0 ym y0 - 1 + gfxvline
@@ -175,52 +157,34 @@ end
 
 \ Row 3: White field with black bar, 3-zone frequency grating (1&2 left of cx, 3 right of cx) + amber, and center pointer
 fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
-  var bar_h :i
-  var bar_w :i
-  var bar_x :i
-  var gr_y :i
-  var gr_h :i
-  var gr_x :i
-  var gr_w :i
-  var b1_w :i
-  var b2_w :i
-  var b3_w :i
-  var amb_w :i
-  var x :i
-  var period :i
-  var tri_y :i
-  var tri_h :i
-  var dy :i
-  var tw :i
-
   c_white gfxcolor
   rx ry rw rh gfxfillrect
 
   \ Black horizontal bar (top third, aligned to the middle 3 of the 5 gray blocks)
-  rh 3 / -> bar_h
+  rh 3 / -> var bar_h :i
   bar_h 2 < if 2 -> bar_h then
-  rx rw 5 / + -> bar_x
-  rx rw 4 * 5 / + bar_x - -> bar_w
+  rx rw 5 / + -> var bar_x :i
+  rx rw 4 * 5 / + bar_x - -> var bar_w :i
   c_black gfxcolor
   bar_x ry bar_w bar_h gfxfillrect
 
   \ Frequency grating on gray background: starts at yellow box (rx + rw/8), blocks 1 & 2 left of cx, block 3 right of cx
-  ry bar_h + -> gr_y
-  rh 3 / -> gr_h
+  ry bar_h + -> var gr_y :i
+  rh 3 / -> var gr_h :i
   gr_h 2 < if 2 -> gr_h then
-  rx rw 8 / + -> gr_x
-  cx gr_x - 1 u>> -> b1_w
-  cx gr_x - b1_w - -> b2_w
-  b1_w -> b3_w
-  b1_w b2_w + b3_w + -> gr_w
+  rx rw 8 / + -> var gr_x :i
+  cx gr_x - 1 u>> -> var b1_w :i
+  cx gr_x - b1_w - -> var b2_w :i
+  b1_w -> var b3_w :i
+  b1_w b2_w + b3_w + -> var gr_w :i
 
   c_gray gfxcolor
   gr_x gr_y rx rw + gr_x - gr_h gfxfillrect
 
   \ Block 1 (coarse): [0 .. b1_w)
-  3 -> x
+  3 -> var x :i
   begin x b1_w 2 - < while
-    x 6 mod -> period
+    x 6 mod -> var period :i
     period 0 = period 5 = or if c_black else
     period 2 = period 3 = or if c_white else c_gray then then
     gfxcolor
@@ -248,7 +212,7 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
   repeat
 
   \ Amber block to the right of Block 3
-  step 3 * -> amb_w
+  step 3 * -> var amb_w :i
   gr_x gr_w + amb_w + rx rw + > if rx rw + gr_x gr_w + - -> amb_w then
   amb_w 0 > if
     c_amber gfxcolor
@@ -256,12 +220,12 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
   then
 
   \ Small one-sided (right-half) black downward pointer centered around cx
-  gr_y gr_h + -> tri_y
-  ry rh + tri_y - -> tri_h
+  gr_y gr_h + -> var tri_y :i
+  ry rh + tri_y - -> var tri_h :i
   c_black gfxcolor
-  0 -> dy
+  0 -> var dy :i
   begin dy tri_h < while
-    tri_h dy - 1 + 1 u>> -> tw
+    tri_h dy - 1 + 1 u>> -> var tw :i
     tw 0 > if
       cx tri_h 2 u>> - tri_y dy + tw gfxhline
     then
@@ -276,20 +240,15 @@ end
 
 \ Smooth 6-segment RGB rainbow gradient (16-bit safe)
 fn draw_color_grad ( rx :i ry :i rw :i rh :i )
-  var x :i
-  var p :i
-  var seg :i
-  var up :i
-  var dn :i
-  var r :i
-  var g :i
-  var b :i
-  0 -> x
+  0 -> var r :i
+  0 -> var g :i
+  0 -> var b :i
+  0 -> var x :i
   begin x rw < while
-    x 6 * -> p
-    p rw / -> seg
-    p rw mod 127 * rw / 1 << -> up
-    255 up - -> dn
+    x 6 * -> var p :i
+    p rw / -> var seg :i
+    p rw mod 127 * rw / 1 << -> var up :i
+    255 up - -> var dn :i
     seg 0 = if 255 -> r  up -> g  0 -> b else
     seg 1 = if dn -> r  255 -> g  0 -> b else
     seg 2 = if 0 -> r  255 -> g  up -> b else
@@ -305,14 +264,11 @@ end
 
 \ Smooth 0..254 grayscale gradient (16-bit safe)
 fn draw_gray_grad ( rx :i ry :i rw :i rh :i )
-  var x :i
-  var d :i
-  var v :i
-  rw 1 - -> d
+  rw 1 - -> var d :i
   d 1 < if 1 -> d then
-  0 -> x
+  0 -> var x :i
   begin x rw < while
-    x 127 * d / 1 << -> v
+    x 127 * d / 1 << -> var v :i
     v v v gfxrgb gfxcolor
     rx x + ry rh gfxvline
     x 1 + -> x
@@ -320,13 +276,9 @@ fn draw_gray_grad ( rx :i ry :i rw :i rh :i )
 end
 
 fn draw_testcard ( )
-  var y0 :i
-  var bh :i
-  var gh :i
-
   \ Row 1: 8 EBU color bars (3 grid cells)
-  step 3 * -> bh
-  ry -> y0
+  step 3 * -> var bh :i
+  ry -> var y0 :i
   rx y0 rw bh draw_ebu_bars
   y0 bh + -> y0
 
@@ -344,7 +296,7 @@ fn draw_testcard ( )
 
   \ Row 4: Stacked RGB rainbow + smooth grayscale gradients (2 grid cells)
   ry rh + y0 - -> bh
-  bh 1 u>> -> gh
+  bh 1 u>> -> var gh :i
   gh 0 > if
     rx y0 rw gh draw_color_grad
     rx y0 gh + rw bh gh - draw_gray_grad

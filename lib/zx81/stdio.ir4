@@ -39,7 +39,7 @@ fn inkey ( -> :i )
 end
 
 fn key ( -> :i )
-  var k :i
+  0 -> var k :i
   begin
     inkey -> k
     k 0 =

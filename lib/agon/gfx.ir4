@@ -37,13 +37,11 @@ fn gfxheight ( -> :i ) __gh end
 fn gfxdepth ( -> :i ) __gd end
 
 fn gfxmode ( mode :i )
-  var p :a
-  var n :i
   320 -> __gw
   240 -> __gh
   6 -> __gd
-  __agon_modes -> p
-  10 -> n
+  __agon_modes -> var p :a
+  10 -> var n :i
   begin n 0 > while
     p i16@ mode = if
       p 2 a+ i16@ -> __gw
@@ -75,25 +73,22 @@ end
 
 \ Map 8-bit RGB (0..255) to Agon default palette (1-bpp, 2-bpp, or 16-color VGA 0..15)
 fn gfxrgb ( r :i g :i b :i -> :i )
-  var c :i
-  var mx :i
-  var mn :i
   __gd 1 = if
     r 128 >= g 128 >= or b 128 >= or if 1 else 0 then return
   then
   __gd 2 = if
-    r g + b + 3 / -> mx
+    r g + b + 3 / -> var mx :i
     mx 64 < if 0 else mx 160 < if 1 else mx 224 < if 2 else 3 then then then return
   then
   r -> mx  g mx > if g -> mx then  b mx > if b -> mx then
-  r -> mn  g mn < if g -> mn then  b mn < if b -> mn then
+  r -> var mn :i  g mn < if g -> mn then  b mn < if b -> mn then
   mx mn - 40 < if
     mx 32 < if 0 return then
     mx 96 < if 8 return then
     mx 224 < if 7 return then
     15 return
   then
-  0 -> c
+  0 -> var c :i
   r 96 >= if c 1 or -> c then
   g 96 >= if c 2 or -> c then
   b 96 >= if c 4 or -> c then

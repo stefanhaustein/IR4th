@@ -2,27 +2,20 @@
 
 \ Signed 32-bit truncating division: a / b
 default fn i32/ ( a :i32 b :i32 -> :i32 )
-  var neg :i
-  var ua :i32
-  var ub :i32
-  var q :i32
-  0 -> neg
-  a 0 i>i32 i32< if 0 i>i32 a i32- -> ua neg 1 xor -> neg else a -> ua then
-  b 0 i>i32 i32< if 0 i>i32 b i32- -> ub neg 1 xor -> neg else b -> ub then
-  ua ub u32/ -> q
+  0 -> var neg :i
+  a 0 i>i32 i32< if 0 i>i32 a i32- neg 1 xor -> neg else a then -> var ua :i32
+  b 0 i>i32 i32< if 0 i>i32 b i32- neg 1 xor -> neg else b then -> var ub :i32
+  ua ub u32/ -> var q :i32
   neg if 0 i>i32 q i32- return then
   q
 end
 
 \ Signed 32-bit remainder (sign matches dividend a): a mod b
 default fn i32mod ( a :i32 b :i32 -> :i32 )
-  var neg :i
-  var ua :i32
-  var ub :i32
-  var r :i32
-  a 0 i>i32 i32< if 1 -> neg 0 i>i32 a i32- -> ua else 0 -> neg a -> ua then
-  b 0 i>i32 i32< if 0 i>i32 b i32- -> ub else b -> ub then
-  ua ub u32mod -> r
+  0 -> var neg :i
+  a 0 i>i32 i32< if 1 -> neg 0 i>i32 a i32- else a then -> var ua :i32
+  b 0 i>i32 i32< if 0 i>i32 b i32- else b then -> var ub :i32
+  ua ub u32mod -> var r :i32
   neg if 0 i>i32 r i32- return then
   r
 end

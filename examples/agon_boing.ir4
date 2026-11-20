@@ -19,19 +19,17 @@ fn vdu_23_27 ( cmd :i )
 end
 
 fn draw_grid ( )
-  var x :i
-  var y :i
   \ Grey background, purple grid
   170 170 170 gfxrgb gfxcolor
   0 0 320 240 gfxfillrect
   170 0 255 gfxrgb gfxcolor
-  40 -> x
+  40 -> var x :i
   begin x 280 <= while
     x 16 x 216 gfxline
     x 216 160 x 160 - 13 * 10 / + 228 gfxline
     x 20 + -> x
   repeat
-  16 -> y
+  16 -> var y :i
   begin y 216 <= while
     40 y 280 y gfxline
     y 20 + -> y
@@ -42,34 +40,23 @@ fn draw_grid ( )
 end
 
 fn precompute_sphere ( )
-  var py :i
-  var px :i
-  var fx :f
-  var fy :f
-  var r2 :f
-  var fz :f
-  var tx :f
-  var ty :f
-  var lat :f
-  var lon :f
-  var idx :i
-  0 -> idx
-  0 -> py
+  0 -> var idx :i
+  0 -> var py :i
   begin py 48 < while
-    py 24 - i>f -> fy
-    0 -> px
+    py 24 - i>f -> var fy :f
+    0 -> var px :i
     begin px 48 < while
-      px 24 - i>f -> fx
-      fx fx f* fy fy f* f+ -> r2
+      px 24 - i>f -> var fx :f
+      fx fx f* fy fy f* f+ -> var r2 :f
       r2 576.0 f< 0 = if
         -1 ilat_buf idx a+ i8!
         0 ilon_buf idx a+ i8!
       else
-        576.0 r2 f- sqrt -> fz
-        fx 0.96 f* fy 0.28 f* f- -> tx
-        fx 0.28 f* fy 0.96 f* f+ -> ty
-        ty 576.0 ty ty f* f- 0.001 f+ sqrt atan2 -> lat
-        tx fz atan2 -> lon
+        576.0 r2 f- sqrt -> var fz :f
+        fx 0.96 f* fy 0.28 f* f- -> var tx :f
+        fx 0.28 f* fy 0.96 f* f+ -> var ty :f
+        ty 576.0 ty ty f* f- 0.001 f+ sqrt atan2 -> var lat :f
+        tx fz atan2 -> var lon :f
         \ 6 latitude bands across [-pi/2..+pi/2], 6 longitude bands in 0..48 (8 per square)
         lat 1.570796 f+ 1.909859 f* f>i ilat_buf idx a+ i8!
         lon 1.570796 f+ 15.27887 f* f>i ilon_buf idx a+ i8!
@@ -82,23 +69,18 @@ fn precompute_sphere ( )
 end
 
 fn upload_ball_frame ( frame :i )
-  var py :i
-  var px :i
-  var idx :i
-  var ilat :i
-  var ilon :i
   23 emit 27 emit 0 emit frame emit
   23 emit 27 emit 1 emit 48 emit16 48 emit16
-  0 -> idx
-  0 -> py
+  0 -> var idx :i
+  0 -> var py :i
   begin py 48 < while
-    0 -> px
+    0 -> var px :i
     begin px 48 < while
-      ilat_buf idx a+ i8@ -> ilat
+      ilat_buf idx a+ i8@ -> var ilat :i
       ilat 0 < if
         0 emit 0 emit 0 emit 0 emit
       else
-        ilon_buf idx a+ u8@ frame 1 << + 3 >> -> ilon
+        ilon_buf idx a+ u8@ frame 1 << + 3 >> -> var ilon :i
         ilat ilon + 1 and 0 = if
           255 emit 0 emit 0 emit 255 emit
         else
@@ -113,18 +95,14 @@ fn upload_ball_frame ( frame :i )
 end
 
 fn upload_shadow_frame ( frame :i )
-  var py :i
-  var px :i
-  var x :i
-  var y :i
   23 emit 27 emit 0 emit frame emit
   23 emit 27 emit 1 emit 48 emit16 48 emit16
-  0 -> py
+  0 -> var py :i
   begin py 48 < while
-    py 24 - -> y
-    0 -> px
+    py 24 - -> var y :i
+    0 -> var px :i
     begin px 48 < while
-      px 24 - -> x
+      px 24 - -> var x :i
       x x * y y * + 576 >= px py + 1 and 0 <> or if
         0 emit 0 emit 0 emit 0 emit
       else
@@ -137,9 +115,8 @@ fn upload_shadow_frame ( frame :i )
 end
 
 fn setup_sprites ( )
-  var f :i
   precompute_sphere
-  0 -> f
+  0 -> var f :i
   begin f 8 < while
     f upload_ball_frame
     f 1 + -> f
@@ -163,20 +140,15 @@ fn setup_sprites ( )
 end
 
 fn main ( -> :i )
-  var x :i
-  var y8 :i
-  var vx :i
-  var vy :i
-  var tick :i
   8 gfxmode
   16 vdu_23_27
   draw_grid
   setup_sprites
-  40 -> x
-  400 -> y8
-  1 -> vx
-  0 -> vy
-  0 -> tick
+  40 -> var x :i
+  400 -> var y8 :i
+  1 -> var vx :i
+  0 -> var vy :i
+  0 -> var tick :i
   begin inkey 0 = while
     x vx + -> x
     x 30 < if 30 -> x 1 -> vx then

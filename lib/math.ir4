@@ -7,19 +7,16 @@ end
 
 \ Truncate x toward zero, returning float
 fn fint ( x :f -> :f )
-  var ax :f
-  var p :f
-  var res :f
-  x fabs -> ax
+  x fabs -> var ax :f
   ax 16384.0 f< if x f>i i>f return then
   ax 1.0 f+ ax f= if x return then
-  16384.0 -> p
+  16384.0 -> var p :f
   begin
     p 2.0 f* ax f> 0 =
   while
     p 2.0 f* -> p
   repeat
-  0.0 -> res
+  0.0 -> var res :f
   begin
     p 16384.0 f< 0 =
   while
@@ -46,11 +43,8 @@ end
 
 \ Returns 0.0 for x <= 0.0
 fn sqrt ( x :f -> :f )
-  var scale :f
-  var g :f
-  var i :i
   x 0.0 f> 0 = if 0.0 return then
-  1.0 -> scale
+  1.0 -> var scale :f
   begin
     x 2.0 f< 0 =
   while
@@ -63,8 +57,8 @@ fn sqrt ( x :f -> :f )
     x 4.0 f* -> x
     scale 0.5 f* -> scale
   repeat
-  1.0 -> g
-  0 -> i
+  1.0 -> var g :f
+  0 -> var i :i
   begin
     i 6 <
   while
@@ -75,7 +69,6 @@ fn sqrt ( x :f -> :f )
 end
 
 fn sin ( x :f -> :f )
-  var x2 :f
   x x 6.283185307179586 f/ fint 6.283185307179586 f* f- -> x
   x 3.141592653589793 f> if
     x 6.283185307179586 f- -> x
@@ -89,7 +82,7 @@ fn sin ( x :f -> :f )
   x -1.5707963267948966 f< if
     -3.141592653589793 x f- -> x
   then
-  x x f* -> x2
+  x x f* -> var x2 :f
   1.0 x2 110.0 f/ f-
   1.0 swap x2 72.0 f/ f* f-
   1.0 swap x2 42.0 f/ f* f-
@@ -103,11 +96,9 @@ fn cos ( x :f -> :f )
 end
 
 fn arctan ( x :f -> :f )
-  var sign :f
   0 -> var inv :i
   0 -> var corr :i
-  var x2 :f
-  1.0 -> sign
+  1.0 -> var sign :f
   x 0.0 f< if
     -1.0 -> sign
     x fnegate -> x
@@ -121,7 +112,7 @@ fn arctan ( x :f -> :f )
     x 1.7320508075688772 f* 1.0 f-
     1.7320508075688772 x f+ f/ -> x
   then
-  x x f* -> x2
+  x x f* -> var x2 :f
   0.1111111111111111 x2 f* 0.14285714285714285 f-
   x2 f* 0.2 f+
   x2 f* 0.3333333333333333 f-
@@ -149,17 +140,14 @@ fn atan2 ( y :f x :f -> :f )
 end
 
 fn exp ( x :f -> :f )
-  var k :i
-  var r :f
-  var res :f
-  x 1.4426950408889634 f* fround -> k
-  x k i>f 0.6931471805599453 f* f- -> r
+  x 1.4426950408889634 f* fround -> var k :i
+  x k i>f 0.6931471805599453 f* f- -> var r :f
   1.0 r 6.0 f/ f+
   r 5.0 f/ f* 1.0 f+
   r 4.0 f/ f* 1.0 f+
   r 3.0 f/ f* 1.0 f+
   r 2.0 f/ f* 1.0 f+
-  r f* 1.0 f+ -> res
+  r f* 1.0 f+ -> var res :f
   begin
     k 0 >
   while
@@ -177,10 +165,8 @@ end
 
 \ Returns 0.0 for x <= 0.0
 fn ln ( x :f -> :f )
-  0 -> var k :i
-  var u :f
-  var u2 :f
   x 0.0 f> 0 = if 0.0 return then
+  0 -> var k :i
   begin
     x 1.4142135623730951 f>
   while
@@ -193,8 +179,8 @@ fn ln ( x :f -> :f )
     x 2.0 f* -> x
     k 1 - -> k
   repeat
-  x 1.0 f- x 1.0 f+ f/ -> u
-  u u f* -> u2
+  x 1.0 f- x 1.0 f+ f/ -> var u :f
+  u u f* -> var u2 :f
   0.14285714285714285 u2 f* 0.2 f+
   u2 f* 0.3333333333333333 f+
   u2 f* 1.0 f+

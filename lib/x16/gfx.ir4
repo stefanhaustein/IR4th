@@ -26,19 +26,16 @@ fn gfxheight ( -> :i ) __x16_h end
 fn gfxdepth ( -> :i ) 8 end
 
 fn __x16_init_pal ( )
-  var r :i
-  var g :i
-  var b :i
   \ VERA palette indices 16..231 at VRAM $1FA20 (auto-inc +1 => ADDR_H = $11)
   0 0x9F25 i>a i8!
   0x20 0x9F20 i>a i8!
   0xFA 0x9F21 i>a i8!
   0x11 0x9F22 i>a i8!
-  0 -> r
+  0 -> var r :i
   begin r 6 < while
-    0 -> g
+    0 -> var g :i
     begin g 6 < while
-      0 -> b
+      0 -> var b :i
       begin b 6 < while
         g 3 * 4 << b 3 * or 0x9F23 i>a i8!
         r 3 * 0x9F23 i>a i8!
@@ -87,11 +84,9 @@ fn gfxcolor ( c :i )
 end
 
 hot fn __x16_set_addr ( x :i y :i inc :i )
-  var lo :i
-  var mid :i
   0 0x9F25 i>a i8!
-  x 255 and y 3 and 6 << + -> lo
-  x 8 u>> y + y 2 u>> + -> mid
+  x 255 and y 3 and 6 << + -> var lo :i
+  x 8 u>> y + y 2 u>> + -> var mid :i
   lo 255 > if
     lo 255 and -> lo
     mid 1 + -> mid
@@ -132,12 +127,10 @@ fn gfxvline ( x :i y :i h :i )
 end
 
 fn gfxclear ( )
-  var row :i
-  var col :i
   0 0 0x10 __x16_set_addr
-  __x16_h -> row
+  __x16_h -> var row :i
   begin row 0 > while
-    320 -> col
+    320 -> var col :i
     begin col 0 > while
       __x16_col 0x9F23 i>a i8!
       col 1 - -> col

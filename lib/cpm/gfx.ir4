@@ -37,8 +37,7 @@ fn gfxdone ( )
 end
 
 fn gfxrgb ( r :i g :i b :i -> :i )
-  var lum :i
-  r 1 << g 5 * + b + 8 u>> -> lum
+  r 1 << g 5 * + b + 8 u>> -> var lum :i
   lum 7 > if 7 -> lum then
   lum
 end
@@ -54,12 +53,11 @@ fn gfxpx ( x :i y :i )
 end
 
 fn gfxhline ( x :i y :i w :i )
-  var ch :i
   y 0 < y __cpm_h >= or if return then
   x 0 < if w x + -> w 0 -> x then
   x w + __cpm_w > if __cpm_w x - -> w then
   w 0 <= if return then
-  __cpm_ramp __cpm_col a+ u8@ -> ch
+  __cpm_ramp __cpm_col a+ u8@ -> var ch :i
   x y gotoxy
   begin w 0 > while
     ch emit

@@ -36,13 +36,10 @@ fn gfxcolor ( c :i )
 end
 
 fn gfxclear ( )
-  var df :a
-  var r :i
-  var c :i
-  0x400C i>a a@ -> df
-  0 -> r
+  0x400C i>a a@ -> var df :a
+  0 -> var r :i
   begin r 24 < while
-    0 -> c
+    0 -> var c :i
     begin c 32 < while
       0 df 1 r 33 * + c + a+ i8!
       c 1 + -> c
@@ -52,25 +49,19 @@ fn gfxclear ( )
 end
 
 fn gfxpx ( x :i y :i )
-  var df :a
-  var p :a
-  var ch :i
-  var bits :i
-  var mask :i
   x 0 < x 64 >= or y 0 < y 48 >= or or if return then
-  0x400C i>a a@ -> df
-  df 1 y 1 u>> 33 * + x 1 u>> + a+ -> p
-  p u8@ -> ch
+  0x400C i>a a@ -> var df :a
+  df 1 y 1 u>> 33 * + x 1 u>> + a+ -> var p :a
+  p u8@ -> var ch :i
+  0 -> var bits :i
   ch 8 < if
     ch -> bits
   else
     ch 0x80 >= ch 0x87 <= and if
       0x8F ch - -> bits
-    else
-      0 -> bits
     then
   then
-  1 x 1 and + y 1 and 0 <> if 2 << then -> mask
+  1 x 1 and + y 1 and 0 <> if 2 << then -> var mask :i
   __zx81_col 0 <> if
     bits mask or -> bits
   else
