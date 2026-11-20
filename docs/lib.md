@@ -111,7 +111,6 @@ Platform overrides implement the `default fn` entries below.
 | `sprzdir ( -> :i )` | Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front |
 | `sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )` | Define sprite image/frame `img` of screen size w x h. `data` holds w * h unsigned bytes (0 = transparent, 1..ncolors = 1-based palette index). `pal` holds ncolors unsigned bytes (color values returned by gfxrgb). Returns -1 on success, 0 if unsupported or out of sprite resources. |
 | `sprset ( id :i img :i )` | Bind image `img` to hardware sprite `id` (see `sprzdir` for overlap priority). |
-| `sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )` | Convenience: define image `id` and bind it to sprite `id`. |
 | `sprpos ( id :i x :i y :i )` | Move sprite `id` to screen position (x, y) |
 | `sprshow ( id :i on :i )` | Show (on <> 0) or hide (on = 0) sprite `id` |
 

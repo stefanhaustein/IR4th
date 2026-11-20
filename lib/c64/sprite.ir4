@@ -98,10 +98,6 @@ fn sprset ( id :i img :i )
   img 0xCFF8 id + i>a i8!
 end
 
-fn sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )
-  id w h data pal ncolors sprimg dup 0 <> if id id sprset then
-end
-
 hot fn sprpos ( id :i x :i y :i )
   id 0 < id 7 > or if return then
   0xD000 id 1 << + i>a -> var reg :a

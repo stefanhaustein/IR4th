@@ -26,11 +26,6 @@ default fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i ) 0 end
 \ Bind image `img` to hardware sprite `id` (see `sprzdir` for overlap priority).
 default fn sprset ( id :i img :i ) end
 
-\ Convenience: define image `id` and bind it to sprite `id`.
-default fn sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )
-  id w h data pal ncolors sprimg dup 0 <> if id id sprset then
-end
-
 \ Move sprite `id` to screen position (x, y)
 default fn sprpos ( id :i x :i y :i ) end
 

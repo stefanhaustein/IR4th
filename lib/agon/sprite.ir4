@@ -75,14 +75,6 @@ fn sprset ( id :i img :i )
   then
 end
 
-fn sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )
-  id w h data pal ncolors sprimg dup 0 <> if
-    id id sprset
-    0 __agon_spr_vis id a+ i8!
-    23 emit 27 emit 12 emit
-  then
-end
-
 fn sprpos ( id :i x :i y :i )
   23 emit 27 emit 4 emit id emit
   23 emit 27 emit 13 emit x __vdu16 y __vdu16

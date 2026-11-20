@@ -92,10 +92,6 @@ fn sprset ( id :i img :i )
   __x16_img_sz img a+ u8@ 0x9F23 i>a i8!
 end
 
-fn sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )
-  id w h data pal ncolors sprimg dup 0 <> if id id sprset then
-end
-
 fn sprpos ( id :i x :i y :i )
   id 2 __x16_spr_attr_addr
   x 255 and 0x9F23 i>a i8!

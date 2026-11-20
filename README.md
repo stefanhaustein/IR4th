@@ -47,7 +47,7 @@ The portable runtime library in [lib/](lib/) uses `require` with a platform → 
 - [lib/mem.ir4](lib/mem.ir4) — Memory operations and first-fit heap allocator (`alloc`, `free`, etc.) starting at `__heap_start`
 - [lib/math.ir4](lib/math.ir4) — Portable floating-point math (`fabs`, `floor`, `ceil`, `round`, `sqrt`, trig/log/exp helpers)
 - [lib/i32.ir4](lib/i32.ir4) — Portable 32-bit signed division and modulo fallbacks (`i32/`, `i32mod`, auto-required when used)
-- [lib/sprite.ir4](lib/sprite.ir4) — Portable hardware sprite API (`sprimg`, `sprset`, `sprdef`, `sprpos`, `sprshow`)
+- [lib/sprite.ir4](lib/sprite.ir4) — Portable hardware sprite API (`sprimg`, `sprset`, `sprpos`, `sprshow`)
 - [lib/sfx.ir4](lib/sfx.ir4) — Portable minimal sound effects API (`sfxplay`, `sfxstop`, `sfxtick`)
 
 See [docs/lib.md](docs/lib.md) for the full Runtime Library API reference.
