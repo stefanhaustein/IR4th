@@ -1,6 +1,6 @@
-\ Bouncing 3D-shaded Spheres demo using portable gfx.ir4 + sprite.ir4 (C64, X16, Agon)
+\ Bouncing Spheres demo using portable gfx.ir4 + sprite.ir4 (C64, X16, Agon)
 \ Draws unicolor 21x21 hires spheres (ncolors = 1, 24x21 native on C64) with a separate
-\ full-resolution white specular highlight sprite that shifts subtly with ball position.
+\ full-resolution white specular highlight sprite.
 
 require "stdio.ir4"
 require "sprite.ir4"

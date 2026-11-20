@@ -3,11 +3,18 @@
 
 require "gfx.ir4"
 
-\ Query sprite hardware capabilities (0 = hardware sprites unsupported)
+\ Number of hardware sprite slots (0 = hardware sprites unsupported)
 default fn sprcount ( -> :i ) 0 end
+
+\ Sprite color depth in bits per pixel
 default fn sprdepth ( -> :i ) 0 end
+
+\ Maximum sprite width in pixels
 default fn sprmaxw  ( -> :i ) 0 end
+
+\ Maximum sprite height in pixels
 default fn sprmaxh  ( -> :i ) 0 end
+
 \ Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front
 default fn sprzdir  ( -> :i ) 1 end
 

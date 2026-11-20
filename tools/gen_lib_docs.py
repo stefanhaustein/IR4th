@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Extract top-level library documentation from lib/*.ir4 into docs/lib.md."""
+
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parent.parent
+LIB_DIR = ROOT / "lib"
+OUT_PATH = ROOT / "docs" / "lib.md"
+
+ORDER = [
+    "stdio.ir4",
+    "mem.ir4",
+    "math.ir4",
+    "i32.ir4",
+    "gfx.ir4",
+    "sprite.ir4",
+    "sfx.ir4",
+]
+
+FN_RE = re.compile(r"^(?:(?:default|hot)\s+)*fn\s+(\S+)\s*\(([^)]*)\)")
+
+
+def parse_lib(path: Path):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = []
+    i = 0
+    while i < len(lines) and lines[i].startswith("\\"):
+        header.append(lines[i][1:].strip())
+        i += 1
+
+    entries = []
+    pending = []
+    for line in lines[i:]:
+        stripped = line.strip()
+        if stripped.startswith("\\"):
+            pending.append(stripped[1:].strip())
+            continue
+        m = FN_RE.match(stripped)
+        if m:
+            name, sig = m.group(1), m.group(2).strip()
+            if not name.startswith("__"):
+                doc = " ".join(pending)
+                entries.append((name, f"`{name} ( {sig} )`", doc))
+            pending = []
+            continue
+        if stripped == "":
+            pending = []
+        elif not stripped.startswith(("var ", "data ", "require ", "fwd ")):
+            pending = []
+    return header, entries
+
+
+def main():
+    files = [LIB_DIR / name for name in ORDER if (LIB_DIR / name).exists()]
+    extra = sorted(p for p in LIB_DIR.glob("*.ir4") if p.name not in ORDER)
+    files.extend(extra)
+
+    out = [
+        "# IR4th Standard Library Reference",
+        "",
+        "> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`.",
+        "",
+    ]
+
+    parsed = [(p, *parse_lib(p)) for p in files]
+    out.append("## Modules")
+    out.append("")
+    for p, header, _ in parsed:
+        anchor = p.name.replace(".", "")
+        summary = header[0] if header else ""
+        if summary.startswith(f"lib/{p.name}"):
+            summary = summary.split(" - ", 1)[1] if " - " in summary else summary
+        out.append(f"- [`lib/{p.name}`](#{anchor}) — {summary}")
+    out.append("")
+
+    for p, header, entries in parsed:
+        out.append(f"## `lib/{p.name}`")
+        out.append("")
+        for h in header:
+            if not h.startswith(f"lib/{p.name}"):
+                out.append(h)
+        if any(not h.startswith(f"lib/{p.name}") for h in header):
+            out.append("")
+        out.append("| Function | Description |")
+        out.append("| --- | --- |")
+        for _, sig_md, doc in entries:
+            doc_escaped = doc.replace("|", "\\|")
+            out.append(f"| {sig_md} | {doc_escaped} |")
+        out.append("")
+
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUT_PATH.write_text("\n".join(out), encoding="utf-8")
+    print(f"Wrote {OUT_PATH.relative_to(ROOT)} ({len(parsed)} modules)")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,5 +1,4 @@
 \ lib/sfx.ir4 - Portable minimal sound effects API (optional override per platform)
-\ Platform implementations: lib/agon/sfx.ir4, lib/c64/sfx.ir4, lib/x16/sfx.ir4
 \ Waveforms: 0 = pulse/square, 1 = sawtooth, 2 = triangle, 3 = noise.
 
 \ Query number of hardware sound channels (0 = sound unsupported)

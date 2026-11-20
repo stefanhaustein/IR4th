@@ -47,7 +47,10 @@ The portable runtime library in [lib/](lib/) uses `require` with a platform → 
 - [lib/mem.ir4](lib/mem.ir4) — Memory operations and first-fit heap allocator (`alloc`, `free`, etc.) starting at `__heap_start`
 - [lib/math.ir4](lib/math.ir4) — Portable floating-point math (`fabs`, `floor`, `ceil`, `round`, `sqrt`, trig/log/exp helpers)
 - [lib/i32.ir4](lib/i32.ir4) — Portable 32-bit signed division and modulo fallbacks (`i32/`, `i32mod`, auto-required when used)
+- [lib/sprite.ir4](lib/sprite.ir4) — Portable hardware sprite API (`sprimg`, `sprset`, `sprdef`, `sprpos`, `sprshow`)
+- [lib/sfx.ir4](lib/sfx.ir4) — Portable minimal sound effects API (`sfxplay`, `sfxstop`, `sfxtick`)
 
+See [docs/lib.md](docs/lib.md) for the full Runtime Library API reference.
 
 
 ## Compiler Optimizations
@@ -97,9 +100,9 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 - [lib/](lib/) — Standard library and platform overrides
 - [examples/](examples/) — Standalone example programs
 - [tests/](tests/) — Cross-target test suite and negative compiler tests in [tests/errors/](tests/errors/)
-- [tools/](tools/) — Relocatable runtime generators
+- [tools/](tools/) — Relocatable runtime generators and developer tools
 - [docs/](docs/) — Platform documentation and screenshots
-- [spec.md](spec.md) — IR4th v0.3 language specification
+- [spec.md](spec.md) — IR4(th) language specification
 
 ## Screenshots
 
