@@ -1,12 +1,12 @@
 \ lib/math.ir4 - Portable floating-point math library for IR4th
 
-\ Absolute value of x
+\ Absolute value of *x*
 fn fabs ( x :f -> :f )
   x 0.0 f< if x fnegate return then
   x
 end
 
-\ Truncate x toward zero, returning float
+\ Truncate *x* toward zero, returning float
 fn fint ( x :f -> :f )
   x fabs -> var ax :f
   ax 16384.0 f< if x f>i i>f return then
@@ -31,18 +31,18 @@ fn fint ( x :f -> :f )
   x 0.0 f< if fnegate then
 end
 
-\ Fractional part of x (x - fint(x))
+\ Fractional part of *x* (*x* - fint(*x*))
 fn frac ( x :f -> :f )
   x x fint f-
 end
 
-\ Round x to nearest integer (half away from zero)
+\ Round *x* to nearest integer (half away from zero)
 fn fround ( x :f -> :i )
   x 0.0 f< if x 0.5 f- f>i return then
   x 0.5 f+ f>i
 end
 
-\ Square root of x (returns 0.0 for x <= 0.0)
+\ Square root of *x* (returns 0.0 for *x* <= 0.0)
 fn sqrt ( x :f -> :f )
   x 0.0 f> 0 = if 0.0 return then
   1.0 -> var scale :f
@@ -69,7 +69,7 @@ fn sqrt ( x :f -> :f )
   g scale f*
 end
 
-\ Sine of x (radians)
+\ Sine of *x* (radians)
 fn sin ( x :f -> :f )
   x x 6.283185307179586 f/ fint 6.283185307179586 f* f- -> x
   x 3.141592653589793 f> if
@@ -93,12 +93,12 @@ fn sin ( x :f -> :f )
   x f*
 end
 
-\ Cosine of x (radians)
+\ Cosine of *x* (radians)
 fn cos ( x :f -> :f )
   1.5707963267948966 x f- sin
 end
 
-\ Arctangent of x in [-pi/2, pi/2]
+\ Arctangent of *x* in [-pi/2, pi/2]
 fn arctan ( x :f -> :f )
   0 -> var inv :i
   0 -> var corr :i
@@ -127,7 +127,7 @@ fn arctan ( x :f -> :f )
   sign f*
 end
 
-\ Two-argument arctangent atan2(y, x) in [-pi, pi]
+\ Two-argument arctangent atan2(*y*, *x*) in [-pi, pi]
 fn atan2 ( y :f x :f -> :f )
   y 0.0 f= if
     x 0.0 f< if 3.141592653589793 else 0.0 then return
@@ -143,7 +143,7 @@ fn atan2 ( y :f x :f -> :f )
   y 0.0 f> if 1.5707963267948966 else -1.5707963267948966 then
 end
 
-\ Exponential function e^x
+\ Exponential function e^*x*
 fn exp ( x :f -> :f )
   x 1.4426950408889634 f* fround -> var k :i
   x k i>f 0.6931471805599453 f* f- -> var r :f
@@ -168,7 +168,7 @@ fn exp ( x :f -> :f )
   res
 end
 
-\ Natural logarithm ln(x) (returns 0.0 for x <= 0.0)
+\ Natural logarithm ln(*x*) (returns 0.0 for *x* <= 0.0)
 fn ln ( x :f -> :f )
   x 0.0 f> 0 = if 0.0 return then
   0 -> var k :i

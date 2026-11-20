@@ -21,6 +21,18 @@ ORDER = [
 FN_RE = re.compile(r"^((?:(?:default|hot)\s+)*)fn\s+(\S+)\s*\(([^)]*)\)")
 
 
+def format_sig(sig: str) -> str:
+    if not sig:
+        return "( )"
+    parts = []
+    for tok in sig.split():
+        if tok == "->" or tok.startswith(":"):
+            parts.append(tok)
+        else:
+            parts.append(f"*{tok}*")
+    return "( " + " ".join(parts) + " )"
+
+
 def parse_lib(path: Path):
     lines = path.read_text(encoding="utf-8").splitlines()
     header = []
@@ -41,7 +53,7 @@ def parse_lib(path: Path):
             name, sig = m.group(2), m.group(3).strip()
             if not name.startswith("__"):
                 doc = " ".join(pending)
-                sig_str = f"**{name}** ( {sig} )" if sig else f"**{name}** ( )"
+                sig_str = f"**{name}** {format_sig(sig)}"
                 entries.append((name, sig_str, doc))
             pending = []
             continue

@@ -4,10 +4,10 @@
 \ Query number of hardware sound channels (0 = sound unsupported)
 default fn sfxcount ( -> :i ) 0 end
 
-\ Play a tone on channel `ch` at `freq` Hz, volume `vol` (0..15), waveform `wave` (0..3), for `dur_ms` ms (0 = until sfxstop; default: no-op).
+\ Play a tone on channel *ch* at *freq* Hz, volume *vol* (0..15), waveform *wave* (0..3), for *dur_ms* ms (0 = until sfxstop; default: no-op).
 default fn sfxplay ( ch :i freq :i vol :i wave :i dur_ms :i ) end
 
-\ Silence channel `ch` (default: no-op).
+\ Silence channel *ch* (default: no-op).
 default fn sfxstop ( ch :i ) end
 
 \ Advance software duration timers once per frame (required on platforms without hardware duration, e.g. C64/X16; default: no-op).

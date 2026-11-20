@@ -1,7 +1,7 @@
 \ stdio.ir4 - Portable console/terminal I/O, formatting, and screen control
 \ Platform overrides implement raw `emit` (and optionally the `default fn` entries below).
 
-\ Emit character c with platform text mapping (defaults to raw emit; PETSCII on C64)
+\ Emit character *c* with platform text mapping (defaults to raw emit; PETSCII on C64)
 default fn xemit ( c :i )
   c emit
 end
@@ -11,7 +11,7 @@ fn cr ( )
   10 xemit
 end
 
-\ Print len bytes starting at s
+\ Print *len* bytes starting at *s*
 fn type ( s :a len :i )
   begin
     len 0 >
@@ -22,7 +22,7 @@ fn type ( s :a len :i )
   repeat
 end
 
-\ Print NUL-terminated string at s
+\ Print NUL-terminated string at *s*
 fn type0 ( s :a )
   begin
     s u8@ -> var c :i
@@ -33,7 +33,7 @@ fn type0 ( s :a )
   repeat
 end
 
-\ Print n as minimal unsigned decimal
+\ Print *n* as minimal unsigned decimal
 fn typeu ( n :i )
   var buf :bytes 20
   0 -> var len :i
@@ -53,7 +53,7 @@ fn typeu ( n :i )
   repeat
 end
 
-\ Print n as signed decimal
+\ Print *n* as signed decimal
 fn typei ( n :i )
   n 0 < if
     45 xemit
@@ -63,7 +63,7 @@ fn typei ( n :i )
   n typeu
 end
 
-\ Print n as signed decimal, right-aligned with spaces to width w
+\ Print *n* as signed decimal, right-aligned with spaces to width *w*
 fn typei_w ( n :i w :i )
   0 -> var d :i
   n -> var t :i
@@ -90,7 +90,7 @@ fn typei_w ( n :i w :i )
   n typei
 end
 
-\ Print n as w zero-padded uppercase hex digits
+\ Print *n* as *w* zero-padded uppercase hex digits
 fn typeh_w ( n :i w :i )
   begin
     w 0 >
@@ -105,7 +105,7 @@ fn typeh_w ( n :i w :i )
   repeat
 end
 
-\ Print n as minimal uppercase hex
+\ Print *n* as minimal uppercase hex
 fn typeh ( n :i )
   n -> var t :i
   1 -> var w :i
@@ -124,7 +124,7 @@ default fn cls ( )
   27 emit 91 emit 72 emit
 end
 
-\ Move text cursor to 0-based column x, row y (ANSI default)
+\ Move text cursor to 0-based column *x*, row *y* (ANSI default)
 default fn gotoxy ( x :i y :i )
   27 emit 91 emit
   y 1 + typeu
@@ -143,14 +143,14 @@ default fn termheight ( -> :i )
   24
 end
 
-\ Set foreground text color using ANSI color index (0..7, 8..15 bright; ANSI default)
+\ Set foreground text color *c* using ANSI color index (0..7, 8..15 bright; ANSI default)
 default fn fgcolor ( c :i )
   27 emit 91 emit
   c 8 < if 30 c + else 82 c + then typeu
   109 emit
 end
 
-\ Set background text color using ANSI color index (0..7, 8..15 bright; ANSI default)
+\ Set background text color *c* using ANSI color index (0..7, 8..15 bright; ANSI default)
 default fn bgcolor ( c :i )
   27 emit 91 emit
   c 8 < if 40 c + else 92 c + then typeu

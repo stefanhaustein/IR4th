@@ -34,7 +34,7 @@ default fn gfxvsync ( ) end
 \ Return platform tick counter (wraps monotonically; default: 0)
 default fn gfxticks ( -> :i ) 0 end
 
-\ Switch to graphics mode index `mode` (default: ANSI half-block buffer)
+\ Switch to graphics mode index *mode* (default: ANSI half-block buffer)
 default fn gfxmode ( mode :i )
   mode drop
   termwidth -> __gfx_w
@@ -57,7 +57,7 @@ default fn gfxdone ( )
   cr
 end
 
-\ Enter best-matching mode from gfxmodes for (w, h, depth_bpp); (0, 0, 0) selects entry 0
+\ Enter best-matching mode from gfxmodes for (*w*, *h*, *depth*); (0, 0, 0) selects entry 0
 default fn gfxinit ( w :i h :i depth :i )
   gfxmodes -> var cnt :i -> var tbl :a
   cnt 0 <= if 0 gfxmode return then
@@ -83,7 +83,7 @@ default fn gfxinit ( w :i h :i depth :i )
   best_mode gfxmode
 end
 
-\ Map 8-bit RGB (0..255) to the platform's native color value for gfxcolor.
+\ Map 8-bit RGB (*r*, *g*, *b* in 0..255) to the platform's native color value for gfxcolor.
 \ On attribute-cell targets (gfxdepth = 1), non-zero colors may still set per-cell attributes.
 default fn gfxrgb ( r :i g :i b :i -> :i )
   0 -> var c :i
@@ -93,7 +93,7 @@ default fn gfxrgb ( r :i g :i b :i -> :i )
   c
 end
 
-\ Set current drawing color (value returned by gfxrgb)
+\ Set current drawing color *c* (value returned by gfxrgb)
 default fn gfxcolor ( c :i )
   c 7 and -> __gfx_col
 end
@@ -105,7 +105,7 @@ fn __gfx_emit_cell ( cx :i cy :i val :i )
   226 emit 150 emit 128 emit
 end
 
-\ Plot a pixel at (x, y) in the current drawing color
+\ Plot a pixel at (*x*, *y*) in the current drawing color
 default fn gfxpx ( x :i y :i )
   x 0 < x __gfx_w >= or y 0 < y __gfx_h >= or or if return then
   __gfx_fb y 1 u>> __gfx_w * x + a+ -> var cell :a
@@ -120,7 +120,7 @@ default fn gfxpx ( x :i y :i )
   x y 1 u>> val __gfx_emit_cell
 end
 
-\ Draw a horizontal line of width w starting at (x, y) (default: gfxpx loop)
+\ Draw a horizontal line of width *w* starting at (*x*, *y*) (default: gfxpx loop)
 default fn gfxhline ( x :i y :i w :i )
   begin w 0 > while
     x y gfxpx
@@ -129,7 +129,7 @@ default fn gfxhline ( x :i y :i w :i )
   repeat
 end
 
-\ Draw a vertical line of height h starting at (x, y) (default: gfxpx loop)
+\ Draw a vertical line of height *h* starting at (*x*, *y*) (default: gfxpx loop)
 default fn gfxvline ( x :i y :i h :i )
   begin h 0 > while
     x y gfxpx
@@ -138,7 +138,7 @@ default fn gfxvline ( x :i y :i h :i )
   repeat
 end
 
-\ Draw a line from (x1, y1) to (x2, y2) (default: Bresenham via gfxhline/gfxvline/gfxpx)
+\ Draw a line from (*x1*, *y1*) to (*x2*, *y2*) (default: Bresenham via gfxhline/gfxvline/gfxpx)
 default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
   y1 y2 = if
     x1 x2 > if x2 y1 x1 x2 - 1 + else x1 y1 x2 x1 - 1 + then gfxhline return
@@ -193,7 +193,7 @@ default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
   then
 end
 
-\ Draw a rectangle outline at (x, y) with size w x h
+\ Draw a rectangle outline at (*x*, *y*) with size *w* x *h*
 default fn gfxrect ( x :i y :i w :i h :i )
   w 0 <= h 0 <= or if return then
   x y w gfxhline
@@ -202,7 +202,7 @@ default fn gfxrect ( x :i y :i w :i h :i )
   x w + 1 - y h gfxvline
 end
 
-\ Draw a filled rectangle at (x, y) with size w x h (default: gfxhline loop)
+\ Draw a filled rectangle at (*x*, *y*) with size *w* x *h* (default: gfxhline loop)
 default fn gfxfillrect ( x :i y :i w :i h :i )
   w 0 <= h 0 <= or if return then
   y h + -> var ye :i
@@ -219,7 +219,7 @@ default fn gfxclear ( )
   cls
 end
 
-\ Draw a circle outline of radius r centered at (cx, cy) using the midpoint algorithm
+\ Draw a circle outline of radius *r* centered at (*cx*, *cy*) using the midpoint algorithm
 default fn gfxcircle ( cx :i cy :i r :i )
   r 0 < if return then
   r -> var x :i
