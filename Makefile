@@ -240,5 +240,26 @@ rt-6502:
 rt-rv32:
 	python3 tools/rv32/gen_rv32_fp.py --input tools/rv32/rv32_fp.c --output src/be_rv32_fp.h
 
+AGON_SRCS = src/ir4c.c src/frontend.c src/codebuf.c src/path.c src/strpool.c src/vec.c \
+            src/backend/ez80.c src/platform/agon.c
+
+agon: $(AGON_SRCS)
+	@PATH="$(HOME)/opt/agondev/bin:$$PATH"; \
+	if ! command -v agondev-config >/dev/null 2>&1; then \
+		echo "agondev-config not found (install agondev or add its bin/ to PATH)"; exit 1; \
+	fi; \
+	mkdir -p $(BUILD)/agon-build/src; \
+	cp $(AGON_SRCS) $(BUILD)/agon-build/src/; \
+	{ \
+		echo "NAME = ir4c"; \
+		echo "LDHAS_ARG_PROCESSING = 1"; \
+		echo "LDHAS_EXIT_HANDLER = 0"; \
+		echo "include $$(agondev-config --makefile)"; \
+		echo "CFLAGS += -I$(CURDIR)/src -DIR4_MINIMAL -DIR4_ENABLE_EZ80=1 -DIR4_ENABLE_AGON=1"; \
+	} > $(BUILD)/agon-build/Makefile; \
+	$(MAKE) -C $(BUILD)/agon-build; \
+	cp $(BUILD)/agon-build/bin/ir4c.bin $(BUILD)/ir4c_agon.bin; \
+	echo "Built $(BUILD)/ir4c_agon.bin"
+
 clean:
 	rm -rf $(BUILD)

@@ -25,14 +25,13 @@
 
 ## Running `ir4c` Natively on Agon
 
-You can build a minimal Agon-only `ir4c.bin` (~70 KB) using `agondev` (`ez80-none-elf-clang`):
+You can build a minimal Agon-only `ir4c` binary (~70 KB) using `agondev`:
 
-- Compile `src/ir4c.c`, `src/frontend.c`, `src/codebuf.c`, `src/path.c`, `src/strpool.c`, `src/vec.c`, `src/backend/ez80.c`, and `src/platform/agon.c` with:
-  ```sh
-  -Isrc -DIR4_MINIMAL -DIR4_ENABLE_EZ80=1 -DIR4_ENABLE_AGON=1
-  ```
-  and `LDHAS_ARG_PROCESSING = 1` in your `agondev` Makefile.
-- Copy `ir4c.bin` to `/bin/ir4c.bin` on the Agon SD card (not `/mos/`, which is reserved for `$B0000` MOSlets) along with `lib/`.
+```sh
+make agon   # builds build/ir4c_agon.bin via agondev (-DIR4_MINIMAL -DIR4_ENABLE_EZ80=1 -DIR4_ENABLE_AGON=1)
+```
+
+- Copy `build/ir4c_agon.bin` to `/bin/ir4c.bin` on the Agon SD card (not `/mos/`, which is reserved for `$B0000` MOSlets) along with `lib/`.
 - Compile on Agon at the MOS prompt:
   ```sh
   ir4c -t agon -I lib -o out.bin input.ir4
