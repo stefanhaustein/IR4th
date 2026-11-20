@@ -83,15 +83,18 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 - [examples/](examples/) — Standalone example programs
 - [tests/](tests/) — Cross-target test suite and negative compiler tests in [tests/errors/](tests/errors/)
 - [tools/](tools/) — Relocatable runtime generators
+- [docs/](docs/) — Platform documentation and screenshots
 - [spec.md](spec.md) — IR4th v0.3 language specification
 
 ## Screenshots
 
 | Target | Mandelbrot ([mandel.ir4](examples/mandel.ir4)) | TV Test Card ([testcard.ir4](examples/testcard.ir4)) |
 |---|---|---|
-| **Commander X16 ** | *(not yet captured)* | ![Commander X16 testcard](docs/imgs/testcard_x16.png) |
-| **Commodore 64 ** | ![C64 Mandelbrot](docs/imgs/mandel_c64.png) | ![C64 testcard](docs/imgs/testcard_c64.png) |
-| **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/imgs/mandel_arm64.png) | ![ANSI terminal testcard](docs/imgs/testcard_ansi.png) |
+| **[Commander X16](docs/x16/)** | ![Commander X16 Mandelbrot](docs/img/mandel_x16.png) | ![Commander X16 testcard](docs/img/testcard_x16.png) |
+| **[Commodore 64](docs/c64/)** | ![C64 Mandelbrot](docs/img/mandel_c64.png) | ![C64 testcard](docs/img/testcard_c64.png) |
+| **[Agon](docs/agon/)** | ![Agon Mandelbrot](docs/img/mandel_agon.png) | ![Agon testcard](docs/img/testcard_agon.png) |
+| **[CP/M](docs/cpm/)** | ![CP/M Mandelbrot](docs/img/mandel_cpm.png) | — |
+| **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/img/mandel_arm64.png) | ![ANSI terminal testcard](docs/img/testcard_ansi.png) |
 
 ## License
 
