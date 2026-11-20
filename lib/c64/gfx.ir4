@@ -67,7 +67,7 @@ hot fn gfxvsync ( )
   begin 0xD011 i>a u8@ 128 and 0 = while repeat
 end
 
-fn gfxticks ( -> :i )
+hot fn gfxticks ( -> :i )
   0xA1 i>a u8@ 8 << 0xA2 i>a u8@ or
 end
 

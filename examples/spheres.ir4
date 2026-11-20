@@ -148,26 +148,62 @@ hot fn step_balls ( floor8 :i )
   0 -> var i :i
   begin i active < while
     i 1 << -> var off :i
-    bx off a+ i16@ bvx off a+ i16@ + -> var x8 :i
-    x8 384 < if 384 -> x8 0 bvx off a+ i16@ - bvx off a+ i16! then
-    x8 4352 > if 4352 -> x8 0 bvx off a+ i16@ - bvx off a+ i16! then
-    x8 bx off a+ i16!
+    bx off a+ -> var px :a
+    bvx off a+ -> var pv :a
+    px i16@ pv i16@ + -> var x8 :i
+    x8 384 < if
+      384 -> x8 0 pv i16@ - pv i16!
+    else
+      x8 4352 > if 4352 -> x8 0 pv i16@ - pv i16! then
+    then
+    x8 px i16!
 
-    bvy off a+ i16@ 1 + -> var vy :i
-    by8 off a+ i16@ vy + -> var y8 :i
+    bvy off a+ -> var pvy :a
+    by8 off a+ -> var py :a
+    pvy i16@ 1 + -> var vy :i
+    py i16@ vy + -> var y8 :i
     y8 floor8 >= if
       floor8 -> y8
       bbounce off a+ i16@ -> vy
     then
-    vy bvy off a+ i16!
-    y8 by8 off a+ i16!
+    vy pvy i16!
+    y8 py i16!
 
     x8 4 >> -> var sx :i
     y8 5 >> -> var sy :i
     i 1 << -> var sid :i
     sid sx sy sprpos
-    sid 1 + sx 8 + 150 sx - 5 >> + sy 3 + 100 sy - 6 >> + sprpos
+    sx 110 < if 10 else sx 190 > if 6 else 8 then then -> var hx :i
+    sid 1 + sx hx + sy 3 + sprpos
     i 1 + -> i
+  repeat
+end
+
+hot fn run_loop ( floor8 :i )
+  0 -> var elapsed :i
+  gfxticks -> var prev_t :i
+  0 -> var sum_dt :i
+  0 -> var fcnt :i
+  -1 -> var budget_ok :i
+
+  begin inkey 0 = while
+    floor8 step_balls
+    gfxvsync
+    gfxticks -> var now_t :i
+    now_t prev_t - 255 and -> var dt :i
+    now_t -> prev_t
+    elapsed dt + -> elapsed
+    sum_dt dt + -> sum_dt
+    fcnt 1 + -> fcnt
+    fcnt 16 >= if
+      sum_dt 24 > if 0 -> budget_ok then
+      0 -> sum_dt
+      0 -> fcnt
+    then
+    budget_ok 0 <> elapsed 240 >= and if
+      add_ball
+      0 -> elapsed
+    then
   repeat
 end
 
@@ -180,38 +216,11 @@ fn main ( -> :i )
   0 -> active
   gfxheight 39 - 5 << -> var floor8 :i
   add_ball
-
-  0 -> var elapsed :i
-  gfxticks -> var prev_t :i
-  0 -> var sum_dt :i
-  0 -> var sum_work :i
-  0 -> var fcnt :i
-  -1 -> var budget_ok :i
-
-  begin inkey 0 = while
-    gfxticks -> var t_start :i
-    floor8 step_balls
-    gfxticks -> var t_work :i
-    gfxvsync
-    gfxticks -> var now_t :i
-    now_t prev_t - 255 and -> var dt :i
-    now_t -> prev_t
-    elapsed dt + -> elapsed
-    sum_dt dt + -> sum_dt
-    sum_work t_work t_start - 255 and + -> sum_work
-    fcnt 1 + -> fcnt
-    fcnt 16 >= if
-      sum_work 12 > sum_dt 24 > or if
-        0 -> budget_ok
-      then
-      0 -> sum_dt
-      0 -> sum_work
-      0 -> fcnt
-    then
-    budget_ok 0 <> elapsed 240 >= and if
-      add_ball
-      0 -> elapsed
-    then
+  floor8 run_loop
+  0 -> var i :i
+  begin i active 1 << < while
+    i 0 sprshow
+    i 1 + -> i
   repeat
   gfxdone
   0

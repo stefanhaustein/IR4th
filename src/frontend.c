@@ -2034,6 +2034,16 @@ static void emit_word(size_t fidx) {
     be->fn_begin(sig->name, w->param_cnt, w->locals.data, w->locals.len, sig->is_recursive);
 
     for (i = 0; i <= w->ir_len; i++) {
+        if (be == &be_6502) {
+            size_t j;
+            for (j = 0; j < w->ir_len; j++) {
+                const IrInstr *bi = &ir_buf.data[w->ir_start + j];
+                if ((bi->kind == IR_BR_FWD || bi->kind == IR_BR_BACK) && bi->u.br.target == i) {
+                    be_6502_peep_fence();
+                    break;
+                }
+            }
+        }
         for (p = 0; p < pending.len; p++) {
             if (pending.data[p].target_ir == i) {
                 be->patch_fwd(pending.data[p].patch_offset);

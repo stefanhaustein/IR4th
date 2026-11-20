@@ -110,6 +110,9 @@ void cb_rewind(size_t n) {
         ir4_die("code buffer underflow");
     }
     code_buf.len -= n;
+    while (relocs.len > 0 && relocs.data[relocs.len - 1].off1 >= code_buf.len) {
+        relocs.len--;
+    }
 }
 
 void patch8(size_t patch_offset, u8 val) {

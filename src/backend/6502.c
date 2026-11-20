@@ -49,6 +49,8 @@ static void ensure_6502_vm(void);
 static void m6502_bc_local_op(LocalOp op, size_t slot, StackType type);
 static void m6502_bc_stack_op(StackOp op, StackType t1, StackType t2);
 static void m6502_bc_op(IrOp op);
+static void m6502_pop2(void);
+static void m6502_push2(void);
 
 void be_6502_set_zp(u8 zp) {
     zp_scratch = zp;
@@ -465,8 +467,7 @@ static void m6502_push_w(i32 val) {
         }
         return;
     }
-    emit8(M6502_DEX);
-    emit8(M6502_DEX);
+    m6502_push2();
     emit8_8(M6502_LDA_IMM, (u8)(v & 0xFF));
     m6502_sta_stk(0);
     emit8_8(M6502_LDA_IMM, (u8)((v >> 8) & 0xFF));
@@ -555,8 +556,7 @@ static void m6502_push_data(size_t offset) {
         emit16(0x0000);
         return;
     }
-    emit8(M6502_DEX);
-    emit8(M6502_DEX);
+    m6502_push2();
     emit8(M6502_LDA_IMM);
     lo_pos = cb_pc();
     emit8(0x00); /* LDA #<addr */
@@ -573,8 +573,12 @@ static void m6502_local_get(size_t slot, StackType type, u16 stack_bytes) {
     u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
     u8 b;
     (void)stack_bytes;
-    for (b = 0; b < sz; b++)
-        emit8(M6502_DEX);
+    if (sz == 2)
+        m6502_push2();
+    else {
+        for (b = 0; b < sz; b++)
+            emit8(M6502_DEX);
+    }
     if (m6502_static_frame) {
         for (b = 0; b < sz; b++) {
             emit8(M6502_LDA_ABS);
@@ -602,8 +606,12 @@ static void m6502_local_set(size_t slot, StackType type, u16 stack_bytes) {
         m6502_lda_stk(b);
         m6502_emit_local_store((u16)(off + b));
     }
-    for (b = 0; b < sz; b++)
-        emit8(M6502_INX);
+    if (sz == 2)
+        m6502_pop2();
+    else {
+        for (b = 0; b < sz; b++)
+            emit8(M6502_INX);
+    }
 }
 
 static void m6502_local_addr(size_t slot) {
@@ -672,16 +680,24 @@ static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {
     }
     switch (op) {
     case OP_DUP:
-        for (b = 0; b < sz1; b++)
-            emit8(M6502_DEX);
+        if (sz1 == 2)
+            m6502_push2();
+        else {
+            for (b = 0; b < sz1; b++)
+                emit8(M6502_DEX);
+        }
         for (b = 0; b < sz1; b++) {
             m6502_lda_stk((u8)(sz1 + b));
             m6502_sta_stk(b);
         }
         break;
     case OP_DROP:
-        for (b = 0; b < sz1; b++)
-            emit8(M6502_INX);
+        if (sz1 == 2)
+            m6502_pop2();
+        else {
+            for (b = 0; b < sz1; b++)
+                emit8(M6502_INX);
+        }
         break;
     case OP_SWAP:
         if (sz1 == sz2) {
@@ -713,6 +729,35 @@ static void m6502_stack_op(StackOp op, StackType t1, StackType t2) {
     }
 }
 
+static size_t m6502_cmp_mat_pc = 0;
+static size_t m6502_cmp_end_pc = 0;
+static u8 m6502_cmp_true_op = 0;
+static u8 m6502_cmp_pops = 0;
+static size_t m6502_inx2_pc = 0;
+
+void be_6502_peep_fence(void) {
+    m6502_inx2_pc = 0;
+    m6502_cmp_end_pc = 0;
+}
+
+static void m6502_pop2(void) {
+    emit8(M6502_INX);
+    emit8(M6502_INX);
+    if (!m6502_compact)
+        m6502_inx2_pc = cb_pc();
+}
+
+static void m6502_push2(void) {
+    if (!m6502_compact && m6502_inx2_pc != 0 && cb_pc() == m6502_inx2_pc) {
+        cb_rewind(2);
+        m6502_inx2_pc = 0;
+        return;
+    }
+    m6502_inx2_pc = 0;
+    emit8(M6502_DEX);
+    emit8(M6502_DEX);
+}
+
 static void m6502_int_cmp(IrOp op) {
     u8 lhs_off = 2;
     u8 rhs_off = 0;
@@ -742,10 +787,12 @@ static void m6502_int_cmp(IrOp op) {
         m6502_eor_stk(1);
         emit8_8(M6502_ORA_ZP, zp_scratch);
         if (op == OP_EQ || op == OP_AEQ) {
-            emit8_8(M6502_BEQ, 0x04); /* BEQ true */
+            m6502_cmp_true_op = M6502_BEQ;
         } else {
-            emit8_8(M6502_BNE, 0x04); /* BNE true */
+            m6502_cmp_true_op = M6502_BNE;
         }
+        m6502_cmp_mat_pc = cb_pc();
+        emit8_8(m6502_cmp_true_op, 0x04); /* Bxx true */
         emit8_8(M6502_LDA_IMM, 0x00);
         emit8_8(M6502_BEQ, 0x02); /* BEQ store */
         emit8_8(M6502_LDA_IMM, 0xFF);
@@ -753,6 +800,8 @@ static void m6502_int_cmp(IrOp op) {
         m6502_sta_stk(3);
         emit8(M6502_INX);
         emit8(M6502_INX);
+        m6502_cmp_pops = 2;
+        m6502_cmp_end_pc = cb_pc();
         break;
     case OP_ULT:
     case OP_UGT:
@@ -766,10 +815,12 @@ static void m6502_int_cmp(IrOp op) {
         m6502_lda_stk((u8)(lhs_off + 1));
         m6502_sbc_stk((u8)(rhs_off + 1));
         if (op == OP_UGE || op == OP_ULE) {
-            emit8_8(M6502_BCS, 0x04); /* BCS true */
+            m6502_cmp_true_op = M6502_BCS;
         } else {
-            emit8_8(M6502_BCC, 0x04); /* BCC true */
+            m6502_cmp_true_op = M6502_BCC;
         }
+        m6502_cmp_mat_pc = cb_pc();
+        emit8_8(m6502_cmp_true_op, 0x04); /* Bxx true */
         emit8_8(M6502_LDA_IMM, 0x00);
         emit8_8(M6502_BEQ, 0x02); /* BEQ store */
         emit8_8(M6502_LDA_IMM, 0xFF);
@@ -777,6 +828,8 @@ static void m6502_int_cmp(IrOp op) {
         m6502_sta_stk(3);
         emit8(M6502_INX);
         emit8(M6502_INX);
+        m6502_cmp_pops = 2;
+        m6502_cmp_end_pc = cb_pc();
         break;
     case OP_LT:
     case OP_GT:
@@ -790,10 +843,12 @@ static void m6502_int_cmp(IrOp op) {
         emit8_8(M6502_BVC, 0x02);
         emit8_8(M6502_EOR_IMM, 0x80);
         if (op == OP_GE || op == OP_LE) {
-            emit8_8(M6502_BPL, 0x04); /* BPL true */
+            m6502_cmp_true_op = M6502_BPL;
         } else {
-            emit8_8(M6502_BMI, 0x04); /* BMI true */
+            m6502_cmp_true_op = M6502_BMI;
         }
+        m6502_cmp_mat_pc = cb_pc();
+        emit8_8(m6502_cmp_true_op, 0x04); /* Bxx true */
         emit8_8(M6502_LDA_IMM, 0x00);
         emit8_8(M6502_BEQ, 0x02); /* BEQ store */
         emit8_8(M6502_LDA_IMM, 0xFF);
@@ -801,6 +856,8 @@ static void m6502_int_cmp(IrOp op) {
         m6502_sta_stk(3);
         emit8(M6502_INX);
         emit8(M6502_INX);
+        m6502_cmp_pops = 2;
+        m6502_cmp_end_pc = cb_pc();
         break;
     default:
         ir4_die("unimplemented 6502 comparison op");
@@ -1277,8 +1334,7 @@ static void m6502_op(IrOp op) {
         m6502_lda_stk(3);
         m6502_adc_stk(1);
         m6502_sta_stk(3);
-        emit8(M6502_INX);
-        emit8(M6502_INX);
+        m6502_pop2();
         break;
     case OP_SUB:
     case OP_ASUB:
@@ -1290,8 +1346,7 @@ static void m6502_op(IrOp op) {
         m6502_lda_stk(3);
         m6502_sbc_stk(1);
         m6502_sta_stk(3);
-        emit8(M6502_INX);
-        emit8(M6502_INX);
+        m6502_pop2();
         break;
     case OP_AND:
         m6502_lda_stk(2);
@@ -1300,8 +1355,7 @@ static void m6502_op(IrOp op) {
         m6502_lda_stk(3);
         m6502_and_stk(1);
         m6502_sta_stk(3);
-        emit8(M6502_INX);
-        emit8(M6502_INX);
+        m6502_pop2();
         break;
     case OP_OR:
         m6502_lda_stk(2);
@@ -1310,8 +1364,7 @@ static void m6502_op(IrOp op) {
         m6502_lda_stk(3);
         m6502_ora_stk(1);
         m6502_sta_stk(3);
-        emit8(M6502_INX);
-        emit8(M6502_INX);
+        m6502_pop2();
         break;
     case OP_XOR:
         m6502_lda_stk(2);
@@ -1320,8 +1373,7 @@ static void m6502_op(IrOp op) {
         m6502_lda_stk(3);
         m6502_eor_stk(1);
         m6502_sta_stk(3);
-        emit8(M6502_INX);
-        emit8(M6502_INX);
+        m6502_pop2();
         break;
     case OP_LSHIFT:
     case OP_RSHIFT:
@@ -1779,6 +1831,22 @@ static size_t m6502_emit_br_fwd(BranchCond cond) {
         emit16(0x0000);
         return patch_pos;
     }
+    if (cond == BR_JZ && m6502_cmp_end_pc != 0 && cb_pc() == m6502_cmp_end_pc) {
+        u8 n_inx = (u8)(m6502_cmp_pops * 2);
+        u8 k;
+        cb_rewind(cb_pc() - m6502_cmp_mat_pc);
+        m6502_cmp_end_pc = 0;
+        emit8_8(m6502_cmp_true_op, (u8)(n_inx + 3));
+        for (k = 0; k < n_inx; k++)
+            emit8(M6502_INX);
+        emit8(M6502_JMP);
+        patch_pos = cb_pc();
+        emit16(0x0000);
+        for (k = 0; k < n_inx; k++)
+            emit8(M6502_INX);
+        return patch_pos;
+    }
+    m6502_cmp_end_pc = 0;
     if (cond == BR_JZ) {
         m6502_lda_stk(0);
         m6502_ora_stk(1);
@@ -1799,6 +1867,20 @@ static void m6502_emit_br_back(BranchCond cond, size_t target_addr) {
         emit8_16(cond == BR_JZ ? BC_JZ : BC_JMP, (u16)target_addr);
         return;
     }
+    if (cond == BR_JZ && m6502_cmp_end_pc != 0 && cb_pc() == m6502_cmp_end_pc) {
+        u8 n_inx = (u8)(m6502_cmp_pops * 2);
+        u8 k;
+        cb_rewind(cb_pc() - m6502_cmp_mat_pc);
+        m6502_cmp_end_pc = 0;
+        emit8_8(m6502_cmp_true_op, (u8)(n_inx + 3));
+        for (k = 0; k < n_inx; k++)
+            emit8(M6502_INX);
+        emit8_16(M6502_JMP, target_addr);
+        for (k = 0; k < n_inx; k++)
+            emit8(M6502_INX);
+        return;
+    }
+    m6502_cmp_end_pc = 0;
     if (cond == BR_JZ) {
         m6502_lda_stk(0);
         m6502_ora_stk(1);
@@ -1811,7 +1893,10 @@ static void m6502_emit_br_back(BranchCond cond, size_t target_addr) {
     emit8_16(M6502_JMP, target_addr);
 }
 
-static void m6502_patch_fwd(size_t patch_offset) { patch16(patch_offset, (u16)cb_cur_addr()); }
+static void m6502_patch_fwd(size_t patch_offset) {
+    m6502_cmp_end_pc = 0;
+    patch16(patch_offset, (u16)cb_cur_addr());
+}
 
 static int m6502_add_imm(i32 imm) {
     u16 d = (u16)(i16)imm;
@@ -1844,6 +1929,89 @@ static int m6502_add_imm(i32 imm) {
     return 1;
 }
 
+static int m6502_cmp_imm(IrOp op, i32 imm) {
+    u16 rhs = (u16)(i16)imm;
+    u8 lo = (u8)(rhs & 0xFF);
+    u8 hi = (u8)(rhs >> 8);
+    if (m6502_compact)
+        return 0;
+    switch (op) {
+    case OP_EQ:
+    case OP_NE:
+        if (rhs == 0) {
+            m6502_lda_stk(0);
+            m6502_ora_stk(1);
+        } else {
+            m6502_lda_stk(0);
+            emit8_8(M6502_EOR_IMM, lo);
+            emit8_8(M6502_STA_ZP, zp_scratch);
+            m6502_lda_stk(1);
+            emit8_8(M6502_EOR_IMM, hi);
+            emit8_8(M6502_ORA_ZP, zp_scratch);
+        }
+        m6502_cmp_true_op = (op == OP_EQ) ? M6502_BEQ : M6502_BNE;
+        break;
+    case OP_ULT:
+    case OP_UGE:
+        if (rhs == 0)
+            return 0;
+        emit8(M6502_SEC);
+        m6502_lda_stk(0);
+        emit8_8(M6502_SBC_IMM, lo);
+        m6502_lda_stk(1);
+        emit8_8(M6502_SBC_IMM, hi);
+        m6502_cmp_true_op = (op == OP_UGE) ? M6502_BCS : M6502_BCC;
+        break;
+    case OP_UGT:
+    case OP_ULE:
+        emit8(M6502_SEC);
+        emit8_8(M6502_LDA_IMM, lo);
+        m6502_sbc_stk(0);
+        emit8_8(M6502_LDA_IMM, hi);
+        m6502_sbc_stk(1);
+        m6502_cmp_true_op = (op == OP_ULE) ? M6502_BCS : M6502_BCC;
+        break;
+    case OP_LT:
+    case OP_GE:
+        if (rhs == 0) {
+            m6502_lda_stk(1);
+        } else {
+            emit8(M6502_SEC);
+            m6502_lda_stk(0);
+            emit8_8(M6502_SBC_IMM, lo);
+            m6502_lda_stk(1);
+            emit8_8(M6502_SBC_IMM, hi);
+            emit8_8(M6502_BVC, 0x02);
+            emit8_8(M6502_EOR_IMM, 0x80);
+        }
+        m6502_cmp_true_op = (op == OP_GE) ? M6502_BPL : M6502_BMI;
+        break;
+    case OP_GT:
+    case OP_LE:
+        emit8(M6502_SEC);
+        emit8_8(M6502_LDA_IMM, lo);
+        m6502_sbc_stk(0);
+        emit8_8(M6502_LDA_IMM, hi);
+        m6502_sbc_stk(1);
+        emit8_8(M6502_BVC, 0x02);
+        emit8_8(M6502_EOR_IMM, 0x80);
+        m6502_cmp_true_op = (op == OP_LE) ? M6502_BPL : M6502_BMI;
+        break;
+    default:
+        return 0;
+    }
+    m6502_cmp_mat_pc = cb_pc();
+    emit8_8(m6502_cmp_true_op, 0x04); /* Bxx true */
+    emit8_8(M6502_LDA_IMM, 0x00);
+    emit8_8(M6502_BEQ, 0x02); /* BEQ store */
+    emit8_8(M6502_LDA_IMM, 0xFF);
+    m6502_sta_stk(0);
+    m6502_sta_stk(1);
+    m6502_cmp_pops = 1;
+    m6502_cmp_end_pc = cb_pc();
+    return 1;
+}
+
 static int m6502_shift_imm(IrOp op, u8 count) {
     u8 k;
     if (m6502_compact)
@@ -1852,19 +2020,28 @@ static int m6502_shift_imm(IrOp op, u8 count) {
         return 1;
     if (op != OP_LSHIFT && op != OP_RSHIFT && op != OP_ARSHIFT)
         return 0;
-    if (count == 8) {
+    if (count >= 8 && count <= 15) {
+        u8 rem = (u8)(count - 8);
         if (op == OP_LSHIFT) {
             m6502_lda_stk(0);
+            for (k = 0; k < rem; k++)
+                emit8(0x0A); /* ASL A */
             m6502_sta_stk(1);
             emit8_8(M6502_LDA_IMM, 0x00);
             m6502_sta_stk(0);
         } else if (op == OP_RSHIFT) {
             m6502_lda_stk(1);
+            for (k = 0; k < rem; k++)
+                emit8(0x4A); /* LSR A */
             m6502_sta_stk(0);
             emit8_8(M6502_LDA_IMM, 0x00);
             m6502_sta_stk(1);
         } else {
             m6502_lda_stk(1);
+            for (k = 0; k < rem; k++) {
+                emit8_8(M6502_CMP_IMM, 0x80);
+                emit8(0x6A); /* ROR A */
+            }
             m6502_sta_stk(0);
             emit8_8(M6502_BPL, 0x04);
             emit8_8(M6502_LDA_IMM, 0xFF);
@@ -1874,7 +2051,7 @@ static int m6502_shift_imm(IrOp op, u8 count) {
         }
         return 1;
     }
-    if (count > 3)
+    if (count > 5)
         return 0;
     for (k = 0; k < count; k++) {
         if (op == OP_LSHIFT) {
@@ -2825,7 +3002,7 @@ const Backend be_6502 = {"6502",
                          m6502_stack_op,
                          m6502_op,
                          m6502_add_imm,
-                         NULL,
+                         m6502_cmp_imm,
                          m6502_shift_imm,
                          m6502_mem_imm,
                          m6502_data_mem,
