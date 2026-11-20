@@ -1,5 +1,5 @@
 /* be_bc.c - Compact 16-bit Bytecode Backend for IR4th (Strict C89) */
-#include "bc.h"
+#include "backend/bc.h"
 #include "codebuf.h"
 #include "vec.h"
 

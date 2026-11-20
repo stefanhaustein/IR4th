@@ -1,7 +1,7 @@
 /* be_6502_c64.c - Commodore 64 (.prg) BASIC SYS stub & KERNAL CHROUT epilogue (Strict C89) */
 #include "codebuf.h"
 #include "frontend.h"
-#include "be_6502.h"
+#include "backend/6502.h"
 
 #define C64_CHROUT 0xFFD2
 #define C64_TMP_LO 0xFB
@@ -9,7 +9,7 @@
 
 static u16 c64_jmp_pc = 0;
 
-static void c64_begin_ex(size_t base, int is_x16) {
+void be_6502_cbm_begin(size_t base, int is_x16) {
     char digits[8];
     int len = 0;
     int i;
@@ -60,10 +60,9 @@ static void c64_begin_ex(size_t base, int is_x16) {
     emit16(0x0000);
 }
 
-static void c64_begin(size_t base) { c64_begin_ex(base, 0); }
-static void x16_begin(size_t base) { c64_begin_ex(base, 1); }
+static void c64_begin(size_t base) { be_6502_cbm_begin(base, 0); }
 
-static int c64_write(FILE *fp, size_t base) {
+int be_6502_cbm_write(FILE *fp, size_t base) {
     u8 hdr[2];
     put_le16(hdr, base);
     if (fwrite(hdr, 1, sizeof(hdr), fp) != sizeof(hdr))
@@ -71,7 +70,7 @@ static int c64_write(FILE *fp, size_t base) {
     return cb_write_raw(fp, 1);
 }
 
-static void c64_end_ex(int main_idx, int is_x16) {
+void be_6502_cbm_end(int main_idx, int is_x16) {
     const FuncSig *sig = ir4_func_sig((u8)main_idx);
     u16 entry_addr = cb_cur_addr();
     u8 tmp_lo = is_x16 ? 0x02 : C64_TMP_LO;
@@ -198,10 +197,7 @@ static void c64_end_ex(int main_idx, int is_x16) {
     }
 }
 
-static void c64_end(int main_idx) { c64_end_ex(main_idx, 0); }
-static void x16_end(int main_idx) { c64_end_ex(main_idx, 1); }
+static void c64_end(int main_idx) { be_6502_cbm_end(main_idx, 0); }
 
-const Platform plat_6502_c64 = {"--c64",   &be_6502, 0x0801,    "c64", 1,
-                                c64_begin, c64_end,  c64_write, NULL};
-const Platform plat_6502_x16 = {"--x16",   &be_6502, 0x0801,    "x16", 1,
-                                x16_begin, x16_end,  c64_write, NULL};
+const Platform plat_6502_c64 = {"--c64",   &be_6502, 0x0801,            "c64", 1,
+                                c64_begin, c64_end,  be_6502_cbm_write, NULL};

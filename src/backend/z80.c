@@ -4,8 +4,8 @@
  *   - Locals & params: SP-relative offsets (no IX frame pointer)
  */
 #include "codebuf.h"
-#include "be_z80.h"
-#include "be_z80_math48.h"
+#include "backend/z80.h"
+#include "backend/z80_math48.h"
 #include "vec.h"
 #include <math.h>
 

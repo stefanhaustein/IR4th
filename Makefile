@@ -3,7 +3,10 @@ CFLAGS  = -std=c89 -Wall -Wextra -O2 -Isrc
 
 BUILD   = build
 TARGET  = $(BUILD)/ir4c
-SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/path.c src/strpool.c src/vec.c src/be_z80.c src/be_z80_cpm.c src/be_ez80.c src/be_ez80_agon.c src/be_6502.c src/be_6502_sim.c src/be_6502_c64.c src/be_arm64.c src/be_arm64_jit.c src/be_rv32.c src/be_rv32_elf.c src/be_bc.c src/be_bc_run.c
+SRCS    = src/ir4c.c src/frontend.c src/codebuf.c src/path.c src/strpool.c src/vec.c \
+          src/backend/z80.c src/backend/ez80.c src/backend/6502.c src/backend/arm64.c src/backend/rv32.c src/backend/bc.c \
+          src/platform/cpm.c src/platform/agon.c src/platform/sim65.c src/platform/c64.c src/platform/x16.c \
+          src/platform/jit.c src/platform/elf.c src/platform/bc.c
 OBJS    = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
 AGON_EMU ?= $(HOME)/opt/fab-agon-emulator/fab-agon-emulator
@@ -15,28 +18,30 @@ all: $(TARGET)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/%.o: src/%.c src/ir4.h | $(BUILD)
+$(BUILD)/%.o: src/%.c src/ir4.h
+	mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/ir4c.o: src/codebuf.h src/frontend.h src/path.h src/bc.h
+$(BUILD)/ir4c.o: src/codebuf.h src/frontend.h src/path.h src/backend/bc.h
 $(BUILD)/frontend.o: src/codebuf.h src/frontend.h src/path.h src/strpool.h src/vec.h
 $(BUILD)/codebuf.o: src/codebuf.h src/strpool.h src/vec.h
 $(BUILD)/path.o: src/path.h src/strpool.h src/vec.h
 $(BUILD)/strpool.o: src/strpool.h src/vec.h
 $(BUILD)/vec.o: src/vec.h
-$(BUILD)/be_bc.o: src/bc.h src/codebuf.h src/vec.h
-$(BUILD)/be_bc_run.o: src/bc.h src/codebuf.h src/frontend.h
-$(BUILD)/be_z80.o: src/codebuf.h src/be_z80.h src/be_z80_math48.h src/vec.h
-$(BUILD)/be_z80_cpm.o: src/codebuf.h src/frontend.h src/be_z80.h
-$(BUILD)/be_ez80.o: src/codebuf.h src/be_ez80.h src/be_ez80_rt.h src/vec.h
-$(BUILD)/be_ez80_agon.o: src/codebuf.h src/frontend.h src/be_ez80.h
-$(BUILD)/be_6502.o: src/codebuf.h src/be_6502.h src/be_6502_wozfp.h src/bc.h src/vec.h
-$(BUILD)/be_6502_sim.o: src/codebuf.h src/frontend.h src/be_6502.h
-$(BUILD)/be_6502_c64.o: src/codebuf.h src/frontend.h src/be_6502.h
-$(BUILD)/be_arm64.o: src/codebuf.h src/vec.h
-$(BUILD)/be_arm64_jit.o: src/codebuf.h src/frontend.h
-$(BUILD)/be_rv32.o: src/codebuf.h src/be_rv32.h src/be_rv32_fp.h src/vec.h
-$(BUILD)/be_rv32_elf.o: src/codebuf.h src/frontend.h src/be_rv32.h
+$(BUILD)/backend/bc.o: src/backend/bc.h src/codebuf.h src/vec.h
+$(BUILD)/backend/z80.o: src/codebuf.h src/backend/z80.h src/backend/z80_math48.h src/vec.h
+$(BUILD)/backend/ez80.o: src/codebuf.h src/backend/ez80.h src/backend/ez80_rt.h src/vec.h
+$(BUILD)/backend/6502.o: src/codebuf.h src/backend/6502.h src/backend/6502_wozfp.h src/backend/bc.h src/vec.h
+$(BUILD)/backend/arm64.o: src/codebuf.h src/vec.h
+$(BUILD)/backend/rv32.o: src/codebuf.h src/backend/rv32.h src/backend/rv32_fp.h src/vec.h
+$(BUILD)/platform/bc.o: src/backend/bc.h src/codebuf.h src/frontend.h
+$(BUILD)/platform/cpm.o: src/codebuf.h src/frontend.h src/backend/z80.h
+$(BUILD)/platform/agon.o: src/codebuf.h src/frontend.h src/backend/ez80.h
+$(BUILD)/platform/sim65.o: src/codebuf.h src/frontend.h src/backend/6502.h
+$(BUILD)/platform/c64.o: src/codebuf.h src/frontend.h src/backend/6502.h
+$(BUILD)/platform/x16.o: src/codebuf.h src/frontend.h src/backend/6502.h
+$(BUILD)/platform/jit.o: src/codebuf.h src/frontend.h
+$(BUILD)/platform/elf.o: src/codebuf.h src/frontend.h src/backend/rv32.h
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET) -lm

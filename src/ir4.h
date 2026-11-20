@@ -164,6 +164,7 @@ typedef struct {
     Bool is_recursive;
     u16 req_group;
     u8 req_rank;
+    u16 bank;
     TypeVec in_types;
     StrVec in_regs;
     TypeVec out_types;
@@ -237,6 +238,7 @@ extern const Platform plat_ez80_agon;
 extern const Platform plat_6502_sim;
 extern const Platform plat_6502_c64;
 extern const Platform plat_6502_x16;
+extern const Platform plat_6502_x16_cart;
 extern const Platform plat_arm64_jit;
 extern const Platform plat_rv32_virt;
 extern const Platform plat_rv32_obj;
@@ -248,6 +250,9 @@ u8 be_6502_stack_zp_base(void);
 size_t be_6502_stack_data_off(void);
 void be_6502_set_compact(int compact);
 int be_6502_get_compact(void);
+void be_6502_set_call_bank(u16 bank);
+void be_6502_set_trampoline(u16 bank_call_addr, u16 kernal_call_addr);
+void be_6502_ensure_helpers(int need_mul, int need_div, int need_icall, int need_fp);
 void be_rv32_set_obj(int obj);
 
 #endif /* IR4_H */

@@ -55,4 +55,20 @@ void cb_add_extern_reloc(size_t patch_offset, const char *name);
 size_t cb_extern_reloc_count(void);
 const char *cb_extern_reloc_name(size_t idx, size_t *patch_offset);
 
+typedef struct {
+    size_t base;
+    size_t start_pc;
+    size_t len;
+} BankDesc;
+
+void cb_set_bank_config(size_t bank_base, size_t bank_size);
+Bool cb_is_banked(void);
+size_t cb_bank_base(void);
+size_t cb_bank_size(void);
+void cb_begin_bank(u16 bank_id);
+void cb_end_banks(void);
+u16 cb_cur_bank(void);
+size_t cb_bank_count(void);
+BankDesc cb_get_bank(u16 bank_id);
+
 #endif /* CODEBUF_H */

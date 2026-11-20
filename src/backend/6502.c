@@ -4,10 +4,10 @@
  *   - Locals: 256-byte BSS software frame stack indexed by 1-byte BSS lfp (grows downward)
  *   - Scratch pointers: 4 Zero Page bytes at zp_scratch (default $FB..$FE; override via --zp)
  */
-#include "bc.h"
+#include "backend/bc.h"
 #include "codebuf.h"
-#include "be_6502.h"
-#include "be_6502_wozfp.h"
+#include "backend/6502.h"
+#include "backend/6502_wozfp.h"
 #include "vec.h"
 #include <math.h>
 
@@ -32,9 +32,18 @@ static u16 icall_addr = 0;
 static u16 wozfp_addr = 0;
 static int m6502_compact = 2; /* 0 = native, 1 = all compact, 2 = auto */
 static u16 vm_enter_addr = 0;
+static u16 m6502_call_target_bank = 0;
+static u16 m6502_bank_call_addr = 0;
+static u16 m6502_kernal_call_addr = 0;
+static u8 m6502_phys_bank_offset = 32;
 
 void be_6502_set_compact(int compact) { m6502_compact = compact; }
 int be_6502_get_compact(void) { return m6502_compact; }
+void be_6502_set_call_bank(u16 bank) { m6502_call_target_bank = bank; }
+void be_6502_set_trampoline(u16 bank_call_addr, u16 kernal_call_addr) {
+    m6502_bank_call_addr = bank_call_addr;
+    m6502_kernal_call_addr = kernal_call_addr;
+}
 
 static void ensure_6502_vm(void);
 static void m6502_bc_local_op(LocalOp op, size_t slot, StackType type);
@@ -353,6 +362,14 @@ static void m6502_fn_end(const FuncSig *sig, const LocalVar *locals, size_t tota
 }
 
 static void m6502_call(size_t target_addr) {
+    u16 tbank = m6502_call_target_bank;
+    m6502_call_target_bank = 0;
+    if (cb_is_banked() && tbank != 0 && tbank != cb_cur_bank()) {
+        emit8_16(M6502_JSR, m6502_bank_call_addr);
+        emit8((u8)(m6502_phys_bank_offset + tbank));
+        emit16((u16)target_addr);
+        return;
+    }
     emit8_16(m6502_compact ? BC_CALL : M6502_JSR, (u16)target_addr);
 }
 
@@ -408,7 +425,12 @@ static void m6502_call_extern(const FuncSig *sig) {
         emit8_8(M6502_LDY_ZP, (u8)(zp_scratch + 2));
     }
 
-    emit8_16(M6502_JSR, sig->addr);
+    if (cb_is_banked() && sig->addr >= 0xC000 && m6502_kernal_call_addr != 0) {
+        emit8_16(M6502_JSR, m6502_kernal_call_addr);
+        emit16(sig->addr);
+    } else {
+        emit8_16(M6502_JSR, sig->addr);
+    }
 
     if (sig->out_types.len == 1) {
         const char *r = sig->out_reg;
@@ -1875,6 +1897,16 @@ static int m6502_shift_imm(IrOp op, u8 count) {
 
 static void m6502_patch_call(size_t call_pc, size_t call_addr, size_t target_addr) {
     (void)call_addr;
+    if (cb_is_banked() && m6502_bank_call_addr != 0) {
+        const u8 *d = cb_data();
+        if (d[call_pc] == M6502_JSR) {
+            u16 jmp_t = (u16)d[call_pc + 1] | ((u16)d[call_pc + 2] << 8);
+            if (jmp_t == m6502_bank_call_addr) {
+                patch16(call_pc + 4, (u16)target_addr);
+                return;
+            }
+        }
+    }
     patch16(call_pc + 1, (u16)target_addr);
 }
 
@@ -1928,6 +1960,26 @@ static void m6502_icall(void) {
         patch16(skip_jmp, cb_cur_addr());
     }
     emit8_16(M6502_JSR, icall_addr);
+}
+
+void be_6502_ensure_helpers(int need_mul, int need_div, int need_icall, int need_fp) {
+    if (need_mul)
+        ensure_mul16();
+    if (need_div) {
+        ensure_udivmod16();
+        ensure_sdivmod16();
+    }
+    if (need_icall && icall_addr == 0) {
+        u16 skip_jmp;
+        emit8(M6502_JMP);
+        skip_jmp = cb_pc();
+        emit16(0x0000);
+        icall_addr = cb_cur_addr();
+        emit8_16(0x6C, (u16)zp_scratch);
+        patch16(skip_jmp, cb_cur_addr());
+    }
+    if (need_fp)
+        ensure_wozfp();
 }
 
 static void m6502_bc_local_op(LocalOp op, size_t slot, StackType type) {

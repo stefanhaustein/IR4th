@@ -1,7 +1,7 @@
 /* be_6502_sim.c - sim65 (cc65 6502 simulator) header & exit/print stub (Strict C89) */
 #include "codebuf.h"
 #include "frontend.h"
-#include "be_6502.h"
+#include "backend/6502.h"
 
 #define SIM65_WRITE 0xFFF7
 #define SIM65_EXIT 0xFFF9

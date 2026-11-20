@@ -1,17 +1,17 @@
 /* ir4c.c - CLI driver for IR4th (Strict C89) */
-#include "bc.h"
+#include "backend/bc.h"
 #include "codebuf.h"
 #include "frontend.h"
 #include "path.h"
 
 static const Platform *const platforms[] = {
-    &plat_z80_cpm, &plat_ez80_agon, &plat_6502_sim, &plat_6502_c64, &plat_6502_x16, &plat_arm64_jit, &plat_rv32_virt,
-    &plat_rv32_obj, NULL};
+    &plat_z80_cpm, &plat_ez80_agon, &plat_6502_sim, &plat_6502_c64, &plat_6502_x16, &plat_6502_x16_cart,
+    &plat_arm64_jit, &plat_rv32_virt, &plat_rv32_obj, NULL};
 
 static void print_usage(void) {
     fprintf(stderr, "Usage: ir4c [-t z80|ez80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] "
                     "[--platform name] [--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] "
-                    "[--run] [--cpm] [--agon] [--sim65] [--c64] [--x16] [--virt] [--obj] <input.ir4>\n");
+                    "[--run] [--cpm] [--agon] [--sim65] [--c64] [--x16] [--x16-cart] [--virt] [--obj] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {
@@ -173,7 +173,8 @@ int main(int argc, char **argv) {
 
     /* Place data segment right after code on 16-bit targets */
     if (be != &be_arm64 && be != &be_rv32 && cb_data_size() > 0) {
-        cb_patch_data_relocs(cb_cur_addr());
+        size_t data_addr = cb_is_banked() ? (cb_get_bank(0).base + cb_get_bank(0).len) : cb_cur_addr();
+        cb_patch_data_relocs(data_addr);
     }
 
     out_fp = fopen(out_path, "wb");

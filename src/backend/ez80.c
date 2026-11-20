@@ -4,8 +4,8 @@
  *   - Return stack: dedicated 24-bit BSS stack pointed to by BSS rsp_off
  *   - Locals: static BSS for non-recursive functions; SP-relative for recursive
  */
-#include "be_ez80.h"
-#include "be_ez80_rt.h"
+#include "backend/ez80.h"
+#include "backend/ez80_rt.h"
 #include "codebuf.h"
 #include "vec.h"
 

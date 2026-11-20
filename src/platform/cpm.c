@@ -1,7 +1,7 @@
 /* be_z80_cpm.c - CP/M .COM startup & BDOS exit/print stub for Z80 (Strict C89) */
 #include "codebuf.h"
 #include "frontend.h"
-#include "be_z80.h"
+#include "backend/z80.h"
 
 #define CPM_BDOS 0x0005
 

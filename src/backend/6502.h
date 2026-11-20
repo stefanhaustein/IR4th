@@ -48,6 +48,7 @@ enum {
     /* Absolute / Indexed */
     M6502_ADC_ABS = 0x6D,
     M6502_STA_ABS = 0x8D,
+    M6502_STA_ABSX = 0x9D,
     M6502_LDA_ABS = 0xAD,
     M6502_LDA_ABSX = 0xBD,
 
@@ -75,5 +76,10 @@ u8 be_6502_stack_zp_base(void);
 u8 be_6502_stack_zp_init_x(void);
 void be_6502_set_compact(int compact);
 int be_6502_get_compact(void);
+void be_6502_ensure_helpers(int need_mul, int need_div, int need_icall, int need_fp);
+
+void be_6502_cbm_begin(size_t base, int is_x16);
+void be_6502_cbm_end(int main_idx, int is_x16);
+int be_6502_cbm_write(FILE *fp, size_t base);
 
 #endif /* BE_6502_H */

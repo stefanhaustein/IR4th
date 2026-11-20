@@ -27,6 +27,7 @@ VEC_OF(ByteVec, u8);
 VEC_OF(DataRelocVec, DataReloc);
 VEC_OF(DataInitRelocVec, DataInitReloc);
 VEC_OF(ExternRelocVec, ExternReloc);
+VEC_OF(BankDescVec, BankDesc);
 
 static ByteVec code_buf;
 static size_t base_addr = 0x0100; /* Default: CP/M .COM load address */
@@ -35,8 +36,13 @@ static size_t data_init_size = 0;
 static DataRelocVec relocs;
 static DataInitRelocVec data_init_relocs;
 static ExternRelocVec ext_relocs;
+static BankDescVec banks;
+static size_t cfg_bank_base = 0;
+static size_t cfg_bank_size = 0;
+static u16 cur_bank_id = 0;
 
 void cb_reset(size_t base) {
+    BankDesc *b0;
     code_buf.len = 0;
     base_addr = base;
     data_buf.len = 0;
@@ -44,11 +50,24 @@ void cb_reset(size_t base) {
     relocs.len = 0;
     data_init_relocs.len = 0;
     ext_relocs.len = 0;
+    banks.len = 0;
+    cfg_bank_base = 0;
+    cfg_bank_size = 0;
+    cur_bank_id = 0;
+    b0 = VEC_ADD(banks);
+    b0->base = base;
+    b0->start_pc = 0;
+    b0->len = 0;
 }
 
 size_t cb_pc(void) { return code_buf.len; }
 
-size_t cb_cur_addr(void) { return base_addr + code_buf.len; }
+size_t cb_cur_addr(void) {
+    if (cfg_bank_size == 0 || cur_bank_id == 0) {
+        return base_addr + code_buf.len;
+    }
+    return banks.data[cur_bank_id].base + (code_buf.len - banks.data[cur_bank_id].start_pc);
+}
 
 const u8 *cb_data(void) { return code_buf.data; }
 
@@ -287,4 +306,56 @@ size_t cb_extern_reloc_count(void) { return ext_relocs.len; }
 const char *cb_extern_reloc_name(size_t idx, size_t *patch_offset) {
     *patch_offset = ext_relocs.data[idx].patch_offset;
     return ext_relocs.data[idx].name;
+}
+
+void cb_set_bank_config(size_t bank_base, size_t bank_size) {
+    cfg_bank_base = bank_base;
+    cfg_bank_size = bank_size;
+}
+
+Bool cb_is_banked(void) { return cfg_bank_size != 0; }
+
+size_t cb_bank_base(void) { return cfg_bank_base; }
+
+size_t cb_bank_size(void) { return cfg_bank_size; }
+
+void cb_begin_bank(u16 bank_id) {
+    if (cur_bank_id < banks.len) {
+        banks.data[cur_bank_id].len = code_buf.len - banks.data[cur_bank_id].start_pc;
+    }
+    while (banks.len <= bank_id) {
+        BankDesc *b = VEC_ADD(banks);
+        b->base = (banks.len == 1) ? base_addr : cfg_bank_base;
+        b->start_pc = code_buf.len;
+        b->len = 0;
+    }
+    cur_bank_id = bank_id;
+    banks.data[bank_id].base = (bank_id == 0) ? base_addr : cfg_bank_base;
+    banks.data[bank_id].start_pc = code_buf.len;
+    banks.data[bank_id].len = 0;
+}
+
+void cb_end_banks(void) {
+    if (cur_bank_id < banks.len) {
+        banks.data[cur_bank_id].len = code_buf.len - banks.data[cur_bank_id].start_pc;
+    }
+}
+
+u16 cb_cur_bank(void) { return cur_bank_id; }
+
+size_t cb_bank_count(void) { return banks.len; }
+
+BankDesc cb_get_bank(u16 bank_id) {
+    BankDesc d;
+    if (bank_id >= banks.len) {
+        d.base = 0;
+        d.start_pc = 0;
+        d.len = 0;
+        return d;
+    }
+    d = banks.data[bank_id];
+    if (bank_id == cur_bank_id) {
+        d.len = code_buf.len - d.start_pc;
+    }
+    return d;
 }

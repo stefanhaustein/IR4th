@@ -1,7 +1,7 @@
 /* be_rv32_elf.c - ELF32 ET_EXEC (--virt) & ET_REL (--obj) writers for RV32 (Strict C89) */
 #include "codebuf.h"
 #include "frontend.h"
-#include "be_rv32.h"
+#include "backend/rv32.h"
 
 #define VIRT_BASE 0x80000000UL
 #define VIRT_UART0 0x10000000UL

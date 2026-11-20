@@ -9,9 +9,9 @@
  *   - a0..a7 (x10..x17): Extern call arguments & return value
  */
 #include "codebuf.h"
-#include "be_rv32.h"
+#include "backend/rv32.h"
 #include "vec.h"
-#include "be_rv32_fp.h"
+#include "backend/rv32_fp.h"
 
 #define RV_LOAD_BASE 0x80000000UL
 
