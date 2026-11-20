@@ -36,7 +36,8 @@ typedef enum {
     IR_PUSH_FN,
     IR_ICALL,
     IR_BR_FWD,
-    IR_BR_BACK
+    IR_BR_BACK,
+    IR_INLINE
 } IrKind;
 
 typedef struct {
@@ -63,6 +64,7 @@ typedef struct {
             BranchCond cond;
             size_t target;
         } br;
+        size_t inl_idx;
     } u;
 } IrInstr;
 
@@ -74,7 +76,15 @@ typedef struct {
     u8 kind;
 } CodeReloc;
 
+typedef struct {
+    size_t raw_start;
+    size_t raw_len;
+    size_t reloc_start;
+    size_t reloc_cnt;
+} InlineBlock;
+
 VEC_OF(LocalVec, LocalVar);
+VEC_OF(InlineVec, InlineBlock);
 
 typedef struct {
     size_t ir_start;
@@ -85,6 +95,7 @@ typedef struct {
     LocalVec locals;
     Bool reachable;
     Bool is_code;
+    Bool has_inline;
 } WordIR;
 
 VEC_OF(IrVec, IrInstr);
@@ -96,6 +107,7 @@ static size_t fold_fence = 0;
 static WordVec words;
 static ByteVec raw_code_buf;
 static CodeRelocVec code_relocs;
+static InlineVec inline_blocks;
 
 typedef struct {
     FILE *fp;
@@ -1286,9 +1298,82 @@ static void compile_word(int is_default, int is_hot) {
 VEC_OF(IdxVec, size_t);
 static IdxVec init_funcs;
 
-static void raw_emit_u8(WordIR *w, u8 b) {
+static void raw_emit_u8(size_t *out_len, u8 b) {
     VEC_PUSH(raw_code_buf, b);
-    w->ir_len++;
+    (*out_len)++;
+}
+
+static void parse_raw_code_body(size_t *out_start, size_t *out_len, size_t *out_reloc_start,
+                                size_t *out_reloc_cnt) {
+    const char *tok;
+    i32 num_val;
+    i32 pending = 0;
+    int has_pending = 0;
+
+    *out_start = raw_code_buf.len;
+    *out_len = 0;
+    *out_reloc_start = code_relocs.len;
+    *out_reloc_cnt = 0;
+
+    while ((tok = next_tok()) != NULL) {
+        if (strcmp(tok, "end") == 0) {
+            if (has_pending)
+                ir4_die("missing width (:i8, :i16, :i32) in raw code");
+            return;
+        } else if (strcmp(tok, ":i8") == 0) {
+            if (!has_pending)
+                ir4_die("expected integer before ':i8'");
+            if (pending < -128 || pending > 255)
+                ir4_die(":i8 value out of range");
+            raw_emit_u8(out_len, (u8)(pending & 0xFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":i16") == 0) {
+            u16 v;
+            if (!has_pending)
+                ir4_die("expected integer before ':i16'");
+            if (pending < -32768 || pending > 65535)
+                ir4_die(":i16 value out of range");
+            v = (u16)(pending & 0xFFFF);
+            raw_emit_u8(out_len, (u8)(v & 0xFF));
+            raw_emit_u8(out_len, (u8)((v >> 8) & 0xFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":i32") == 0) {
+            u32 v;
+            if (!has_pending)
+                ir4_die("expected integer before ':i32'");
+            v = (u32)pending;
+            raw_emit_u8(out_len, (u8)(v & 0xFF));
+            raw_emit_u8(out_len, (u8)((v >> 8) & 0xFF));
+            raw_emit_u8(out_len, (u8)((v >> 16) & 0xFF));
+            raw_emit_u8(out_len, (u8)((v >> 24) & 0xFF));
+            has_pending = 0;
+        } else if (strcmp(tok, ":ar") == 0 || strcmp(tok, ":as") == 0) {
+            CodeReloc *rel;
+            if (!has_pending)
+                ir4_die("expected offset before ':ar' or ':as'");
+            if (pending < 0 || pending > 0xFFFF)
+                ir4_die("relocation offset out of range");
+            rel = VEC_ADD(code_relocs);
+            rel->ir_off = *out_len;
+            rel->addend = (u16)pending;
+            rel->kind = (strcmp(tok, ":ar") == 0) ? CODE_REL_SELF : CODE_REL_STACK;
+            if (rel->kind == CODE_REL_STACK && !be->stack_data_off) {
+                ir4_die("':as' is only supported on targets with a RAM data stack");
+            }
+            (*out_reloc_cnt)++;
+            raw_emit_u8(out_len, 0x00);
+            raw_emit_u8(out_len, 0x00);
+            has_pending = 0;
+        } else if (parse_int(tok, &num_val)) {
+            if (has_pending)
+                ir4_die("missing width (:i8, :i16, :i32) before literal in raw code");
+            pending = num_val;
+            has_pending = 1;
+        } else {
+            ir4_die("unexpected token in raw code");
+        }
+    }
+    ir4_die("unexpected EOF in raw code (missing 'end')");
 }
 
 static void compile_code(void) {
@@ -1297,9 +1382,6 @@ static void compile_code(void) {
     FuncSig *sig;
     WordIR *w;
     size_t fidx;
-    i32 num_val;
-    i32 pending = 0;
-    int has_pending = 0;
 
     int existing;
     u16 cur_grp = src_stack.data[src_stack.len - 1].req_group;
@@ -1348,70 +1430,7 @@ static void compile_code(void) {
     }
 
     w->is_code = 1;
-    w->ir_start = raw_code_buf.len;
-    w->ir_len = 0;
-    w->reloc_start = code_relocs.len;
-    w->reloc_cnt = 0;
-
-    while ((tok = next_tok()) != NULL) {
-        if (strcmp(tok, "end") == 0) {
-            if (has_pending)
-                ir4_die("missing width (:i8, :i16, :i32) in 'code'");
-            return;
-        } else if (strcmp(tok, ":i8") == 0) {
-            if (!has_pending)
-                ir4_die("expected integer before ':i8'");
-            if (pending < -128 || pending > 255)
-                ir4_die(":i8 value out of range");
-            raw_emit_u8(w, (u8)(pending & 0xFF));
-            has_pending = 0;
-        } else if (strcmp(tok, ":i16") == 0) {
-            u16 v;
-            if (!has_pending)
-                ir4_die("expected integer before ':i16'");
-            if (pending < -32768 || pending > 65535)
-                ir4_die(":i16 value out of range");
-            v = (u16)(pending & 0xFFFF);
-            raw_emit_u8(w, (u8)(v & 0xFF));
-            raw_emit_u8(w, (u8)((v >> 8) & 0xFF));
-            has_pending = 0;
-        } else if (strcmp(tok, ":i32") == 0) {
-            u32 v;
-            if (!has_pending)
-                ir4_die("expected integer before ':i32'");
-            v = (u32)pending;
-            raw_emit_u8(w, (u8)(v & 0xFF));
-            raw_emit_u8(w, (u8)((v >> 8) & 0xFF));
-            raw_emit_u8(w, (u8)((v >> 16) & 0xFF));
-            raw_emit_u8(w, (u8)((v >> 24) & 0xFF));
-            has_pending = 0;
-        } else if (strcmp(tok, ":ar") == 0 || strcmp(tok, ":as") == 0) {
-            CodeReloc *rel;
-            if (!has_pending)
-                ir4_die("expected offset before ':ar' or ':as'");
-            if (pending < 0 || pending > 0xFFFF)
-                ir4_die("relocation offset out of range");
-            rel = VEC_ADD(code_relocs);
-            rel->ir_off = w->ir_len;
-            rel->addend = (u16)pending;
-            rel->kind = (strcmp(tok, ":ar") == 0) ? CODE_REL_SELF : CODE_REL_STACK;
-            if (rel->kind == CODE_REL_STACK && !be->stack_data_off) {
-                ir4_die("':as' is only supported on targets with a RAM data stack");
-            }
-            w->reloc_cnt++;
-            raw_emit_u8(w, 0x00);
-            raw_emit_u8(w, 0x00);
-            has_pending = 0;
-        } else if (parse_int(tok, &num_val)) {
-            if (has_pending)
-                ir4_die("missing width (:i8, :i16, :i32) before literal in 'code'");
-            pending = num_val;
-            has_pending = 1;
-        } else {
-            ir4_die("unexpected token in 'code'");
-        }
-    }
-    ir4_die("unexpected EOF in 'code' (missing 'end')");
+    parse_raw_code_body(&w->ir_start, &w->ir_len, &w->reloc_start, &w->reloc_cnt);
 }
 
 static void compile_init(void) {
@@ -1859,6 +1878,19 @@ static void compile_body(WordIR *w) {
             continue;
         }
 
+        if (strcmp(tok, "inline") == 0) {
+            InlineBlock ib;
+            parse_raw_code_body(&ib.raw_start, &ib.raw_len, &ib.reloc_start, &ib.reloc_cnt);
+            w->has_inline = 1;
+            if (!unreachable) {
+                IrInstr *ins = emit_ir(IR_INLINE, w);
+                ins->u.inl_idx = inline_blocks.len;
+                VEC_PUSH(inline_blocks, ib);
+                fold_fence = w->ir_len;
+            }
+            continue;
+        }
+
         /* Core built-in word */
         if (handle_builtin(tok, w))
             continue;
@@ -1994,6 +2026,29 @@ VEC_OF(PendingBrVec, PendingBr);
 static FwdCallVec fwd_calls;
 static size_t heap_start_off = 0;
 
+static void emit_raw_code_block(size_t raw_start, size_t raw_len, size_t reloc_start,
+                                  size_t reloc_cnt) {
+    size_t i;
+    size_t base_pc = cb_pc();
+    size_t base_addr = be->cur_addr();
+    for (i = 0; i < raw_len; i++) {
+        emit8(raw_code_buf.data[raw_start + i]);
+    }
+    for (i = 0; i < reloc_cnt; i++) {
+        const CodeReloc *rel = &code_relocs.data[reloc_start + i];
+        size_t pc = base_pc + rel->ir_off;
+        if (rel->kind == CODE_REL_SELF) {
+            patch16(pc, (u16)(base_addr + rel->addend));
+        } else if (rel->kind == CODE_REL_STACK) {
+            if (be == &be_6502 && be_6502_stack_zp_base() != 0) {
+                patch16(pc, (u16)(be_6502_stack_zp_base() + rel->addend));
+            } else {
+                cb_add_data_reloc(pc, be->stack_data_off() + rel->addend);
+            }
+        }
+    }
+}
+
 static void emit_word(size_t fidx) {
     static SizeVec ir_addr;
     FuncSig *sig = funcs.data[fidx];
@@ -2006,25 +2061,9 @@ static void emit_word(size_t fidx) {
     pending.cap = 0;
 
     if (w->is_code) {
-        size_t base_pc = cb_pc();
         sig->addr = be->cur_addr();
         sig->has_addr = 1;
-        for (i = 0; i < w->ir_len; i++) {
-            emit8(raw_code_buf.data[w->ir_start + i]);
-        }
-        for (i = 0; i < w->reloc_cnt; i++) {
-            const CodeReloc *rel = &code_relocs.data[w->reloc_start + i];
-            size_t pc = base_pc + rel->ir_off;
-            if (rel->kind == CODE_REL_SELF) {
-                patch16(pc, (u16)(sig->addr + rel->addend));
-            } else if (rel->kind == CODE_REL_STACK) {
-                if (be == &be_6502 && be_6502_stack_zp_base() != 0) {
-                    patch16(pc, (u16)(be_6502_stack_zp_base() + rel->addend));
-                } else {
-                    cb_add_data_reloc(pc, be->stack_data_off() + rel->addend);
-                }
-            }
-        }
+        emit_raw_code_block(w->ir_start, w->ir_len, w->reloc_start, w->reloc_cnt);
         return;
     }
 
@@ -2201,6 +2240,16 @@ static void emit_word(size_t fidx) {
             case IR_BR_BACK:
                 be->emit_br_back(ins->u.br.cond, ir_addr.data[ins->u.br.target]);
                 break;
+            case IR_INLINE: {
+                const InlineBlock *ib = &inline_blocks.data[ins->u.inl_idx];
+                if (strcmp(be->name, "bc") == 0)
+                    ir4_die("'inline' is not supported on bytecode target");
+                if (be == &be_6502) {
+                    be_6502_peep_fence();
+                }
+                emit_raw_code_block(ib->raw_start, ib->raw_len, ib->reloc_start, ib->reloc_cnt);
+                break;
+            }
             }
         }
     }
@@ -2388,6 +2437,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     buffers.len = 0;
     ir_buf.len = 0;
     raw_code_buf.len = 0;
+    inline_blocks.len = 0;
     code_relocs.len = 0;
     fwd_calls.len = 0;
     init_funcs.len = 0;
@@ -2656,7 +2706,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                         size_t i;
                         if (funcs.data[f]->is_extern || !w->reachable || w->is_code)
                             continue;
-                        fn_compact[f] = !funcs.data[f]->is_hot;
+                        fn_compact[f] = !(funcs.data[f]->is_hot || w->has_inline);
                         if (funcs.data[f]->is_hot)
                             heat[f] += 10000;
                         if (funcs.data[f]->is_recursive)

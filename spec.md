@@ -60,6 +60,8 @@ end
   * One or more top-level `init ... end` blocks may be defined across the program and `require`d modules. Each behaves as an anonymous void function (`( )`) and runs once in source order before `main`.
 * **Machine-Code Words (`code ... end`):**
   * `code <name> ( <inputs> -> <outputs> ) <bytes> end` defines a raw machine-code word emitted into the executable code segment (subject to DCE) using `:i8`, `:i16`, `:i32`, `:ar` (16-bit address relative to the start of the `code` block), and `:as` (16-bit address relative to the 6502 data stack buffer), following the target's `call` / `return` convention.
+* **Inline Machine Code (`inline ... end`):**
+  * Inside a `fn` or `init` body, `inline <bytes> end` emits raw machine code bytes directly in place using the same `:i8`, `:i16`, `:i32`, `:ar` (relative to the start of the `inline` block), and `:as` tokens as `code`. It is assumed to be stack-neutral (`( -> )`) with respect to the static data stack, acts as an optimization/peephole fence, keeps the enclosing function native, and is not supported on the bytecode target (`-t bc`).
 
 ### 3.1 Accessing, Mutating & Addressing Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
