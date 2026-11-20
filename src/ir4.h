@@ -31,6 +31,58 @@ typedef unsigned long u32;
 typedef signed long i32;
 #endif
 
+/* Optional target/platform subsetting: define IR4_MINIMAL to default all to 0,
+ * then enable only desired backends/platforms (e.g. -DIR4_ENABLE_EZ80=1 -DIR4_ENABLE_AGON=1). */
+#ifdef IR4_MINIMAL
+#define IR4_DEF_OPT 0
+#else
+#define IR4_DEF_OPT 1
+#endif
+
+#ifndef IR4_ENABLE_Z80
+#define IR4_ENABLE_Z80 IR4_DEF_OPT
+#endif
+#ifndef IR4_ENABLE_EZ80
+#define IR4_ENABLE_EZ80 IR4_DEF_OPT
+#endif
+#ifndef IR4_ENABLE_6502
+#define IR4_ENABLE_6502 IR4_DEF_OPT
+#endif
+#ifndef IR4_ENABLE_ARM64
+#define IR4_ENABLE_ARM64 IR4_DEF_OPT
+#endif
+#ifndef IR4_ENABLE_RV32
+#define IR4_ENABLE_RV32 IR4_DEF_OPT
+#endif
+#ifndef IR4_ENABLE_BC
+#define IR4_ENABLE_BC IR4_DEF_OPT
+#endif
+
+#ifndef IR4_ENABLE_CPM
+#define IR4_ENABLE_CPM IR4_ENABLE_Z80
+#endif
+#ifndef IR4_ENABLE_ZX81
+#define IR4_ENABLE_ZX81 IR4_ENABLE_Z80
+#endif
+#ifndef IR4_ENABLE_AGON
+#define IR4_ENABLE_AGON IR4_ENABLE_EZ80
+#endif
+#ifndef IR4_ENABLE_SIM65
+#define IR4_ENABLE_SIM65 IR4_ENABLE_6502
+#endif
+#ifndef IR4_ENABLE_C64
+#define IR4_ENABLE_C64 IR4_ENABLE_6502
+#endif
+#ifndef IR4_ENABLE_X16
+#define IR4_ENABLE_X16 IR4_ENABLE_6502
+#endif
+#ifndef IR4_ENABLE_JIT
+#define IR4_ENABLE_JIT IR4_ENABLE_ARM64
+#endif
+#ifndef IR4_ENABLE_ELF
+#define IR4_ENABLE_ELF IR4_ENABLE_RV32
+#endif
+
 /* Stack types (v0.3) */
 typedef enum { TY_NONE = 0, TY_W, TY_A, TY_F, TY_I32 } StackType;
 

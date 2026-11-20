@@ -78,7 +78,7 @@ make test-ez80    # Build Agon MOS binaries and run them via fab-agon-emulator (
 Compile with `ir4c`:
 
 ```sh
-./build/ir4c [-t z80|ez80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr[:init_x]] [--no-stack-zp] [--run] [--cpm] [--zx81] [--agon] [--sim65] [--c64] [--x16] [--x16-cart] [--virt] [--obj] <input.ir4>
+./build/ir4c [-t z80|ez80|6502|arm64|rv32|bc|cpm|zx81|agon|sim65|c64|x16|x16-cart|virt|obj] [-b hex_addr] [-o out.bin] [-I dir] [--platform name] [--zp hex_addr] [--stack-zp hex_addr[:init_x]] [--no-stack-zp] [--run] <input.ir4>
 ```
 
 Pass `-I dir` (repeatable) to add library search directories ahead of the built-in `lib/` directory.
@@ -86,11 +86,11 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 
 ## Targets
 
-- **Z80** (`-t z80`): Generates Z80 machine code, with [`--cpm`](docs/cpm/) for CP/M `.com` executables and [`--zx81`](docs/zx81/) for Sinclair ZX81 `.p` snapshots.
-- **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with [`--agon`](docs/agon/) for Agon Light / Console8 MOS executables.
-- **6502** (`-t 6502`): Generates 6502 machine code (configurable `--zp`, `--stack-zp`, `--no-stack-zp`), with `--sim65` for `cc65`'s `sim65` simulator, [`--c64`](docs/c64/) for Commodore 64 `.prg`, and [`--x16` / `--x16-cart`](docs/x16/) for Commander X16 `.prg` and banked `.crt` cartridges.
+- **Z80** (`-t z80`): Generates Z80 machine code, with [`-t cpm`](docs/cpm/) for CP/M `.com` executables and [`-t zx81`](docs/zx81/) for Sinclair ZX81 `.p` snapshots.
+- **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with [`-t agon`](docs/agon/) for Agon Light / Console8 MOS executables.
+- **6502** (`-t 6502`): Generates 6502 machine code (configurable `--zp`, `--stack-zp`, `--no-stack-zp`), with `-t sim65` for `cc65`'s `sim65` simulator, [`-t c64`](docs/c64/) for Commodore 64 `.prg`, and [`-t x16` / `-t x16-cart`](docs/x16/) for Commander X16 `.prg` and banked `.crt` cartridges.
 - **ARM64** (`-t arm64`): Generates AArch64 machine code, with `--run` support for direct JIT execution on macOS Apple Silicon.
-- **RISC-V RV32IM** (`-t rv32`): Generates RV32IM machine code, with `--virt` for standalone QEMU `virt` ELF32 execution and `--obj` for relocatable ELF32 `.o` output (linking `extern` symbols and `libgcc` soft-float).
+- **RISC-V RV32IM** (`-t rv32`): Generates RV32IM machine code, with `-t virt` for standalone QEMU `virt` ELF32 execution and `-t obj` for relocatable ELF32 `.o` output (linking `extern` symbols and `libgcc` soft-float).
 - **Bytecode VM** (`-t bc`): Emits portable IR4th bytecode, with `--run` to execute directly in the built-in stack VM.
 
 

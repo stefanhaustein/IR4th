@@ -115,6 +115,10 @@ typedef struct {
     u32 line_num;
     u16 req_group;
     u8 req_rank;
+    u8 buf[512];
+    size_t buf_pos;
+    size_t buf_len;
+    int pushback;
 } SrcFile;
 
 VEC_OF(SrcVec, SrcFile);
@@ -157,7 +161,7 @@ static BlockVec blocks;
 void ir4_die(const char *msg) {
     if (src_stack.len > 0) {
         const SrcFile *cur = &src_stack.data[src_stack.len - 1];
-        fprintf(stderr, "ir4c error (%s:%u): %s\n", cur->path, cur->line_num, msg);
+        fprintf(stderr, "ir4c error (%s:%lu): %s\n", cur->path, (unsigned long)cur->line_num, msg);
     } else {
         fprintf(stderr, "ir4c error: %s\n", msg);
     }
@@ -188,6 +192,25 @@ static StackType parse_type_tok(const char *tok) {
     return TY_NONE;
 }
 
+static int src_getc(SrcFile *sf) {
+    if (sf->pushback >= 0) {
+        int c = sf->pushback;
+        sf->pushback = -1;
+        return c;
+    }
+    if (sf->buf_pos >= sf->buf_len) {
+        sf->buf_len = fread(sf->buf, 1, sizeof(sf->buf), sf->fp);
+        sf->buf_pos = 0;
+        if (sf->buf_len == 0)
+            return EOF;
+    }
+    return sf->buf[sf->buf_pos++];
+}
+
+static void src_ungetc(SrcFile *sf, int c) {
+    sf->pushback = c;
+}
+
 static int skip_ws_and_comments(void) {
     for (;;) {
         SrcFile *cur;
@@ -195,7 +218,7 @@ static int skip_ws_and_comments(void) {
         if (src_stack.len == 0)
             return EOF;
         cur = &src_stack.data[src_stack.len - 1];
-        c = fgetc(cur->fp);
+        c = src_getc(cur);
         if (c == EOF) {
             if (src_stack.len > 1) {
                 fclose(cur->fp);
@@ -211,30 +234,30 @@ static int skip_ws_and_comments(void) {
         if (isspace((unsigned char)c))
             continue;
         if (c == '\\') {
-            int c2 = fgetc(cur->fp);
+            int c2 = src_getc(cur);
             if (c2 == EOF || c2 == '\n' || isspace((unsigned char)c2)) {
                 if (c2 == '\n') {
                     cur->line_num++;
                 } else if (c2 != EOF) {
-                    while ((c = fgetc(cur->fp)) != EOF && c != '\n')
+                    while ((c = src_getc(cur)) != EOF && c != '\n')
                         ;
                     if (c == '\n')
                         cur->line_num++;
                 }
                 continue;
             }
-            ungetc(c2, cur->fp);
+            src_ungetc(cur, c2);
         }
         return c;
     }
 }
 
-static const char *read_quoted_intern(FILE *fp, const char *err_unterm) {
-    int c = fgetc(fp);
+static const char *read_quoted_intern(SrcFile *sf, const char *err_unterm) {
+    int c = src_getc(sf);
     sb_reset(&tok_sb);
     while (c != EOF && c != '\n' && c != '"') {
         sb_putc(&tok_sb, (char)c);
-        c = fgetc(fp);
+        c = src_getc(sf);
     }
     if (c != '"')
         ir4_die(err_unterm);
@@ -249,22 +272,22 @@ static void parse_line_directive(SrcFile *cur, int last_c) {
     if (c == '\n' || c == EOF)
         ir4_die("expected line number after '#line'");
     while (c == ' ' || c == '\t')
-        c = fgetc(cur->fp);
+        c = src_getc(cur);
     while (c >= '0' && c <= '9') {
         new_line = new_line * 10 + (u32)(c - '0');
         has_digits = 1;
-        c = fgetc(cur->fp);
+        c = src_getc(cur);
     }
     if (!has_digits || new_line == 0)
         ir4_die("invalid line number in '#line'");
     while (c == ' ' || c == '\t')
-        c = fgetc(cur->fp);
+        c = src_getc(cur);
     if (c == '"') {
-        cur->path = read_quoted_intern(cur->fp, "unterminated filename in '#line'");
-        c = fgetc(cur->fp);
+        cur->path = read_quoted_intern(cur, "unterminated filename in '#line'");
+        c = src_getc(cur);
     }
     while (c != EOF && c != '\n')
-        c = fgetc(cur->fp);
+        c = src_getc(cur);
     cur->line_num = new_line;
 }
 
@@ -279,7 +302,7 @@ static const char *next_tok(void) {
             sb_reset(&tok_sb);
             while (c != EOF && !isspace((unsigned char)c)) {
                 sb_putc(&tok_sb, (char)c);
-                c = fgetc(cur->fp);
+                c = src_getc(cur);
             }
             if (strcmp(tok_sb.data, "#line") == 0) {
                 parse_line_directive(cur, c);
@@ -318,6 +341,9 @@ static void push_src_file(FILE *fp, const char *path, u16 req_group, u8 req_rank
     sf->line_num = 1;
     sf->req_group = req_group;
     sf->req_rank = req_rank;
+    sf->buf_pos = 0;
+    sf->buf_len = 0;
+    sf->pushback = -1;
 }
 
 static const char *platform_parent(const char *plat) {
@@ -439,7 +465,7 @@ static const char *read_require_path(void) {
 
     if (c != '"')
         ir4_die("expected quoted filename after 'require'");
-    return read_quoted_intern(cur->fp, "unterminated filename in 'require'");
+    return read_quoted_intern(cur, "unterminated filename in 'require'");
 }
 
 static void push_require(const char *name) { push_require_ex(name, 0); }
@@ -515,8 +541,8 @@ static void tpop_expect(StackType expected) {
     StackType got = tpop();
     if (got != expected) {
         const SrcFile *cur = &src_stack.data[src_stack.len - 1];
-        fprintf(stderr, "ir4c error (%s:%u): expected %s, got %s\n", cur->path, cur->line_num,
-                type_name(expected), type_name(got));
+        fprintf(stderr, "ir4c error (%s:%lu): expected %s, got %s\n", cur->path,
+                (unsigned long)cur->line_num, type_name(expected), type_name(got));
         exit(1);
     }
 }
@@ -836,6 +862,38 @@ static IrOp swapped_store_op(IrOp op) {
     }
 }
 
+#define BUILTIN_HT_SIZE 512
+static short builtin_ht[BUILTIN_HT_SIZE];
+static short builtin_next[sizeof(builtins) / sizeof(builtins[0])];
+static int builtin_ht_init = 0;
+
+static u32 builtin_hash(const char *s) {
+    u32 h = 2166136261UL;
+    while (*s) {
+        h ^= (unsigned char)*s++;
+        h *= 16777619UL;
+    }
+    return h;
+}
+
+static void init_builtin_ht(void) {
+    size_t n = sizeof(builtins) / sizeof(builtins[0]);
+    size_t i;
+    for (i = 0; i < n; i++)
+        builtin_next[i] = -1;
+    for (i = n; i > 0; i--) {
+        size_t idx = i - 1;
+        u32 slot = builtin_hash(builtins[idx].name) & (BUILTIN_HT_SIZE - 1);
+        while (builtin_ht[slot] != 0 &&
+               strcmp(builtins[builtin_ht[slot] - 1].name, builtins[idx].name) != 0) {
+            slot = (slot + 1) & (BUILTIN_HT_SIZE - 1);
+        }
+        builtin_next[idx] = (builtin_ht[slot] != 0) ? (short)(builtin_ht[slot] - 1) : -1;
+        builtin_ht[slot] = (short)(idx + 1);
+    }
+    builtin_ht_init = 1;
+}
+
 static int handle_builtin(const char *tok, WordIR *w) {
     StackType a, b;
     size_t i;
@@ -874,10 +932,19 @@ static int handle_builtin(const char *tok, WordIR *w) {
 
     {
         int matched_name = 0;
-        for (i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {
+        u32 slot;
+        short cur_bi;
+        if (!builtin_ht_init)
+            init_builtin_ht();
+        slot = builtin_hash(tok) & (BUILTIN_HT_SIZE - 1);
+        while (builtin_ht[slot] != 0 &&
+               strcmp(builtins[builtin_ht[slot] - 1].name, tok) != 0) {
+            slot = (slot + 1) & (BUILTIN_HT_SIZE - 1);
+        }
+        cur_bi = (builtin_ht[slot] != 0) ? (short)(builtin_ht[slot] - 1) : -1;
+        for (; cur_bi >= 0; cur_bi = builtin_next[cur_bi]) {
             int need;
-            if (strcmp(tok, builtins[i].name) != 0)
-                continue;
+            i = (size_t)cur_bi;
             if (be->word_bytes < 4 && strcmp(be->name, "bc") != 0 &&
                 strcmp(be->name, "ez80") != 0 &&
                 (builtins[i].op == OP_MUL32 || builtins[i].op == OP_DIV32 ||
@@ -1955,8 +2022,8 @@ static void compile_body(WordIR *w) {
 
         {
             const SrcFile *cur = &src_stack.data[src_stack.len - 1];
-            fprintf(stderr, "ir4c error (%s:%u): unknown word '%s'\n", cur->path, cur->line_num,
-                    tok);
+            fprintf(stderr, "ir4c error (%s:%lu): unknown word '%s'\n", cur->path,
+                    (unsigned long)cur->line_num, tok);
         }
         exit(1);
     }
@@ -2040,9 +2107,12 @@ static void emit_raw_code_block(size_t raw_start, size_t raw_len, size_t reloc_s
         if (rel->kind == CODE_REL_SELF) {
             patch16(pc, (u16)(base_addr + rel->addend));
         } else if (rel->kind == CODE_REL_STACK) {
+#if IR4_ENABLE_6502
             if (be == &be_6502 && be_6502_stack_zp_base() != 0) {
                 patch16(pc, (u16)(be_6502_stack_zp_base() + rel->addend));
-            } else {
+            } else
+#endif
+            {
                 cb_add_data_reloc(pc, be->stack_data_off() + rel->addend);
             }
         }
@@ -2073,6 +2143,7 @@ static void emit_word(size_t fidx) {
     be->fn_begin(sig->name, w->param_cnt, w->locals.data, w->locals.len, sig->is_recursive);
 
     for (i = 0; i <= w->ir_len; i++) {
+#if IR4_ENABLE_6502
         if (be == &be_6502) {
             size_t j;
             for (j = 0; j < w->ir_len; j++) {
@@ -2083,6 +2154,7 @@ static void emit_word(size_t fidx) {
                 }
             }
         }
+#endif
         for (p = 0; p < pending.len; p++) {
             if (pending.data[p].target_ir == i) {
                 be->patch_fwd(pending.data[p].patch_offset);
@@ -2199,9 +2271,11 @@ static void emit_word(size_t fidx) {
                 size_t target = ins->u.func_idx;
                 size_t call_addr = be->cur_addr();
                 size_t call_pc = cb_pc();
+#if IR4_ENABLE_6502
                 if (be == &be_6502) {
                     be_6502_set_call_bank(funcs.data[target]->bank);
                 }
+#endif
                 be->call(funcs.data[target]->addr);
                 if (!funcs.data[target]->has_addr) {
                     FwdCall *fc = VEC_ADD(fwd_calls);
@@ -2244,9 +2318,11 @@ static void emit_word(size_t fidx) {
                 const InlineBlock *ib = &inline_blocks.data[ins->u.inl_idx];
                 if (strcmp(be->name, "bc") == 0)
                     ir4_die("'inline' is not supported on bytecode target");
+#if IR4_ENABLE_6502
                 if (be == &be_6502) {
                     be_6502_peep_fence();
                 }
+#endif
                 emit_raw_code_block(ib->raw_start, ib->raw_len, ib->reloc_start, ib->reloc_cnt);
                 break;
             }
@@ -2269,13 +2345,13 @@ static void flush_vals_word(i32 val) {
 static void emit_vals_string(void) {
     SrcFile *cur = &src_stack.data[src_stack.len - 1];
     for (;;) {
-        int c = fgetc(cur->fp);
+        int c = src_getc(cur);
         if (c == EOF || c == '\n')
             ir4_die("unterminated string literal in 'data'");
         if (c == '"')
             return;
         if (c == '\\') {
-            c = fgetc(cur->fp);
+            c = src_getc(cur);
             if (c == EOF || c == '\n')
                 ir4_die("unterminated escape in string literal");
             switch (c) {
@@ -2336,7 +2412,7 @@ static void compile_data(void) {
             emit_vals_string();
             continue;
         }
-        ungetc(ch, src_stack.data[src_stack.len - 1].fp);
+        src_ungetc(&src_stack.data[src_stack.len - 1], ch);
         tok = next_tok();
         if (!tok)
             break;
@@ -2425,6 +2501,9 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
     sf->line_num = 1;
     sf->req_group = 0;
     sf->req_rank = 0;
+    sf->buf_pos = 0;
+    sf->buf_len = 0;
+    sf->pushback = -1;
     next_req_group = 1;
 
     seen_files.len = 0;
@@ -2645,13 +2724,17 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
             free(visited);
         }
 
+#if IR4_ENABLE_6502
         if (be == &be_6502)
             (void)be_6502_stack_data_off();
+#endif
         heap_start_off = cb_alloc_data(0, be->word_bytes);
 
         /* Pass 2: Emit reachable words and patch forward calls */
         {
+#if IR4_ENABLE_6502
             int saved_compact = (be == &be_6502) ? be_6502_get_compact() : 0;
+#endif
             Bool *fn_compact = NULL;
             u16 max_bank = 0;
             if (cb_is_banked() && funcs.len > 0) {
@@ -2682,7 +2765,9 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                             max_bank = cur_b;
                     }
                 }
-            } else if (be == &be_6502 && saved_compact == 2 && funcs.len > 0) {
+            }
+#if IR4_ENABLE_6502
+            else if (be == &be_6502 && saved_compact == 2 && funcs.len > 0) {
                 u32 *est = (u32 *)vec_calloc(funcs.len, sizeof(u32));
                 u32 *heat = (u32 *)vec_calloc(funcs.len, sizeof(u32));
                 u32 total_est = 0;
@@ -2771,10 +2856,13 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 free(est);
                 free(heat);
             }
+#endif
             if (cb_is_banked()) {
                 u16 b;
+#if IR4_ENABLE_6502
                 if (be == &be_6502)
                     be_6502_set_compact(0);
+#endif
                 for (b = 0; b <= max_bank; b++) {
                     if (b > 0)
                         cb_begin_bank(b);
@@ -2784,6 +2872,7 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                             emit_word(f);
                         }
                     }
+#if IR4_ENABLE_6502
                     if (b == 0 && max_bank > 0 && be == &be_6502) {
                         int need_mul = 0, need_div = 0, need_icall = 0, need_fp = 0;
                         for (f = 0; f < funcs.len; f++) {
@@ -2810,23 +2899,28 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                         }
                         be_6502_ensure_helpers(need_mul, need_div, need_icall, need_fp);
                     }
+#endif
                 }
                 cb_end_banks();
             } else {
                 for (f = 0; f < funcs.len; f++) {
                     if (!funcs.data[f]->is_extern && words.data[f]->reachable) {
+#if IR4_ENABLE_6502
                         if (funcs.data[f]->is_hot)
                             be_6502_set_compact(0);
                         else if (fn_compact)
                             be_6502_set_compact(fn_compact[f] ? 1 : 0);
                         else if (be == &be_6502 && saved_compact == 2)
                             be_6502_set_compact(0);
+#endif
                         emit_word(f);
                     }
                 }
             }
+#if IR4_ENABLE_6502
             if (be == &be_6502)
                 be_6502_set_compact(saved_compact);
+#endif
             free(fn_compact);
         }
         {

@@ -1,26 +1,70 @@
 /* ir4c.c - CLI driver for IR4th (Strict C89) */
-#include "backend/bc.h"
 #include "codebuf.h"
 #include "frontend.h"
 #include "path.h"
+#if IR4_ENABLE_BC
+#include "backend/bc.h"
+#endif
 
 static const Platform *const platforms[] = {
-    &plat_z80_cpm, &plat_z80_zx81, &plat_ez80_agon, &plat_6502_sim, &plat_6502_c64, &plat_6502_x16, &plat_6502_x16_cart,
-    &plat_arm64_jit, &plat_rv32_virt, &plat_rv32_obj, NULL};
+#if IR4_ENABLE_CPM
+    &plat_z80_cpm,
+#endif
+#if IR4_ENABLE_ZX81
+    &plat_z80_zx81,
+#endif
+#if IR4_ENABLE_AGON
+    &plat_ez80_agon,
+#endif
+#if IR4_ENABLE_SIM65
+    &plat_6502_sim,
+#endif
+#if IR4_ENABLE_C64
+    &plat_6502_c64,
+#endif
+#if IR4_ENABLE_X16
+    &plat_6502_x16, &plat_6502_x16_cart,
+#endif
+#if IR4_ENABLE_JIT
+    &plat_arm64_jit,
+#endif
+#if IR4_ENABLE_ELF
+    &plat_rv32_virt, &plat_rv32_obj,
+#endif
+    NULL};
 
 static void print_usage(void) {
-    fprintf(stderr, "Usage: ir4c [-t z80|ez80|6502|arm64|rv32|bc] [-b hex_addr] [-o out.bin] [-I dir] "
-                    "[--platform name] [--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] "
-                    "[--run] [--cpm] [--zx81] [--agon] [--sim65] [--c64] [--x16] [--x16-cart] [--virt] [--obj] <input.ir4>\n");
+    fprintf(stderr, "Usage: ir4c [-t z80|ez80|6502|arm64|rv32|bc|cpm|zx81|agon|sim65|c64|x16|x16-cart|virt|obj] "
+                    "[-b hex_addr] [-o out.bin] [-I dir] [--platform name] "
+                    "[--zp hex_addr] [--stack-zp hex_addr] [--no-stack-zp] [--run] <input.ir4>\n");
 }
 
 int main(int argc, char **argv) {
+#if IR4_ENABLE_Z80
     const Backend *be = &be_z80;
+    size_t base = 0x0100;
+#elif IR4_ENABLE_EZ80
+    const Backend *be = &be_ez80;
+    size_t base = 0x040000UL;
+#elif IR4_ENABLE_6502
+    const Backend *be = &be_6502;
+    size_t base = 0x0801;
+#elif IR4_ENABLE_ARM64
+    const Backend *be = &be_arm64;
+    size_t base = 0x0000;
+#elif IR4_ENABLE_RV32
+    const Backend *be = &be_rv32;
+    size_t base = 0x0000;
+#elif IR4_ENABLE_BC
+    const Backend *be = &be_bc;
+    size_t base = 0x0100;
+#else
+#error "At least one IR4_ENABLE_* backend must be enabled"
+#endif
     const Platform *plat = NULL;
     const char *in_path = NULL;
     const char *out_path = "out.bin";
     const char *platform = NULL;
-    size_t base = 0x0100;
     int target_set = 0;
     int base_set = 0;
     int i;
@@ -34,33 +78,66 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
             i++;
             target_set = 1;
-            if (strcmp(argv[i], "z80") == 0) {
+            if (0) {
+#if IR4_ENABLE_Z80
+            } else if (strcmp(argv[i], "z80") == 0) {
                 be = &be_z80;
                 if (!base_set)
                     base = 0x0100;
+#endif
+#if IR4_ENABLE_6502
             } else if (strcmp(argv[i], "6502") == 0) {
                 be = &be_6502;
                 if (!base_set)
                     base = 0x0801;
+#endif
+#if IR4_ENABLE_ARM64
             } else if (strcmp(argv[i], "arm64") == 0) {
                 be = &be_arm64;
                 if (!base_set)
                     base = 0x0000;
+#endif
+#if IR4_ENABLE_EZ80
             } else if (strcmp(argv[i], "ez80") == 0) {
                 be = &be_ez80;
                 if (!base_set)
                     base = 0x040000UL;
+#endif
+#if IR4_ENABLE_RV32
             } else if (strcmp(argv[i], "rv32") == 0) {
                 be = &be_rv32;
                 if (!base_set)
                     base = 0x0000;
+#endif
+#if IR4_ENABLE_BC
             } else if (strcmp(argv[i], "bc") == 0) {
                 be = &be_bc;
                 if (!base_set)
                     base = 0x0100;
+#endif
             } else {
-                fprintf(stderr, "Unknown target: %s\n", argv[i]);
-                return 1;
+                const Platform *matched = NULL;
+                for (j = 0; platforms[j]; j++) {
+                    if (strcmp(platforms[j]->flag, "--run") != 0 &&
+                        strcmp(argv[i], platforms[j]->flag + 2) == 0) {
+                        matched = platforms[j];
+                        break;
+                    }
+                }
+                if (!matched) {
+                    fprintf(stderr, "Unknown target: %s\n", argv[i]);
+                    return 1;
+                }
+                if (plat != NULL) {
+                    fprintf(stderr, "%s and -t %s cannot be combined\n", plat->flag, argv[i]);
+                    return 1;
+                }
+                plat = matched;
+                be = plat->be;
+                if (!base_set)
+                    base = plat->default_base;
+                if (!platform && plat->req_platform)
+                    platform = plat->req_platform;
             }
         } else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
             i++;
@@ -77,6 +154,7 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--platform") == 0 && i + 1 < argc) {
             i++;
             platform = argv[i];
+#if IR4_ENABLE_6502
         } else if (strcmp(argv[i], "--zp") == 0 && i + 1 < argc) {
             i++;
             be_6502_set_zp((u8)strtoul(argv[i], NULL, 0));
@@ -100,10 +178,11 @@ int main(int argc, char **argv) {
             be_6502_set_compact(0);
         } else if (strcmp(argv[i], "--auto-compact") == 0) {
             be_6502_set_compact(2);
-        } else if (argv[i][0] == '-') {
+#endif
+        } else if (strcmp(argv[i], "--run") == 0) {
             const Platform *matched = NULL;
             for (j = 0; platforms[j]; j++) {
-                if (strcmp(argv[i], platforms[j]->flag) == 0) {
+                if (strcmp(platforms[j]->flag, "--run") == 0) {
                     matched = platforms[j];
                     break;
                 }
@@ -113,13 +192,16 @@ int main(int argc, char **argv) {
                 return 1;
             }
             if (plat != NULL) {
-                fprintf(stderr, "%s and %s cannot be combined\n", plat->flag, matched->flag);
+                fprintf(stderr, "%s and --run cannot be combined\n", plat->flag);
                 return 1;
             }
             plat = matched;
             if (!platform && plat->req_platform) {
                 platform = plat->req_platform;
             }
+        } else if (argv[i][0] == '-') {
+            print_usage();
+            return 1;
         } else {
             in_path = argv[i];
         }
@@ -132,16 +214,18 @@ int main(int argc, char **argv) {
 
     in_fp = fopen(in_path, "r");
     if (!in_fp) {
-        perror("fopen input");
+        fprintf(stderr, "ir4c: cannot open input %s\n", in_path);
         return 1;
     }
 
     if (plat) {
+#if IR4_ENABLE_JIT && IR4_ENABLE_BC
         if (plat == &plat_arm64_jit && target_set && be == &be_bc) {
             plat = &plat_bc_run;
             if (!platform && plat->req_platform)
                 platform = plat->req_platform;
         }
+#endif
         if (!target_set) {
             be = plat->be;
         } else if (be != plat->be) {
@@ -155,7 +239,9 @@ int main(int argc, char **argv) {
     }
 
     cb_reset(base);
+#if IR4_ENABLE_ELF
     be_rv32_set_obj(plat == &plat_rv32_obj);
+#endif
     if (plat && plat->begin) {
         plat->begin(base);
     }
@@ -171,28 +257,40 @@ int main(int argc, char **argv) {
         plat->end(main_idx);
     }
 
-    /* Place data segment right after code on 16-bit targets */
-    if (be != &be_arm64 && be != &be_rv32 && cb_data_size() > 0) {
+    /* Place data segment right after code on 16/24-bit targets */
+#if IR4_ENABLE_ARM64
+    if (be != &be_arm64)
+#endif
+#if IR4_ENABLE_RV32
+    if (be != &be_rv32)
+#endif
+    if (cb_data_size() > 0) {
         size_t data_addr = cb_is_banked() ? (cb_get_bank(0).base + cb_get_bank(0).len) : cb_cur_addr();
         cb_patch_data_relocs(data_addr);
     }
 
     out_fp = fopen(out_path, "wb");
     if (!out_fp) {
-        perror("fopen output");
+        fprintf(stderr, "ir4c: cannot open output %s\n", out_path);
         return 1;
     }
 
     if (plat && plat->write) {
         if (!plat->write(out_fp, base)) {
-            perror("fwrite");
+            fprintf(stderr, "ir4c: write failed: %s\n", out_path);
             fclose(out_fp);
             return 1;
         }
-    } else if (!cb_write_raw(out_fp, be != &be_arm64)) {
-        perror("fwrite");
-        fclose(out_fp);
-        return 1;
+    } else {
+        int pad_align = 1;
+#if IR4_ENABLE_ARM64
+        pad_align = (be != &be_arm64);
+#endif
+        if (!cb_write_raw(out_fp, pad_align)) {
+            fprintf(stderr, "ir4c: write failed: %s\n", out_path);
+            fclose(out_fp);
+            return 1;
+        }
     }
     fclose(out_fp);
 

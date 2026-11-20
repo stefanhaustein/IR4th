@@ -1,12 +1,12 @@
-# CP/M (`--cpm`)
+# CP/M (`-t cpm`)
 
 ## Compiler Flags
 
 ```sh
-./build/ir4c -t z80 --cpm -o out.com input.ir4
+./build/ir4c -t cpm -o out.com input.ir4
 ```
 
-- **Target / Platform:** `-t z80 --cpm` (platform name `"cpm"`)
+- **Target / Platform:** `-t cpm` (implies `-t z80`, platform name `"cpm"`)
 - **Base address:** `0x0100` (standard CP/M `.COM` TPA transient program area)
 - **Fallback chain:** `lib/cpm/` → `lib/z80/` → `lib/`
 

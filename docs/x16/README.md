@@ -1,12 +1,12 @@
-# Commander X16 (`--x16`)
+# Commander X16 (`-t x16`)
 
 ## Compiler Flags
 
 ```sh
-./build/ir4c -t 6502 --x16 -o out.prg input.ir4
+./build/ir4c -t x16 -o out.prg input.ir4
 ```
 
-- **Target / Platform:** `-t 6502 --x16` (platform name `"x16"`)
+- **Target / Platform:** `-t x16` (implies `-t 6502`, platform name `"x16"`)
 - **Base address:** `0x0801` (BASIC `10 SYS ...` autostart `.prg` header)
 - **Fallback chain:** `lib/x16/` → `lib/c64/` → `lib/6502/` → `lib/`
 
@@ -35,14 +35,14 @@
 
 ---
 
-# Commander X16 Cartridge (`--x16-cart`) & Bank Switching
+# Commander X16 Cartridge (`-t x16-cart`) & Bank Switching
 
-For programs larger than Low RAM (`$0801–$9EFF`, ~37.7 KB), `--x16-cart` emits a banked `.crt` cartridge image with 16 KB ROM banks mapped at `$C000–$FFFF` (controlled via `$01`).
+For programs larger than Low RAM (`$0801–$9EFF`, ~37.7 KB), `-t x16-cart` emits a banked `.crt` cartridge image with 16 KB ROM banks mapped at `$C000–$FFFF` (controlled via `$01`).
 
 ## Compiler Flags
 
 ```sh
-./build/ir4c --x16-cart -o out.crt input.ir4
+./build/ir4c -t x16-cart -o out.crt input.ir4
 ```
 
 - **Running in `x16emu`:**

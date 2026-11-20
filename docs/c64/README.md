@@ -1,12 +1,12 @@
-# Commodore 64 (`--c64`)
+# Commodore 64 (`-t c64`)
 
 ## Compiler Flags
 
 ```sh
-./build/ir4c -t 6502 --c64 -o out.prg input.ir4
+./build/ir4c -t c64 -o out.prg input.ir4
 ```
 
-- **Target / Platform:** `-t 6502 --c64` (platform name `"c64"`)
+- **Target / Platform:** `-t c64` (implies `-t 6502`, platform name `"c64"`)
 - **Base address:** `0x0801` (BASIC `10 SYS ...` autostart `.prg` header)
 - **Fallback chain:** `lib/c64/` → `lib/6502/` → `lib/`
 

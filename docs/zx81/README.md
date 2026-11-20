@@ -1,12 +1,12 @@
-# Sinclair ZX81 (`--zx81`)
+# Sinclair ZX81 (`-t zx81`)
 
 ## Compiler Flags
 
 ```sh
-./build/ir4c -t z80 --zx81 -o out.p input.ir4
+./build/ir4c -t zx81 -o out.p input.ir4
 ```
 
-- **Target / Platform:** `-t z80 --zx81` (platform name `"zx81"`)
+- **Target / Platform:** `-t zx81` (implies `-t z80`, platform name `"zx81"`)
 - **Base address:** `0x4091` (`16529`) inside `2 REM` (autostarted by `1 RAND USR VAL "16529"` at `0x407D`)
 - **Fallback chain:** `lib/zx81/` → `lib/z80/` → `lib/`
 

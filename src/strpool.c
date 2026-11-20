@@ -1,57 +1,77 @@
 #include "strpool.h"
 #include "vec.h"
 
-VEC_OF(InternVec, char *);
-static InternVec intern_tab;
+static char **ht_slots = NULL;
+static size_t ht_cap = 0;
+static size_t ht_len = 0;
 
-static int cmp_str_n(const char *a, const char *b, size_t blen) {
+static u32 fnv1a_n(const char *s, size_t len) {
+    u32 h = 2166136261UL;
     size_t i;
-    for (i = 0; i < blen; i++) {
-        unsigned char ca = (unsigned char)a[i];
-        unsigned char cb = (unsigned char)b[i];
-        if (ca != cb)
-            return (ca < cb) ? -1 : 1;
+    for (i = 0; i < len; i++) {
+        h ^= (unsigned char)s[i];
+        h *= 16777619UL;
     }
-    return (a[blen] == '\0') ? 0 : 1;
+    return h;
 }
 
-static size_t intern_bsearch(const char *s, size_t len, int *found) {
-    size_t lo = 0, hi = intern_tab.len;
-    *found = 0;
-    while (lo < hi) {
-        size_t mid = lo + (hi - lo) / 2;
-        int c = cmp_str_n(intern_tab.data[mid], s, len);
-        if (c == 0) {
-            *found = 1;
-            return mid;
+static void ht_grow(size_t new_cap) {
+    char **new_slots = (char **)calloc(new_cap, sizeof(char *));
+    size_t i;
+    size_t mask = new_cap - 1;
+    if (!new_slots)
+        ir4_die("out of memory in string intern table");
+    for (i = 0; i < ht_cap; i++) {
+        char *p = ht_slots[i];
+        if (p) {
+            size_t slot = (size_t)fnv1a_n(p, strlen(p)) & mask;
+            while (new_slots[slot])
+                slot = (slot + 1) & mask;
+            new_slots[slot] = p;
         }
-        if (c < 0)
-            lo = mid + 1;
-        else
-            hi = mid;
     }
-    return lo;
+    free(ht_slots);
+    ht_slots = new_slots;
+    ht_cap = new_cap;
 }
 
 const char *intern_find(const char *s) {
-    int found;
-    size_t idx = intern_bsearch(s, strlen(s), &found);
-    return found ? intern_tab.data[idx] : NULL;
+    size_t len = strlen(s);
+    size_t mask, slot;
+    if (ht_len == 0)
+        return NULL;
+    mask = ht_cap - 1;
+    slot = (size_t)fnv1a_n(s, len) & mask;
+    while (ht_slots[slot]) {
+        const char *p = ht_slots[slot];
+        if (memcmp(p, s, len) == 0 && p[len] == '\0')
+            return p;
+        slot = (slot + 1) & mask;
+    }
+    return NULL;
 }
 
 const char *intern_str_n(const char *s, size_t len) {
-    int found;
-    size_t idx = intern_bsearch(s, len, &found);
+    size_t mask, slot;
     char *copy;
-    if (found)
-        return intern_tab.data[idx];
+    if (ht_len * 10 >= ht_cap * 7)
+        ht_grow(ht_cap ? ht_cap * 2 : 1024);
+    mask = ht_cap - 1;
+    slot = (size_t)fnv1a_n(s, len) & mask;
+    while (ht_slots[slot]) {
+        const char *p = ht_slots[slot];
+        if (memcmp(p, s, len) == 0 && p[len] == '\0')
+            return p;
+        slot = (slot + 1) & mask;
+    }
     copy = (char *)malloc(len + 1);
     if (!copy)
         ir4_die("out of memory in string intern table");
     if (len > 0)
         memcpy(copy, s, len);
     copy[len] = '\0';
-    VEC_INSERT(intern_tab, idx, copy);
+    ht_slots[slot] = copy;
+    ht_len++;
     return copy;
 }
 

@@ -179,7 +179,7 @@ hot fn step_balls ( floor8 :i )
 
     x8 4 >> -> var sx :i
     y8 5 >> -> var sy :i
-    sx 110 < if 10 else sx 190 > if 6 else 8 then then -> var hx :i
+    sx 100 < if 9 else sx 200 > if 7 else 8 then then -> var hx :i
     ball_off 0 <> if
       off 1 + sx sy sprpos
       off sx hx + sy 3 + sprpos
@@ -212,7 +212,7 @@ hot fn run_loop ( floor8 :i )
       base_dt 0 = if
         sum_dt -> base_dt
       else
-        sum_dt base_dt 2 + > if 0 -> budget_ok then
+        sum_dt base_dt 4 + <= -> budget_ok
       then
       0 -> sum_dt
       0 -> fcnt
