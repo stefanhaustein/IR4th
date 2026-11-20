@@ -1,0 +1,110 @@
+\ lib/x16/sprite.ir4 - Commander X16 VERA 8-bpp hardware sprites
+
+require "gfx.ir4"
+
+data __x16_spr_u_buf
+  0 :i16
+end
+
+var __x16_img_lo :bytes 64
+var __x16_img_hi :bytes 64
+var __x16_img_sz :bytes 64
+
+fn sprcount ( -> :i ) 128 end
+fn sprdepth ( -> :i ) 8 end
+fn sprmaxw  ( -> :i ) 64 end
+fn sprmaxh  ( -> :i ) 64 end
+
+fn __x16_spr_size_code ( n :i -> :i )
+  n 8 <= if 0 return then
+  n 16 <= if 1 return then
+  n 32 <= if 2 return then
+  3
+end
+
+fn __x16_spr_attr_addr ( id :i off :i )
+  127 id - -> var slot :i
+  0 0x9F25 i>a i8!
+  slot 31 and 3 << off + 0x9F20 i>a i8!
+  0xFC slot 5 u>> + 0x9F21 i>a i8!
+  0x11 0x9F22 i>a i8!
+end
+
+hot fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )
+  img 0 < img 63 > or w 0 <= or h 0 <= or w 64 > or h 64 > or ncolors 0 < or ncolors 255 > or if 0 return then
+  __x16_spr_u_buf @ -> var spr_u :i
+  spr_u 0 = if
+    2400 -> spr_u
+    0 0x9F25 i>a i8!
+    0x9F29 i>a u8@ 0x40 or 0x9F29 i>a i8!
+  then
+  w __x16_spr_size_code -> var wc :i
+  h __x16_spr_size_code -> var hc :i
+  8 wc << -> var sw :i
+  8 hc << -> var sh :i
+  sw sh * 5 u>> -> var units :i
+  spr_u units + 3456 > spr_u 3760 < and if 3760 -> spr_u then
+  spr_u units + 3968 > if 0 return then
+
+  0 0x9F25 i>a i8!
+  spr_u 7 and 5 << 0x9F20 i>a i8!
+  spr_u 3 u>> 255 and 0x9F21 i>a i8!
+  spr_u 11 u>> 0x10 or 0x9F22 i>a i8!
+
+  0 -> var y :i
+  begin y sh < while
+    y h < if
+      0 -> var x :i
+      begin x sw < while
+        x w < if
+          data u8@ -> var c :i
+          c 0 = c ncolors > or if 0 else pal c 1 - a+ u8@ then 0x9F23 i>a i8!
+          data 1 a+ -> data
+        else
+          0 0x9F23 i>a i8!
+        then
+        x 1 + -> x
+      repeat
+    else
+      0 -> var pad :i
+      begin pad sw < while
+        0 0x9F23 i>a i8!
+        pad 1 + -> pad
+      repeat
+    then
+    y 1 + -> y
+  repeat
+
+  spr_u 255 and __x16_img_lo img a+ i8!
+  spr_u 8 u>> 0x80 or __x16_img_hi img a+ i8!
+  hc 6 << wc 4 << or __x16_img_sz img a+ i8!
+
+  spr_u units + __x16_spr_u_buf !
+  -1
+end
+
+fn sprset ( id :i img :i )
+  id 0 < id 127 > or img 0 < or img 63 > or if return then
+  id 0 __x16_spr_attr_addr
+  __x16_img_lo img a+ u8@ 0x9F23 i>a i8!
+  __x16_img_hi img a+ u8@ 0x9F23 i>a i8!
+  id 7 __x16_spr_attr_addr
+  __x16_img_sz img a+ u8@ 0x9F23 i>a i8!
+end
+
+fn sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )
+  id w h data pal ncolors sprimg dup 0 <> if id id sprset then
+end
+
+fn sprpos ( id :i x :i y :i )
+  id 2 __x16_spr_attr_addr
+  x 255 and 0x9F23 i>a i8!
+  x 8 u>> 255 and 0x9F23 i>a i8!
+  y 255 and 0x9F23 i>a i8!
+  y 8 u>> 255 and 0x9F23 i>a i8!
+end
+
+fn sprshow ( id :i on :i )
+  id 6 __x16_spr_attr_addr
+  on 0 <> if 0x0C else 0 then 0x9F23 i>a i8!
+end

@@ -25,6 +25,7 @@ default fn gfxheight ( -> :i ) __gfx_h end
 \ Per-pixel color depth in bits (1 on attribute-cell targets like C64/Spectrum, where gfxrgb may still return palette colors per cell)
 default fn gfxdepth ( -> :i ) 3 end
 default fn gfxvsync ( ) end
+default fn gfxticks ( -> :i ) 0 end
 
 default fn gfxmode ( mode :i )
   mode drop

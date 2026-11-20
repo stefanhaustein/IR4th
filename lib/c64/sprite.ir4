@@ -1,0 +1,119 @@
+\ lib/c64/sprite.ir4 - Commodore 64 VIC-II hardware sprites (hires 24x21 or multicolor 12x21, 1x scale)
+
+require "gfx.ir4"
+
+var __c64_spr_vis :i
+var __c64_img_mc  :bytes 48
+var __c64_img_col :bytes 48
+
+fn sprcount ( -> :i ) 8 end
+fn sprdepth ( -> :i ) 2 end
+fn sprmaxw  ( -> :i ) 24 end
+fn sprmaxh  ( -> :i ) 21 end
+
+fn __c64_spr_bit ( reg :i bit :i on :i )
+  reg i>a -> var r :a
+  r u8@ -> var v :i
+  on 0 <> if v bit or else v bit 255 xor and then r i8!
+end
+
+\ Define sprite image `img` (0..47) in VIC Bank 3 ($C000 + img*64).
+\ ncolors = 1 uses hires (24x21); ncolors >= 2 uses multicolor (12x21, 1->$D025, 2->$D027+hw, 3->$D026).
+\ Pads any w < 24 or h < 21 with transparent pixels (0).
+fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )
+  img 0 < img 47 > or w 0 <= or h 0 <= or w 24 > or h 21 > or ncolors 0 < or if 0 return then
+  0xC000 img 6 << + i>a -> var dst :a
+  ncolors 1 = if
+    0 __c64_img_mc img a+ i8!
+    pal u8@ __c64_img_col img a+ i8!
+    0 -> var sy :i
+    begin sy 21 < while
+      0 -> var b :i
+      begin b 3 < while
+        0 -> var byte :i
+        0 -> var p :i
+        begin p 8 < while
+          b 3 << p + -> var x :i
+          0 -> var pix :i
+          x w < sy h < and if
+            data sy w * x + a+ u8@ 0 <> if 1 -> pix then
+          then
+          byte 1 << pix or -> byte
+          p 1 + -> p
+        repeat
+        byte dst i8!
+        dst 1 a+ -> dst
+        b 1 + -> b
+      repeat
+      sy 1 + -> sy
+    repeat
+  else
+    1 __c64_img_mc img a+ i8!
+    pal u8@ 0xD025 i>a i8!
+    pal 1 a+ u8@ __c64_img_col img a+ i8!
+    ncolors 3 >= if pal 2 a+ u8@ 0xD026 i>a i8! then
+    0 -> sy
+    begin sy 21 < while
+      0 -> b
+      begin b 3 < while
+        0 -> byte
+        0 -> p
+        begin p 4 < while
+          b 2 << p + 1 << -> x
+          0 -> var code :i
+          x w < sy h < and if
+            data sy w * x + a+ u8@ -> var c :i
+            c 3 > if 3 -> c then
+            c -> code
+          then
+          byte 2 << code or -> byte
+          p 1 + -> p
+        repeat
+        byte dst i8!
+        dst 1 a+ -> dst
+        b 1 + -> b
+      repeat
+      sy 1 + -> sy
+    repeat
+  then
+  -1
+end
+
+fn sprset ( id :i img :i )
+  id 0 < id 7 > or img 0 < or img 47 > or if return then
+  7 id - -> var hw :i
+  1 hw << -> var bit :i
+  0xD01D bit 0 __c64_spr_bit
+  0xD017 bit 0 __c64_spr_bit
+  0xD01C bit __c64_img_mc img a+ u8@ __c64_spr_bit
+  __c64_img_col img a+ u8@ 0xD027 hw + i>a i8!
+  img 0xCFF8 hw + i>a i8!
+end
+
+fn sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )
+  id w h data pal ncolors sprimg dup 0 <> if id id sprset then
+end
+
+hot fn sprpos ( id :i x :i y :i )
+  id 0 < id 7 > or if return then
+  7 id - -> var hw :i
+  x 24 + -> var sx :i
+  y 50 + -> var sy :i
+  sx 255 and 0xD000 hw 1 << + i>a i8!
+  sy 255 and 0xD001 hw 1 << + i>a i8!
+  1 hw << -> var bit :i
+  0xD010 i>a u8@ -> var msb :i
+  sx 255 > if msb bit or else msb bit 255 xor and then 0xD010 i>a i8!
+end
+
+fn sprshow ( id :i on :i )
+  id 0 < id 7 > or if return then
+  7 id - -> var hw :i
+  1 hw << -> var bit :i
+  on 0 <> if
+    __c64_spr_vis bit or -> __c64_spr_vis
+  else
+    __c64_spr_vis bit 255 xor and -> __c64_spr_vis
+  then
+  __c64_spr_vis 0xD015 i>a i8!
+end

@@ -1,0 +1,95 @@
+\ lib/agon/sprite.ir4 - Agon VDP hardware sprites
+
+require "gfx.ir4"
+
+var __agon_max_spr :i
+var __agon_spr_vis :bytes 256
+
+data __agon_spr_pal
+  0   :i8   0 :i8   0 :i8 255 :i8
+  170 :i8   0 :i8   0 :i8 255 :i8
+  0   :i8 170 :i8   0 :i8 255 :i8
+  170 :i8  85 :i8   0 :i8 255 :i8
+  0   :i8   0 :i8 170 :i8 255 :i8
+  170 :i8   0 :i8 170 :i8 255 :i8
+  0   :i8 170 :i8 170 :i8 255 :i8
+  170 :i8 170 :i8 170 :i8 255 :i8
+  85  :i8  85 :i8  85 :i8 255 :i8
+  255 :i8  85 :i8  85 :i8 255 :i8
+  85  :i8 255 :i8  85 :i8 255 :i8
+  255 :i8 255 :i8  85 :i8 255 :i8
+  85  :i8  85 :i8 255 :i8 255 :i8
+  255 :i8  85 :i8 255 :i8 255 :i8
+  85  :i8 255 :i8 255 :i8 255 :i8
+  255 :i8 255 :i8 255 :i8 255 :i8
+end
+
+fn sprcount ( -> :i ) 256 end
+fn sprdepth ( -> :i ) 8 end
+fn sprmaxw  ( -> :i ) 256 end
+fn sprmaxh  ( -> :i ) 256 end
+
+fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )
+  img 0 < img 255 > or w 0 <= or h 0 <= or ncolors 0 < or if 0 return then
+  -1 -> __agon_spr_active
+  23 emit 27 emit 0 emit img emit
+  23 emit 27 emit 1 emit w __vdu16 h __vdu16
+  w h * -> var n :i
+  0 -> var i :i
+  begin i n < while
+    data i a+ u8@ -> var c :i
+    c 0 = c ncolors > or if
+      0 emit 0 emit 0 emit 0 emit
+    else
+      pal c 1 - a+ u8@ -> var col :i
+      __gd 1 = if
+        col 0 <> if 15 else 0 then -> col
+      else
+        __gd 2 = if
+          col 0 = if 0 else col 1 = if 8 else col 2 = if 7 else 15 then then then -> col
+        else
+          col 15 and -> col
+        then
+      then
+      __agon_spr_pal col 2 << a+ -> var p :a
+      p u8@ emit
+      p 1 a+ u8@ emit
+      p 2 a+ u8@ emit
+      255 emit
+    then
+    i 1 + -> i
+  repeat
+  -1
+end
+
+fn sprset ( id :i img :i )
+  id 0 < id 255 > or img 0 < or img 255 > or if return then
+  23 emit 27 emit 4 emit id emit
+  23 emit 27 emit 5 emit
+  23 emit 27 emit 6 emit img emit
+  23 emit 27 emit 10 emit 0 emit
+  __agon_spr_vis id a+ u8@ 0 <> if 23 emit 27 emit 11 emit then
+  id 1 + __agon_max_spr > if
+    id 1 + -> __agon_max_spr
+    23 emit 27 emit 7 emit __agon_max_spr emit
+  then
+end
+
+fn sprdef ( id :i w :i h :i data :a pal :a ncolors :i -> :i )
+  id w h data pal ncolors sprimg dup 0 <> if
+    id id sprset
+    0 __agon_spr_vis id a+ i8!
+    23 emit 27 emit 12 emit
+  then
+end
+
+fn sprpos ( id :i x :i y :i )
+  23 emit 27 emit 4 emit id emit
+  23 emit 27 emit 13 emit x __vdu16 y __vdu16
+end
+
+fn sprshow ( id :i on :i )
+  on 0 <> if 1 else 0 then __agon_spr_vis id a+ i8!
+  23 emit 27 emit 4 emit id emit
+  23 emit 27 emit on 0 <> if 11 else 12 then emit
+end

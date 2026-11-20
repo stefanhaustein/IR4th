@@ -1,0 +1,218 @@
+\ Bouncing 3D-shaded Spheres demo using portable gfx.ir4 + sprite.ir4 (C64, X16, Agon)
+\ Draws unicolor 21x21 hires spheres (ncolors = 1, 24x21 native on C64) with a separate
+\ full-resolution white specular highlight sprite that shifts subtly with ball position.
+
+require "sprite.ir4"
+
+var spr_buf  :bytes 441
+var spec_buf :bytes 25
+var pal_buf  :bytes 1
+var spec_pal :bytes 1
+
+var bx  :bytes 64
+var by8 :bytes 64
+var bvx :bytes 64
+var bvy :bytes 64
+var bbounce :bytes 64
+var max_balls :i
+var active    :i
+var rng_state :i
+
+data sphere_rgb
+  255 :i8   0 :i8   0 :i8   \ red
+    0 :i8 128 :i8 255 :i8   \ blue
+    0 :i8 200 :i8   0 :i8   \ green
+  255 :i8 200 :i8   0 :i8   \ yellow
+  200 :i8   0 :i8 255 :i8   \ purple
+    0 :i8 220 :i8 220 :i8   \ cyan
+  255 :i8 128 :i8   0 :i8   \ orange
+  255 :i8  85 :i8 170 :i8   \ pink
+end
+
+fn rng_next ( -> :i )
+  rng_state 25173 * 13849 + -> rng_state
+  rng_state 1 u>>
+end
+
+fn draw_grid_bg ( )
+  0 0 0 gfxrgb gfxcolor
+  gfxclear
+end
+
+fn draw_h_step ( idx :i )
+  0 200 0 gfxrgb gfxcolor
+  gfxheight 24 - -> var ybot :i
+  ybot 16 - 10 / -> var dy :i
+  idx 11 < if
+    16 idx dy * + -> var y :i
+    40 y 280 y gfxline
+    return
+  then
+  idx 11 = if
+    30 ybot 3 + 290 ybot 3 + gfxline
+    18 ybot 7 + 302 ybot 7 + gfxline
+    4 ybot 12 + 316 ybot 12 + gfxline
+  then
+end
+
+fn draw_grid_step ( step :i )
+  0 200 0 gfxrgb gfxcolor
+  gfxheight 24 - -> var ybot :i
+  40 step 40 * + -> var x :i
+  x 280 <= if
+    x 16 x ybot gfxline
+    x ybot 160 x 160 - 13 * 10 / + ybot 12 + gfxline
+    x 20 + -> x
+    x 280 <= if
+      x 16 x ybot gfxline
+      x ybot 160 x 160 - 13 * 10 / + ybot 12 + gfxline
+    then
+  then
+end
+
+fn build_sphere_mask ( )
+  0 -> var idx :i
+  0 -> var py :i
+  begin py 21 < while
+    py 10 - -> var dy :i
+    0 -> var px :i
+    begin px 21 < while
+      px 10 - -> var dx :i
+      dx dx * dy dy * + 105 < if 1 else 0 then spr_buf idx a+ i8!
+      idx 1 + -> idx
+      px 1 + -> px
+    repeat
+    py 1 and 0 = if py 1 >> draw_h_step then
+    py 1 + -> py
+  repeat
+  11 draw_h_step
+end
+
+fn build_spec_sprite ( )
+  0 -> var idx :i
+  0 -> var py :i
+  begin py 5 < while
+    py 2 - -> var dy :i
+    0 -> var px :i
+    begin px 5 < while
+      px 2 - -> var dx :i
+      dx dx * dy dy * + 5 <= if 1 else 0 then spec_buf idx a+ i8!
+      idx 1 + -> idx
+      px 1 + -> px
+    repeat
+    py 1 + -> py
+  repeat
+  255 255 255 gfxrgb spec_pal i8!
+  0 5 5 spec_buf spec_pal 1 sprimg drop
+end
+
+fn setup_sprites ( )
+  sprcount 1 >> -> max_balls
+  max_balls 32 > if 32 -> max_balls then
+  build_sphere_mask
+  build_spec_sprite
+  max_balls 8 < if max_balls else 8 then -> var ncols :i
+  0 -> var i :i
+  begin i ncols < while
+    sphere_rgb i 3 * a+ -> var p :a
+    p u8@ p 1 a+ u8@ p 2 a+ u8@ gfxrgb pal_buf i8!
+    i 1 + 21 21 spr_buf pal_buf 1 sprimg drop
+    i draw_grid_step
+    i 1 + -> i
+  repeat
+  ncols -> var s :i
+  begin s 8 < while
+    s draw_grid_step
+    s 1 + -> s
+  repeat
+end
+
+fn add_ball ( )
+  active max_balls >= if return then
+  active -> var i :i
+  i 1 << -> var off :i
+  480 rng_next 3520 mod + bx off a+ i16!
+  -672 by8 off a+ i16!
+  rng_next 5 mod 7 + rng_next 1 and 0 = if 0 swap - then bvx off a+ i16!
+  0 bvy off a+ i16!
+  rng_next 12 mod 95 - bbounce off a+ i16!
+  i 1 << -> var sid :i
+  sid i 7 and 1 + sprset
+  sid 1 + 0 sprset
+  sid 1 sprshow
+  sid 1 + 1 sprshow
+  active 1 + -> active
+end
+
+hot fn step_balls ( floor8 :i )
+  0 -> var i :i
+  begin i active < while
+    i 1 << -> var off :i
+    bx off a+ i16@ bvx off a+ i16@ + -> var x8 :i
+    x8 384 < if 384 -> x8 0 bvx off a+ i16@ - bvx off a+ i16! then
+    x8 4352 > if 4352 -> x8 0 bvx off a+ i16@ - bvx off a+ i16! then
+    x8 bx off a+ i16!
+
+    bvy off a+ i16@ 1 + -> var vy :i
+    by8 off a+ i16@ vy + -> var y8 :i
+    y8 floor8 >= if
+      floor8 -> y8
+      bbounce off a+ i16@ -> vy
+    then
+    vy bvy off a+ i16!
+    y8 by8 off a+ i16!
+
+    x8 4 >> -> var sx :i
+    y8 5 >> -> var sy :i
+    i 1 << -> var sid :i
+    sid sx sy sprpos
+    sid 1 + sx 8 + 150 sx - 5 >> + sy 3 + 100 sy - 6 >> + sprpos
+    i 1 + -> i
+  repeat
+end
+
+fn main ( -> :i )
+  320 240 6 gfxinit
+  draw_grid_bg
+  setup_sprites
+
+  12345 -> rng_state
+  0 -> active
+  gfxheight 39 - 5 << -> var floor8 :i
+  add_ball
+
+  0 -> var elapsed :i
+  gfxticks -> var prev_t :i
+  0 -> var sum_dt :i
+  0 -> var sum_work :i
+  0 -> var fcnt :i
+  -1 -> var budget_ok :i
+
+  begin inkey 0 = while
+    gfxticks -> var t_start :i
+    floor8 step_balls
+    gfxticks -> var t_work :i
+    gfxvsync
+    gfxticks -> var now_t :i
+    now_t prev_t - 255 and -> var dt :i
+    now_t -> prev_t
+    elapsed dt + -> elapsed
+    sum_dt dt + -> sum_dt
+    sum_work t_work t_start - 255 and + -> sum_work
+    fcnt 1 + -> fcnt
+    fcnt 16 >= if
+      sum_work 12 > sum_dt 24 > or if
+        0 -> budget_ok
+      then
+      0 -> sum_dt
+      0 -> sum_work
+      0 -> fcnt
+    then
+    budget_ok 0 <> elapsed 240 >= and if
+      add_ball
+      0 -> elapsed
+    then
+  repeat
+  gfxdone
+  0
+end

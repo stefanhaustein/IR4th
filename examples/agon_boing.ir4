@@ -1,22 +1,13 @@
-\ Amiga Boing Ball demo for Agon Light (eZ80 ADL mode + VDP hardware sprites)
+\ Amiga Boing Ball demo using portable gfx.ir4 + sprite.ir4 (Agon Light & Commander X16)
 \ Procedurally generates 8 rotation frames of a 48x48 tilted checkered sphere
-\ using lib/math.ir4 (sqrt, arctan) + AgDev float32, uploads them as VDP
-\ sprite frames, draws the perspective grid, and bounces at 60 fps.
+\ using lib/math.ir4 (sqrt, atan2), uploads them via sprdef, and bounces at 60 fps.
 
-require "gfx.ir4"
+require "sprite.ir4"
 require "math.ir4"
 
 var ilat_buf :bytes 2304
 var ilon_buf :bytes 2304
-
-fn emit16 ( v :i )
-  v 255 and emit
-  v 8 >> 255 and emit
-end
-
-fn vdu_23_27 ( cmd :i )
-  23 emit 27 emit cmd emit
-end
+var spr_buf  :bytes 2304
 
 fn draw_grid ( )
   \ Grey background, purple grid
@@ -57,7 +48,6 @@ fn precompute_sphere ( )
         fx 0.28 f* fy 0.96 f* f+ -> var ty :f
         ty 576.0 ty ty f* f- 0.001 f+ sqrt atan2 -> var lat :f
         tx fz atan2 -> var lon :f
-        \ 6 latitude bands across [-pi/2..+pi/2], 6 longitude bands in 0..48 (8 per square)
         lat 1.570796 f+ 1.909859 f* f>i ilat_buf idx a+ i8!
         lon 1.570796 f+ 15.27887 f* f>i ilon_buf idx a+ i8!
       then
@@ -68,35 +58,26 @@ fn precompute_sphere ( )
   repeat
 end
 
+var ball_pal :bytes 2
+var shadow_pal :bytes 1
+
 fn upload_ball_frame ( frame :i )
-  23 emit 27 emit 0 emit frame emit
-  23 emit 27 emit 1 emit 48 emit16 48 emit16
   0 -> var idx :i
-  0 -> var py :i
-  begin py 48 < while
-    0 -> var px :i
-    begin px 48 < while
-      ilat_buf idx a+ i8@ -> var ilat :i
-      ilat 0 < if
-        0 emit 0 emit 0 emit 0 emit
-      else
-        ilon_buf idx a+ u8@ frame 1 << + 3 >> -> var ilon :i
-        ilat ilon + 1 and 0 = if
-          255 emit 0 emit 0 emit 255 emit
-        else
-          255 emit 255 emit 255 emit 255 emit
-        then
-      then
-      idx 1 + -> idx
-      px 1 + -> px
-    repeat
-    py 1 + -> py
+  begin idx 2304 < while
+    ilat_buf idx a+ i8@ -> var ilat :i
+    ilat 0 < if
+      0 spr_buf idx a+ i8!
+    else
+      ilon_buf idx a+ u8@ frame 1 << + 3 >> -> var ilon :i
+      ilat ilon + 1 and 0 = if 2 else 1 then spr_buf idx a+ i8!
+    then
+    idx 1 + -> idx
   repeat
+  frame 1 + 48 48 spr_buf ball_pal 2 sprdef drop
 end
 
-fn upload_shadow_frame ( frame :i )
-  23 emit 27 emit 0 emit frame emit
-  23 emit 27 emit 1 emit 48 emit16 48 emit16
+fn upload_shadow ( )
+  0 -> var idx :i
   0 -> var py :i
   begin py 48 < while
     py 24 - -> var y :i
@@ -104,44 +85,33 @@ fn upload_shadow_frame ( frame :i )
     begin px 48 < while
       px 24 - -> var x :i
       x x * y y * + 576 >= px py + 1 and 0 <> or if
-        0 emit 0 emit 0 emit 0 emit
+        0 spr_buf idx a+ i8!
       else
-        0 emit 0 emit 0 emit 255 emit
+        1 spr_buf idx a+ i8!
       then
+      idx 1 + -> idx
       px 1 + -> px
     repeat
     py 1 + -> py
   repeat
+  0 48 48 spr_buf shadow_pal 1 sprdef drop
 end
 
 fn setup_sprites ( )
+  255 255 255 gfxrgb ball_pal i8!
+  255 0 0 gfxrgb ball_pal 1 a+ i8!
+  0 0 0 gfxrgb shadow_pal i8!
   precompute_sphere
+  upload_shadow
   0 -> var f :i
   begin f 8 < while
     f upload_ball_frame
     f 1 + -> f
   repeat
-  8 upload_shadow_frame
-  \ Sprite 0 = shadow (drawn behind ball)
-  23 emit 27 emit 4 emit 0 emit
-  5 vdu_23_27
-  23 emit 27 emit 6 emit 8 emit
-  11 vdu_23_27
-  \ Sprite 1 = ball (drawn in front)
-  23 emit 27 emit 4 emit 1 emit
-  5 vdu_23_27
-  0 -> f
-  begin f 8 < while
-    23 emit 27 emit 6 emit f emit
-    f 1 + -> f
-  repeat
-  11 vdu_23_27
-  23 emit 27 emit 7 emit 2 emit
 end
 
 fn main ( -> :i )
-  8 gfxmode
-  16 vdu_23_27
+  320 240 6 gfxinit
   draw_grid
   setup_sprites
   40 -> var x :i
@@ -149,6 +119,12 @@ fn main ( -> :i )
   1 -> var vx :i
   0 -> var vy :i
   0 -> var tick :i
+  0 -> var f :i
+  1 -> var cur_spr :i
+  0 x 8 + y8 4 >> 2 - sprpos
+  cur_spr x y8 4 >> sprpos
+  0 1 sprshow
+  cur_spr 1 sprshow
   begin inkey 0 = while
     x vx + -> x
     x 30 < if 30 -> x 1 -> vx then
@@ -159,20 +135,21 @@ fn main ( -> :i )
       2880 -> y8
       -54 -> vy
     then
-    \ Move shadow (sprite 0) offset to the right & slightly up
-    23 emit 27 emit 4 emit 0 emit
-    23 emit 27 emit 13 emit x 8 + emit16 y8 4 >> 2 - emit16
-    \ Move & animate ball (sprite 1)
-    23 emit 27 emit 4 emit 1 emit
-    23 emit 27 emit 13 emit x emit16 y8 4 >> emit16
     tick 3 and 0 = if
-      vx 0 > if 9 vdu_23_27 else 8 vdu_23_27 then
+      vx 0 > if f 1 + 7 and -> f else f 1 - 7 and -> f then
+      vx 0 > if f 1 - 7 and -> f else f 1 + 7 and -> f then
+    then
+    f 1 + -> var next_spr :i
+    0 x 8 + y8 4 >> 2 - sprpos
+    next_spr x y8 4 >> sprpos
+    next_spr cur_spr <> if
+      next_spr 1 sprshow
+      cur_spr 0 sprshow
+      next_spr -> cur_spr
     then
     gfxvsync
-    15 vdu_23_27
     tick 1 + -> tick
   repeat
-  16 vdu_23_27
   gfxdone
   0
 end

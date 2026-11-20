@@ -64,11 +64,20 @@ fn gfxmode ( mode :i )
 end
 
 fn gfxdone ( )
+  0 0x9F25 i>a i8!
+  0x9F29 i>a u8@ 0xBF and 0x9F29 i>a i8!
   __x16_mode_txt
 end
 
+extern __x16_rdtim 0xFFDE ( -> A :i )
+
 fn gfxvsync ( )
-  begin 0x9F27 i>a u8@ 0 <> while repeat
+  __x16_rdtim -> var t :i
+  begin __x16_rdtim t = while repeat
+end
+
+fn gfxticks ( -> :i )
+  __x16_rdtim
 end
 
 \ Map 8-bit RGB to X16 default 6x6x6 palette cube (indices 16..231)
