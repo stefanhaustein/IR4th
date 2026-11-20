@@ -38,12 +38,11 @@ def parse_lib(path: Path):
             continue
         m = FN_RE.match(stripped)
         if m:
-            mods, name, sig = m.group(1).split(), m.group(2), m.group(3).strip()
+            name, sig = m.group(2), m.group(3).strip()
             if not name.startswith("__"):
                 doc = " ".join(pending)
-                prefix = "default " if "default" in mods else ""
-                sig_str = f"{name} ( {sig} )" if sig else f"{name} ( )"
-                entries.append((name, f"`{prefix}{sig_str}`", doc))
+                sig_str = f"**{name}** ( {sig} )" if sig else f"**{name}** ( )"
+                entries.append((name, sig_str, doc))
             pending = []
             continue
         if stripped == "":
@@ -68,7 +67,7 @@ def main():
     out = [
         "# IR4th Standard Library Reference",
         "",
-        "> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`. Functions marked `default` may be overridden by platform/architecture modules.",
+        "> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`.",
         "",
     ]
 
@@ -78,11 +77,11 @@ def main():
     for p, header, _ in parsed:
         anchor = p.name.replace(".", "")
         summary = strip_mod_prefix(header[0], p.name) if header else ""
-        out.append(f"- [`lib/{p.name}`](#{anchor}) — {summary}")
+        out.append(f"- [lib/{p.name}](#{anchor}) — {summary}")
     out.append("")
 
     for p, header, entries in parsed:
-        out.append(f"## `lib/{p.name}`")
+        out.append(f"## lib/{p.name}")
         out.append("")
         body_hdr = [strip_mod_prefix(h, p.name) for h in header]
         if body_hdr:
