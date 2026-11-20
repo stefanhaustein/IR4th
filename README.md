@@ -35,7 +35,7 @@ fn fib ( n :i -> :i )
 end
 ```
 
-See [examples/](examples/) (e.g. [agon_boing.ir4](https://www.youtube.com/watch?v=H2avVT9lBHs)) and [tests/](tests/) for the full test suite.
+See [examples/](examples/) and [tests/](tests/) for the full test suite.
 
 
 ## Runtime Library
@@ -111,6 +111,7 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 | **CP/M** | ![CP/M Mandelbrot](docs/img/mandel_cpm.png) | — |
 | **Sinclair ZX81** | ![ZX81 Mandelbrot](docs/img/mandel_zx81.png) | — |
 | **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/img/mandel_arm64.png) | ![ANSI terminal testcard](docs/img/testcard_ansi.png) |
+| **Agon Boing Ball**  | [![Agon Boing Ball](docs/img/agon_boing.png)](https://www.youtube.com/watch?v=H2avVT9lBHs) | [Watch video on YouTube](https://www.youtube.com/watch?v=H2avVT9lBHs) |
 
 ## License
 
