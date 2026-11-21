@@ -2,10 +2,10 @@
 
 require "stdio.ir4"
 
-fn joycount ( -> :i ) 1 end
+fn joycount ( -> :i ) 0 end
 
-fn joyread ( port :i -> :i )
-  port 0 <> if 0 return then
+fn joystate ( port :i -> :i )
+  port -1 <> if 0 return then
   inkey -> var k :i
   k 0 = if 0 return then
   k 11 = k 119 = or k 87 = or if 1 return then

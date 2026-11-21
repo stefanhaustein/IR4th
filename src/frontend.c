@@ -1443,7 +1443,7 @@ static void parse_raw_code_body(size_t *out_start, size_t *out_len, size_t *out_
     ir4_die("unexpected EOF in raw code (missing 'end')");
 }
 
-static void compile_code(void) {
+static void compile_code(int is_hot) {
     const char *tok;
     const char *name;
     FuncSig *sig;
@@ -1479,6 +1479,7 @@ static void compile_code(void) {
         *ex = code_sig;
         ex->is_defined = 1;
         ex->is_default = 0;
+        ex->is_hot = (Bool)is_hot;
         ex->req_group = cur_grp;
         ex->req_rank = cur_rank;
         sig = ex;
@@ -1491,6 +1492,7 @@ static void compile_code(void) {
         fidx = alloc_func(&sig, &w);
         sig->name = name;
         sig->is_defined = 1;
+        sig->is_hot = (Bool)is_hot;
         sig->req_group = cur_grp;
         sig->req_rank = cur_rank;
         parse_sig_body(sig, NULL, 0);
@@ -2152,6 +2154,28 @@ static Bool can_reach_func(size_t cur, size_t target, Bool *visited) {
     return false;
 }
 
+#define HOT_CODE_INLINE_MAX 16
+
+static int can_inline_hot_code(size_t fidx, size_t *out_len) {
+    FuncSig *sig = funcs.data[fidx];
+    WordIR *cw = words.data[fidx];
+    u8 ret_op;
+    size_t len;
+    if (!cw->is_code || !sig->is_hot || cw->ir_len <= 1)
+        return 0;
+    if (strcmp(be->name, "6502") == 0)
+        ret_op = 0x60;
+    else if (strcmp(be->name, "z80") == 0 || strcmp(be->name, "ez80") == 0)
+        ret_op = 0xC9;
+    else
+        return 0;
+    len = cw->ir_len - 1;
+    if (len > HOT_CODE_INLINE_MAX || raw_code_buf.data[cw->ir_start + len] != ret_op)
+        return 0;
+    *out_len = len;
+    return 1;
+}
+
 static void mark_reachable(size_t fidx) {
     WordIR *w = words.data[fidx];
     size_t i;
@@ -2167,7 +2191,9 @@ static void mark_reachable(size_t fidx) {
     for (i = 0; i < w->ir_len; i++) {
         const IrInstr *ins = &ir_buf.data[w->ir_start + i];
         if (ins->kind == IR_CALL) {
-            mark_reachable(ins->u.func_idx);
+            size_t inl_len = 0;
+            if (!can_inline_hot_code(ins->u.func_idx, &inl_len))
+                mark_reachable(ins->u.func_idx);
         } else if (ins->kind == IR_PUSH_FN) {
             mark_reachable(ins->u.func_idx);
         }
@@ -2378,6 +2404,14 @@ static void emit_word(size_t fidx) {
                 break;
             case IR_CALL: {
                 size_t target = ins->u.func_idx;
+                size_t inl_len = 0;
+                if (can_inline_hot_code(target, &inl_len)) {
+                    emit_raw_code_block(words.data[target]->ir_start, inl_len,
+                                        words.data[target]->reloc_start,
+                                        words.data[target]->reloc_cnt);
+                    break;
+                }
+                {
                 size_t call_addr = be->cur_addr();
                 size_t call_pc = cb_pc();
 #if IR4_ENABLE_6502
@@ -2392,6 +2426,7 @@ static void emit_word(size_t fidx) {
                     fc->call_addr = call_addr;
                     fc->func_idx = target;
                     fc->is_fn_ptr = 0;
+                }
                 }
                 break;
             }
@@ -2652,12 +2687,18 @@ void ir4_compile_stream(FILE *in, const char *path, const Backend *target_be,
                 if (!tok)
                     break;
             }
-            if (!tok || strcmp(tok, "fn") != 0) {
-                ir4_die("expected 'fn' after function modifier");
+            if (tok && strcmp(tok, "code") == 0) {
+                if (is_default)
+                    ir4_die("'default' is not supported on 'code'");
+                compile_code(is_hot);
+            } else {
+                if (!tok || strcmp(tok, "fn") != 0) {
+                    ir4_die("expected 'fn' or 'code' after function modifier");
+                }
+                compile_word(is_default, is_hot);
             }
-            compile_word(is_default, is_hot);
         } else if (strcmp(tok, "code") == 0) {
-            compile_code();
+            compile_code(0);
         } else if (strcmp(tok, "init") == 0) {
             compile_init();
         } else if (strcmp(tok, "fwd") == 0) {

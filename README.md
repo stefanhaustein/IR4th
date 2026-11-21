@@ -51,7 +51,7 @@ In particular, the graphics library is aimed at simplicity and portability rathe
 than performance or completeness. Platform graphics modi or other features that seemed 
 inconvenient to support might be missing. 
 
-See [docs/lib.md](docs/lib.md) for the full Runtime Library API reference.
+See [docs/lib/README.md](docs/lib/README.md) for the full Runtime Library API reference.
 
 
 ## Compiler Optimizations
@@ -88,9 +88,9 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 
 ## Targets
 
-- **Z80** (`-t z80`): Generates Z80 machine code, with [`-t cpm`](docs/cpm/) for CP/M `.com` executables and [`-t zx81`](docs/zx81/) for Sinclair ZX81 `.p` snapshots.
-- **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with [`-t agon`](docs/agon/) for Agon Light / Console8 MOS executables.
-- **6502** (`-t 6502`): Generates 6502 machine code (configurable `--zp`, `--stack-zp`, `--no-stack-zp`), with `-t sim65` for `cc65`'s `sim65` simulator, [`-t c64`](docs/c64/) for Commodore 64 `.prg`, and [`-t x16` / `-t x16-cart`](docs/x16/) for Commander X16 `.prg` and banked `.crt` cartridges.
+- **Z80** (`-t z80`): Generates Z80 machine code, with [`-t cpm`](docs/platform/cpm/) for CP/M `.com` executables and [`-t zx81`](docs/platform/zx81/) for Sinclair ZX81 `.p` snapshots.
+- **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with [`-t agon`](docs/platform/agon/) for Agon Light / Console8 MOS executables.
+- **6502** (`-t 6502`): Generates 6502 machine code (configurable `--zp`, `--stack-zp`, `--no-stack-zp`), with `-t sim65` for `cc65`'s `sim65` simulator, [`-t c64`](docs/platform/c64/) for Commodore 64 `.prg`, and [`-t x16` / `-t x16-cart`](docs/platform/x16/) for Commander X16 `.prg` and banked `.crt` cartridges.
 - **ARM64** (`-t arm64`): Generates AArch64 machine code, with `--run` support for direct JIT execution on macOS Apple Silicon.
 - **RISC-V RV32IM** (`-t rv32`): Generates RV32IM machine code, with `-t virt` for standalone QEMU `virt` ELF32 execution and `-t obj` for relocatable ELF32 `.o` output (linking `extern` symbols and `libgcc` soft-float).
 - **Bytecode VM** (`-t bc`): Emits portable IR4th bytecode, with `--run` to execute directly in the built-in stack VM.

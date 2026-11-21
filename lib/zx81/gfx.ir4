@@ -5,7 +5,7 @@ require "stdio.ir4"
 var __zx81_col :i
 
 data __zx81_modes
-  "64x48 (2x2 mosaic)" 0 :i8
+  0 :i16 64 :i16 48 :i16 1 :i16
 end
 
 fn gfxmodes ( -> :a :i )
@@ -72,4 +72,12 @@ fn gfxpx ( x :i y :i )
   else
     0x8F bits - p i8!
   then
+end
+
+fn gfxcharw ( -> :i ) 2 end
+fn gfxcharh ( -> :i ) 2 end
+
+fn gfxtext ( x :i y :i s :a )
+  x 1 u>> y 1 u>> gotoxy
+  s type0
 end

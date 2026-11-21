@@ -1,9 +1,9 @@
-\ lib/joy.ir4 - Portable joystick / gamepad input API (optional override per platform)
-\ Bitmask returned by joyread:
+\ lib/joy.ir4 - Portable joystick and gamepad API (optional override per platform)
+\ Bitmask returned by joystate:
 \   1 = Up, 2 = Down, 4 = Left, 8 = Right, 16 = Fire/Btn1, 32 = Btn2, 64 = Select, 128 = Start
 
-\ Query number of joystick/gamepad ports (0 = joystick input unsupported)
+\ Query number of hardware joystick/gamepad ports (0 = hardware joysticks unsupported)
 default fn joycount ( -> :i ) 0 end
 
-\ Read current button bitmask for *port* (0-based; returns 0 if unsupported or out of range)
-default fn joyread ( port :i -> :i ) port drop 0 end
+\ Read current button bitmask for *port* (0..joycount-1 = hardware ports, -1 = keyboard-as-joystick; returns 0 if unsupported)
+default fn joystate ( port :i -> :i ) port drop 0 end

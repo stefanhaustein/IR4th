@@ -68,3 +68,11 @@ end
 fn gfxclear ( )
   cls
 end
+
+fn gfxcharw ( -> :i ) 1 end
+fn gfxcharh ( -> :i ) 1 end
+
+fn gfxtext ( x :i y :i s :a )
+  x y gotoxy
+  s type0
+end

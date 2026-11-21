@@ -29,6 +29,8 @@ var c_red :i
 var c_blue :i
 var c_amber :i
 
+data s_label "IR (4th)" 0 :i8 end
+
 fn init_colors ( )
   0 0 0 gfxrgb -> c_black
   64 64 64 gfxrgb -> c_dgray
@@ -123,38 +125,6 @@ fn draw_gray_steps ( rx :i ry :i rw :i rh :i )
   repeat
 end
 
-\ Draw "IR" left of cx and "4" right of cx inside the black bar using lines
-fn draw_ir4_label ( cx :i ry :i bar_h :i )
-  bar_h 7 < if return then
-  bar_h 4 - -> var lh :i
-  lh 2 * 3 / -> var lw :i
-  lw 4 < if 4 -> lw then
-  ry bar_h lh - 1 u>> + -> var y0 :i
-  y0 lh 1 u>> + -> var ym :i
-  y0 lh + 1 - -> var y1 :i
-
-  c_white gfxcolor
-  \ 'R' left of cx
-  cx 5 - lw - -> var x :i
-  x y0 lh gfxvline
-  x y0 lw gfxhline
-  x lw + 1 - y0 ym y0 - 1 + gfxvline
-  x ym lw gfxhline
-  x lw 1 u>> + ym x lw + 1 - y1 gfxline
-
-  \ 'I' left of 'R'
-  -8 +-> x
-  x y0 5 gfxhline
-  x y1 5 gfxhline
-  x 2 + y0 lh gfxvline
-
-  \ '4' right of cx
-  cx 5 + -> x
-  x lw + 2 - y0 x ym 1 + gfxline
-  x ym 1 + lw gfxhline
-  x lw + 2 - y0 lh gfxvline
-end
-
 \ Row 3: White field with black bar, 3-zone frequency grating (1&2 left of cx, 3 right of cx) + amber, and center pointer
 fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
   c_white gfxcolor
@@ -167,6 +137,12 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
   rx rw 4 * 5 / + bar_x - -> var bar_w :i
   c_black gfxcolor
   bar_x ry bar_w bar_h gfxfillrect
+  bar_h gfxcharh >= if
+    c_white gfxcolor
+    cx 5 gfxcharw * 1 u>> -
+    ry bar_h gfxcharh - 1 u>> +
+    s_label gfxtext
+  then
 
   \ Frequency grating on gray background: starts at yellow box (rx + rw/8), blocks 1 & 2 left of cx, block 3 right of cx
   ry bar_h + -> var gr_y :i
@@ -235,7 +211,6 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
   \ White vertical center line through black bar and gap between blocks 2 & 3 to meet arrow
   c_white gfxcolor
   cx ry bar_h gr_h + gfxvline
-  cx ry bar_h draw_ir4_label
 end
 
 \ Smooth 6-segment RGB rainbow gradient (16-bit safe)

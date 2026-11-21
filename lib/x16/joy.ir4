@@ -1,16 +1,52 @@
-\ lib/x16/joy.ir4 - Commander X16 KERNAL joystick input (port 0 = keyboard + inkey, ports 1..4 = SNES pads)
+\ lib/x16/joy.ir4 - Commander X16 KERNAL joystick (ports 0..4) + KEYHDL keyboard-as-joystick (port -1)
 
-require "stdio.ir4"
+\ Interrupt-safe KEYHDL ($032E) handler + 16-byte key-down bitmap at offset 62.
+code __x16_keyhdl ( )
+  0x48 :i8                    \ PHA (orig A)
+  0x8A :i8 0x48 :i8           \ TXA; PHA
+  0x98 :i8 0x48 :i8           \ TYA; PHA
+  0xBA :i8                    \ TSX
+  0xBD :i8 0x03 :i8 0x01 :i8  \ LDA $0103,X (orig A)
+  0x29 :i8 0x7F :i8           \ AND #$7F
+  0x4A :i8 0x4A :i8 0x4A :i8  \ LSR A x3 (byte idx 0..15)
+  0xA8 :i8                    \ TAY
+  0xBD :i8 0x03 :i8 0x01 :i8  \ LDA $0103,X (orig A)
+  0x30 :i8 0x0E :i8           \ BMI key_up (+14 -> 34)
+  \ key_down (20..33):
+  0x29 :i8 0x07 :i8           \ AND #$07
+  0xAA :i8                    \ TAX
+  0xBD :i8 54 :ar             \ LDA bit_tbl,X
+  0x19 :i8 62 :ar             \ ORA keys_buf,Y
+  0x99 :i8 62 :ar             \ STA keys_buf,Y
+  0x80 :i8 0x0E :i8           \ BRA done (+14 -> 48)
+  \ key_up (34..47):
+  0x29 :i8 0x07 :i8           \ AND #$07
+  0xAA :i8                    \ TAX
+  0xBD :i8 54 :ar             \ LDA bit_tbl,X
+  0x49 :i8 0xFF :i8           \ EOR #$FF
+  0x39 :i8 62 :ar             \ AND keys_buf,Y
+  0x99 :i8 62 :ar             \ STA keys_buf,Y
+  \ done (48..53):
+  0x68 :i8 0xA8 :i8           \ PLA; TAY
+  0x68 :i8 0xAA :i8           \ PLA; TAX
+  0x68 :i8 0x60 :i8           \ PLA; RTS
+  \ bit_tbl (54..61):
+  1 :i8 2 :i8 4 :i8 8 :i8 16 :i8 32 :i8 64 :i8 128 :i8
+  \ keys_buf (62..77): 16 zero bytes
+  0 :i8 0 :i8 0 :i8 0 :i8 0 :i8 0 :i8 0 :i8 0 :i8
+  0 :i8 0 :i8 0 :i8 0 :i8 0 :i8 0 :i8 0 :i8 0 :i8
+end
 
-\ Calls KERNAL JOYSTICK_SCAN ($FF53) then JOYSTICK_GET ($FF56).
+init
+  & __x16_keyhdl 0x032E i>a a!
+end
+
+\ Calls KERNAL JOYSTICK_GET ($FF56).
 \ Returns active-high (byte1 << 8) | byte0, or 0 if not present.
 code __x16_joy_get ( port :i -> :i )
   0x8A :i8                  \ TXA
   0x48 :i8                  \ PHA (save data stack pointer on HW stack)
   0xBD :i8 0 :as            \ LDA 0,X (port)
-  0x48 :i8                  \ PHA (save port)
-  0x20 :i8 0x53 :i8 0xFF :i8 \ JSR $FF53 (JOYSTICK_SCAN)
-  0x68 :i8                  \ PLA (restore port -> A)
   0x20 :i8 0x56 :i8 0xFF :i8 \ JSR $FF56 (JOYSTICK_GET)
   0x85 :i8 0x02 :i8         \ STA $02 (save byte0)
   0x86 :i8 0x03 :i8         \ STX $03 (save byte1)
@@ -33,10 +69,24 @@ end
 
 fn joycount ( -> :i ) 5 end
 
-fn joyread ( port :i -> :i )
+fn __x16_keystate ( key :i -> :i )
+  key 0 < key 127 > or if 0 return then
+  & __x16_keyhdl 62 a+ key 3 u>> a+ u8@ 1 key 7 and << and 0 <>
+end
+
+fn joystate ( port :i -> :i )
+  port -1 = if
+    0 -> var out :i
+    0x53 __x16_keystate 0x12 __x16_keystate or if 1  +-> out then
+    0x54 __x16_keystate 0x20 __x16_keystate or if 2  +-> out then
+    0x4F __x16_keystate 0x1F __x16_keystate or if 4  +-> out then
+    0x59 __x16_keystate 0x21 __x16_keystate or if 8  +-> out then
+    0x3D __x16_keystate if 16 +-> out then
+    out return
+  then
   port 0 < port 4 > or if 0 return then
   port __x16_joy_get -> var raw :i
-  0 -> var out :i
+  0 -> out
   raw 0x0008 and if out 1 or -> out then
   raw 0x0004 and if out 2 or -> out then
   raw 0x0002 and if out 4 or -> out then
@@ -45,15 +95,5 @@ fn joyread ( port :i -> :i )
   raw 0x8000 and if out 32 or -> out then
   raw 0x0020 and if out 64 or -> out then
   raw 0x0010 and if out 128 or -> out then
-  port 0 = if
-    inkey -> var k :i
-    k 145 = k 119 = or k 87 = or if out 1 or -> out then
-    k 17  = k 115 = or k 83 = or if out 2 or -> out then
-    k 157 = k 97  = or k 65 = or if out 4 or -> out then
-    k 29  = k 100 = or k 68 = or if out 8 or -> out then
-    k 32  = k 122 = or k 90 = or if out 16 or -> out then
-    k 120 = k 88  = or if out 32 or -> out then
-    k 13  = if out 128 or -> out then
-  then
   out
 end

@@ -2,6 +2,7 @@
 
 extern __zx81_rst10 0x0010 ( A :i )
 extern __zx81_cls 0x0A2A ( )
+extern __zx81_find_char 0x07BD ( BC :i -> HL :a )
 
 \ Translate ASCII character to ZX81 character set
 fn __ascii_to_zx81 ( c :i -> :i )
@@ -34,8 +35,57 @@ fn emit ( c :i )
   c __ascii_to_zx81 __zx81_rst10
 end
 
+\ Convert ZX81 character code to ASCII
+fn __zx81_to_ascii ( c :i -> :i )
+  c 0x76 = if 13 return then
+  c 0x00 = if 32 return then
+  c 0x1C >= c 0x25 <= and if c 0x1C - 48 + return then
+  c 0x26 >= c 0x3F <= and if c 0x26 - 97 + return then
+  c 0x0B = if 34 return then
+  c 0x0D = if 36 return then
+  c 0x0E = if 58 return then
+  c 0x0F = if 63 return then
+  c 0x10 = if 40 return then
+  c 0x11 = if 41 return then
+  c 0x12 = if 62 return then
+  c 0x13 = if 60 return then
+  c 0x14 = if 61 return then
+  c 0x15 = if 43 return then
+  c 0x16 = if 45 return then
+  c 0x17 = if 42 return then
+  c 0x18 = if 47 return then
+  c 0x19 = if 59 return then
+  c 0x1A = if 44 return then
+  c 0x1B = if 46 return then
+  0
+end
+
+\ Returns raw 2-byte LAST_K ($4025) scan code (non-ASCII), or 0 if no key is pressed.
 fn inkey ( -> :i )
-  0x4025 i>a u16@ 0xFFFF <> if 0x4025 i>a u8@ else 0 then
+  0x4025 i>a u16@ -> var k :i
+  k 0xFFFF = if 0 else k then
+end
+
+\ Decodes LAST_K ($4025) via ROM $07BD to normalized ASCII, or 0 if no key is pressed.
+fn xinkey ( -> :i )
+  0x4025 i>a u16@ -> var k :i
+  k 0xFFFF = if 0 return then
+  k __zx81_find_char u8@ __zx81_to_ascii
+end
+
+\ Blocking read using xinkey.
+fn xkey ( -> :i )
+  0 -> var k :i
+  begin
+    xinkey -> k
+    k 0 =
+  while
+  repeat
+  begin
+    xinkey 0 <>
+  while
+  repeat
+  k
 end
 
 fn key ( -> :i )
@@ -58,3 +108,19 @@ end
 
 fn termwidth ( -> :i ) 32 end
 fn termheight ( -> :i ) 22 end
+
+\ No-op on ZX81 (monochrome display).
+fn fgcolor ( c :i ) c drop end
+\ No-op on ZX81 (monochrome display).
+fn bgcolor ( c :i ) c drop end
+
+\ Updates DF_CC ($400E) and S_POSN ($4039/$403A) directly in D_FILE (clamped to 32x22).
+fn gotoxy ( x :i y :i )
+  x 0 < if 0 -> x then
+  x 31 > if 31 -> x then
+  y 0 < if 0 -> y then
+  y 21 > if 21 -> y then
+  0x400C i>a a@ y 33 * 1 + x + a+ 0x400E i>a a!
+  33 x - 0x4039 i>a i8!
+  24 y - 0x403A i>a i8!
+end

@@ -1,5 +1,9 @@
+\ lib/c64/stdio.ir4 - Commodore 64 KERNAL console I/O ($FFD2 / $FFE4)
+
 extern emit 0xFFD2 ( A :i )
-extern inkey 0xFFE4 ( -> A :i )
+extern __c64_inkey 0xFFE4 ( -> A :i )
+
+fn inkey ( -> :i ) __c64_inkey end
 
 fn key ( -> :i )
   0 -> var c :i
@@ -10,10 +14,43 @@ fn key ( -> :i )
   c
 end
 
+\ Maps PETSCII input (in Lowercase/Uppercase mode) to normalized ASCII (unshifted a-z, shifted A-Z).
+fn xinkey ( -> :i )
+  inkey -> var c :i
+  c 0 = if 0 return then
+  c 65 >= c 90 <= and if c 32 + return then
+  c 193 >= c 218 <= and if c 128 - return then
+  c 20 = if 8 return then
+  c
+end
+
+\ Blocking read using xinkey.
+fn xkey ( -> :i )
+  0 -> var c :i
+  begin
+    xinkey -> c
+    c 0 =
+  while repeat
+  c
+end
+
+init
+  14 emit
+end
+
+\ Map normalized ASCII to PETSCII (Lowercase/Uppercase mode: A-Z, a-z, _, |).
+fn __c64_xlat ( c :i -> :i )
+  c 65 >= c 90 <= and if c 128 + return then
+  c 97 >= c 122 <= and if c 32 - return then
+  c 0x5F = if 0xA4 return then
+  c 0x7C = if 0xDD return then
+  c
+end
+
+\ Switches C64 to Lowercase/Uppercase mode (14 emit) at startup; maps ASCII A-Z, a-z, _, and | to PETSCII.
 fn xemit ( c :i )
   c 10 = if 13 emit return then
-  c 97 >= c 122 <= and if c 32 - emit return then
-  c emit
+  c __c64_xlat emit
 end
 
 fn cls ( )
@@ -42,6 +79,7 @@ fn fgcolor ( c :i )
   __c64_pal c 7 and a+ u8@ 646 i>a i8!
 end
 
+\ No-op on C64 (standard text mode has no per-character background color).
 fn bgcolor ( c :i )
-  __c64_pal c 7 and a+ u8@ 53281 i>a i8!
+  c drop
 end

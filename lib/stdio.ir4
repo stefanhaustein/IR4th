@@ -143,6 +143,26 @@ default fn termheight ( -> :i )
   24
 end
 
+\ Non-blocking read of next buffered character; returns and consumes char code or 0 if none ready; default: 0
+default fn inkey ( -> :i )
+  0
+end
+
+\ Wait for and return the next character from the input buffer (blocking except when unsupported; defaults to 0 in that case)
+default fn key ( -> :i )
+  0
+end
+
+\ Non-blocking read of next key mapped to normalized ASCII (defaults to raw inkey)
+default fn xinkey ( -> :i )
+  inkey
+end
+
+\ Blocking read of next key mapped to normalized ASCII (defaults to raw key)
+default fn xkey ( -> :i )
+  key
+end
+
 \ Set foreground text color *c* using ANSI color index (0..7, 8..15 bright; ANSI default)
 default fn fgcolor ( c :i )
   27 emit 91 emit

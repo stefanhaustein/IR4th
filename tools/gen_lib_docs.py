@@ -6,7 +6,8 @@ import re
 
 ROOT = Path(__file__).resolve().parent.parent
 LIB_DIR = ROOT / "lib"
-OUT_PATH = ROOT / "docs" / "lib.md"
+DOCS_DIR = ROOT / "docs" / "lib"
+OUT_PATH = DOCS_DIR / "README.md"
 
 ORDER = [
     "stdio.ir4",
@@ -18,6 +19,8 @@ ORDER = [
     "sfx.ir4",
     "joy.ir4",
 ]
+
+PLATFORMS = sorted(["c64", "x16", "agon", "zx81", "cpm"])
 
 FN_RE = re.compile(r"^((?:(?:default|hot)\s+)*)fn\s+(\S+)\s*\(([^)]*)\)")
 
@@ -53,51 +56,93 @@ def parse_lib(path: Path):
     return header, entries
 
 
-def strip_mod_prefix(line: str, name: str) -> str:
-    for pfx in (f"lib/{name} - ", f"{name} - "):
+def strip_mod_prefix(line: str, name: str, plat: str = "") -> str:
+    prefixes = [f"lib/{name} - ", f"{name} - "]
+    if plat:
+        prefixes = [f"lib/{plat}/{name} - ", f"{plat}/{name} - "] + prefixes
+    for pfx in prefixes:
         if line.startswith(pfx):
             return line[len(pfx):]
     return line
 
 
-def main():
-    files = [LIB_DIR / name for name in ORDER if (LIB_DIR / name).exists()]
-    extra = sorted(p for p in LIB_DIR.glob("*.ir4") if p.name not in ORDER)
-    files.extend(extra)
+def collect_platform_notes(mod_name: str):
+    headers: list[tuple[str, str]] = []
+    notes: dict[str, list[tuple[str, str]]] = {}
+    for plat in PLATFORMS:
+        p = LIB_DIR / plat / mod_name
+        if not p.exists():
+            continue
+        hdr, entries = parse_lib(p)
+        if hdr:
+            summary = strip_mod_prefix(hdr[0], mod_name, plat)
+            if summary:
+                headers.append((plat, summary))
+        for name, _, doc in entries:
+            if doc:
+                notes.setdefault(name, []).append((plat, doc))
+    return headers, notes
 
-    out = [
+
+def main():
+    files = sorted(LIB_DIR.glob("*.ir4"), key=lambda p: p.stem.lower())
+
+    index_out = [
         "# IR4th Standard Library Reference",
         "",
         "> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`.",
         "",
+        "## Modules",
+        "",
     ]
 
     parsed = [(p, *parse_lib(p)) for p in files]
-    out.append("## Modules")
-    out.append("")
-    for p, header, _ in parsed:
-        anchor = p.name.replace(".", "")
-        summary = strip_mod_prefix(header[0], p.name) if header else ""
-        out.append(f"- [lib/{p.name}](#{anchor}) — {summary}")
-    out.append("")
+    DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
     for p, header, entries in parsed:
-        out.append(f"## lib/{p.name}")
-        out.append("")
+        mod_stem = p.stem
+        summary = strip_mod_prefix(header[0], p.name) if header else ""
+        index_out.append(f"- [{mod_stem}]({mod_stem}.md) — {summary}")
+
+        mod_out = [
+            f"# {mod_stem}",
+            "",
+            f"[← Library Index](README.md) · Source: [lib/{p.name}](../../lib/{p.name})",
+            "",
+        ]
         body_hdr = [strip_mod_prefix(h, p.name) for h in header]
         if body_hdr:
-            out.extend(body_hdr)
-            out.append("")
-        out.append("| Function | Description |")
-        out.append("| --- | --- |")
-        for _, sig_md, doc in entries:
-            doc_escaped = doc.replace("|", "\\|")
-            out.append(f"| {sig_md} | {doc_escaped} |")
-        out.append("")
+            mod_out.extend(body_hdr)
+            mod_out.append("")
+        plat_headers, plat_notes = collect_platform_notes(p.name)
+        if plat_headers:
+            mod_out.append("## Platforms")
+            mod_out.append("")
+            for plat, psummary in plat_headers:
+                mod_out.append(f"- *{plat}:* {psummary}")
+            mod_out.append("")
+        mod_out.append("## Functions")
+        mod_out.append("")
+        for name, sig_md, doc in sorted(entries, key=lambda e: e[0].lower()):
+            pnotes = plat_notes.get(name, [])
+            if doc and len(sig_md) + len(doc) <= 88:
+                mod_out.append(f"- {sig_md} — {doc}")
+            else:
+                mod_out.append(f"- {sig_md}")
+                if doc:
+                    mod_out.append("")
+                    mod_out.append(f"  {doc}")
+            for plat, pdoc in pnotes:
+                mod_out.append(f"  - *{plat}:* {pdoc}")
+            if not (doc and len(sig_md) + len(doc) <= 88 and not pnotes):
+                mod_out.append("")
+        if mod_out and mod_out[-1] != "":
+            mod_out.append("")
+        (DOCS_DIR / f"{mod_stem}.md").write_text("\n".join(mod_out), encoding="utf-8")
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text("\n".join(out), encoding="utf-8")
-    print(f"Wrote {OUT_PATH.relative_to(ROOT)} ({len(parsed)} modules)")
+    index_out.append("")
+    OUT_PATH.write_text("\n".join(index_out), encoding="utf-8")
+    print(f"Wrote {DOCS_DIR.relative_to(ROOT)}/*.md ({len(parsed)} modules)")
 
 
 if __name__ == "__main__":

@@ -64,11 +64,6 @@ fn gfxdone ( )
   23 emit 1 emit 1 emit
 end
 
-fn gfxvsync ( )
-  23 emit 0 emit 195 emit
-  __agon_spr_active 0 <> if 23 emit 27 emit 15 emit then
-end
-
 code gfxticks ( -> :i )
   0x3E :i8 0x08 :i8 0x5B :i8 0xCF :i8
   0x21 :i8 0x00 :i8 0x00 :i8 0x00 :i8
@@ -76,6 +71,13 @@ code gfxticks ( -> :i )
   0xDD :i8 0x66 :i8 0x01 :i8
   0xCB :i8 0x3C :i8 0xCB :i8 0x1D :i8
   0xD1 :i8 0xE5 :i8 0xD5 :i8 0xC9 :i8
+end
+
+fn gfxvsync ( )
+  23 emit 0 emit 195 emit
+  __agon_spr_active 0 <> if 23 emit 27 emit 15 emit then
+  gfxticks -> var t :i
+  begin gfxticks t = while repeat
 end
 
 fn gfxcolor ( c :i )
@@ -136,4 +138,14 @@ end
 
 fn gfxclear ( )
   0 0 __gw __gh gfxfillrect
+end
+
+fn gfxcharw ( -> :i ) 8 end
+fn gfxcharh ( -> :i ) 8 end
+
+fn gfxtext ( x :i y :i s :a )
+  4 x y __vdu_plot
+  5 emit
+  s type0
+  4 emit
 end

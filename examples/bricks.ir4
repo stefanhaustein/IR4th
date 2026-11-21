@@ -31,9 +31,47 @@ var old_bx     :i
 var old_by     :i
 var launched   :i
 var lives      :i
+var score      :i
+var old_lives  :i
+var old_score  :bytes 4
 var left_cnt   :i
 var use_spr    :i
 var bg_col     :i
+
+fn draw_hud ( )
+  var ch :bytes 2
+  0 ch 1 a+ i8!
+  gfxcharw -> var cw :i
+  score -> var s :i
+  3 -> var i :i
+  begin i 0 >= while
+    s 10 mod 48 + -> var digit :i
+    old_score i a+ u8@ -> var prev :i
+    digit prev <> if
+      8 i cw * + -> var dx :i
+      prev 0 <> if
+        bg_col gfxcolor
+        prev ch i8!
+        dx 6 ch gfxtext
+      then
+      255 255 255 gfxrgb gfxcolor
+      digit ch i8!
+      dx 6 ch gfxtext
+      digit old_score i a+ i8!
+    then
+    s 10 / -> s
+    -1 +-> i
+  repeat
+  lives old_lives <> if
+    lives -> old_lives
+    0 -> i
+    begin i 3 < while
+      i lives < if 0 255 255 gfxrgb else bg_col then gfxcolor
+      sw 16 - i 10 * - 9 5 5 gfxfillrect
+      1 +-> i
+    repeat
+  then
+end
 
 fn row_color ( r :i -> :i )
   r 0 = if 255 0 0 gfxrgb return then
@@ -163,6 +201,8 @@ fn hit_bricks ( )
   c r 0 draw_brick
   0 vy - -> vy
   -1 +-> left_cnt
+  5 r - 10 * +-> score
+  draw_hud
   0 440 4 r - 110 * + 12 0 50 sfxplay
   left_cnt 0 = if
     reset_bricks
@@ -212,8 +252,10 @@ fn step_ball ( )
     0 150 14 1 180 sfxplay
     lives 0 <= if
       3 -> lives
+      0 -> score
       reset_bricks
     then
+    draw_hud
     reset_ball
   then
 end
@@ -238,10 +280,21 @@ fn main ( )
   sh pad_h - 6 - -> pad_y
   -1 -> old_px
   3 -> lives
+  0 -> score
+  -1 -> old_lives
+  old_score 4 0 fillchar
+  draw_hud
   reset_bricks
   reset_ball
+  0 -> var j :i
+  0 -> var p :i
   begin 1 while
-    0 joyread -> var j :i
+    0 -> j
+    -1 -> p
+    begin p joycount < while
+      j p joystate or -> j
+      1 +-> p
+    repeat
     j 4 and if -5 +-> pad_x then
     j 8 and if 5 +-> pad_x then
     pad_x 0 < if 0 -> pad_x then
