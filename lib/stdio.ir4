@@ -1,4 +1,4 @@
-\ stdio.ir4 - Portable console/terminal I/O, formatting, and screen control
+\ stdio.ir4 - Console I/O, formatting, and screen control
 \ Platform overrides implement raw `emit` (and optionally the `default fn` entries below).
 
 \ Emit character *c* with platform text mapping (defaults to raw emit; PETSCII on C64)

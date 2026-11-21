@@ -1,4 +1,4 @@
-\ lib/math.ir4 - Portable floating-point math library for IR4th
+\ lib/math.ir4 - Floating-point math helpers
 
 \ Absolute value of *x*
 fn fabs ( x :f -> :f )

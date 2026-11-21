@@ -2,7 +2,7 @@
 
 [← Library Index](README.md) · Source: [lib/stdio.ir4](../../lib/stdio.ir4)
 
-Portable console/terminal I/O, formatting, and screen control
+Console I/O, formatting, and screen control
 Platform overrides implement raw `emit` (and optionally the `default fn` entries below).
 
 ## Platforms

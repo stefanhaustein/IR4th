@@ -38,9 +38,9 @@ end
 See [examples/](examples/) for more code examples and [tests/](tests/) for the full test suite.
 
 
-## Runtime Library
+## Companion Library
 
-IR4(th) includes a minimal portable runtime library in [lib/](lib/).
+IR4(th) includes a minimal companion library in [lib/](lib/).
 
 It uses `require` with a platform → architecture → generic fallback chain (`lib/<platform>/` → `lib/<arch>/` → `lib/`).
 
@@ -51,7 +51,7 @@ In particular, the graphics library is aimed at simplicity and portability rathe
 than performance or completeness. Platform graphics modi or other features that seemed 
 inconvenient to support might be missing. 
 
-See [docs/lib/README.md](docs/lib/README.md) for the full Runtime Library API reference.
+See [docs/lib/README.md](docs/lib/README.md) for the Companion Library reference.
 
 
 ## Compiler Optimizations

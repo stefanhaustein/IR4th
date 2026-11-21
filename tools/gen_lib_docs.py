@@ -88,9 +88,9 @@ def main():
     files = sorted(LIB_DIR.glob("*.ir4"), key=lambda p: p.stem.lower())
 
     index_out = [
-        "# IR4th Standard Library Reference",
+        "# IR4th Companion Library",
         "",
-        "> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`.",
+        "> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`. Minimal companion modules for examples and tests — not a full standard library.",
         "",
         "## Modules",
         "",

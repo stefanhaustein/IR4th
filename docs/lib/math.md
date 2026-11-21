@@ -2,7 +2,7 @@
 
 [← Library Index](README.md) · Source: [lib/math.ir4](../../lib/math.ir4)
 
-Portable floating-point math library for IR4th
+Floating-point math helpers
 
 ## Functions
 

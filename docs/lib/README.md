@@ -1,14 +1,14 @@
-# IR4th Standard Library Reference
+# IR4th Companion Library
 
-> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`.
+> Generated from `lib/*.ir4` by `tools/gen_lib_docs.py`. Minimal companion modules for examples and tests — not a full standard library.
 
 ## Modules
 
-- [gfx](gfx.md) — Portable stateful pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
-- [i32](i32.md) — Portable 32-bit signed division and modulo fallbacks (auto-required when i32/ or i32mod is used)
-- [joy](joy.md) — Portable joystick and gamepad API (optional override per platform)
-- [math](math.md) — Portable floating-point math library for IR4th
+- [gfx](gfx.md) — Pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
+- [i32](i32.md) — 32-bit signed division and modulo fallbacks (auto-required when i32/ or i32mod is used)
+- [joy](joy.md) — Joystick and gamepad input (optional override per platform)
+- [math](math.md) — Floating-point math helpers
 - [mem](mem.md) — Memory operations and first-fit heap allocator starting at __heap_start
-- [sfx](sfx.md) — Portable minimal sound effects API (optional override per platform)
-- [sprite](sprite.md) — Portable hardware sprite API (optional override per platform)
-- [stdio](stdio.md) — Portable console/terminal I/O, formatting, and screen control
+- [sfx](sfx.md) — Sound effects (optional override per platform)
+- [sprite](sprite.md) — Hardware sprites (optional override per platform)
+- [stdio](stdio.md) — Console I/O, formatting, and screen control

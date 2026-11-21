@@ -2,7 +2,7 @@
 
 [← Library Index](README.md) · Source: [lib/gfx.ir4](../../lib/gfx.ir4)
 
-Portable stateful pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
+Pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
 Platform overrides implement the `default fn` entries below.
 
 ## Platforms

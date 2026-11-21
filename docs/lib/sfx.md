@@ -2,7 +2,7 @@
 
 [← Library Index](README.md) · Source: [lib/sfx.ir4](../../lib/sfx.ir4)
 
-Portable minimal sound effects API (optional override per platform)
+Sound effects (optional override per platform)
 Waveforms: 0 = pulse/square, 1 = sawtooth, 2 = triangle, 3 = noise.
 
 ## Platforms
