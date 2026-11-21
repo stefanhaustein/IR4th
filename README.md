@@ -111,6 +111,10 @@ See [docs/lib/README.md](docs/lib/README.md) for the full reference.
 - [docs/](docs/) — Platform documentation and screenshots
 - [spec.md](spec.md) — IR4(th) language specification
 
+## Demo Videos
+
+YT Playlist: https://www.youtube.com/watch?v=l4LC_M3oXqM&list=PLQKhMXcXxjVY
+
 ## Screenshots
 
 | Target | Mandelbrot ([mandel.ir4](examples/mandel.ir4)) | TV Test Card ([testcard.ir4](examples/testcard.ir4)) |
@@ -121,10 +125,6 @@ See [docs/lib/README.md](docs/lib/README.md) for the full reference.
 | **CP/M** | ![CP/M Mandelbrot](docs/img/mandel_cpm.png) | — |
 | **Sinclair ZX81** | ![ZX81 Mandelbrot](docs/img/mandel_zx81.png) | — |
 | **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/img/mandel_arm64.png) | ![ANSI terminal testcard](docs/img/testcard_ansi.png) |
-
-## Demo Videos
-
-YT Playlist: https://www.youtube.com/watch?v=l4LC_M3oXqM&list=PLQKhMXcXxjVY
 
 
 ## License
