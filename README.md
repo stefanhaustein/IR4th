@@ -122,10 +122,10 @@ See [docs/lib/README.md](docs/lib/README.md) for the full reference.
 | **Sinclair ZX81** | ![ZX81 Mandelbrot](docs/img/mandel_zx81.png) | — |
 | **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/img/mandel_arm64.png) | ![ANSI terminal testcard](docs/img/testcard_ansi.png) |
 
+## Demo Videos
 
-## Videos
+YT Playlist: https://www.youtube.com/watch?v=l4LC_M3oXqM&list=PLQKhMXcXxjVY
 
-[![Agon Boing Ball](docs/img/agon_boing.png)](https://www.youtube.com/watch?v=H2avVT9lBHs)
 
 ## License
 
