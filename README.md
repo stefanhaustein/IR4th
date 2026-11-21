@@ -38,22 +38,6 @@ end
 See [examples/](examples/) for more code examples and [tests/](tests/) for the full test suite.
 
 
-## Companion Library
-
-IR4(th) includes a minimal companion library in [lib/](lib/).
-
-It uses `require` with a platform → architecture → generic fallback chain (`lib/<platform>/` → `lib/<arch>/` → `lib/`).
-
-The runtime library outside of stdio should be considered as a placeholder for experimentation
-and is not supposed to replace the runtime library of the frontend language.
-
-In particular, the graphics library is aimed at simplicity and portability rather
-than performance or completeness. Platform graphics modi or other features that seemed 
-inconvenient to support might be missing. 
-
-See [docs/lib/README.md](docs/lib/README.md) for the Companion Library reference.
-
-
 ## Compiler Optimizations
 
 - **Dead-code elimination:** Only functions reachable from `main` and `init` blocks are emitted.
@@ -86,20 +70,41 @@ Compile with `ir4c`:
 Pass `-I dir` (repeatable) to add library search directories ahead of the built-in `lib/` directory.
 
 
-## Targets
+## Architectures & Platforms
 
-- **Z80** (`-t z80`): Generates Z80 machine code, with [`-t cpm`](docs/platform/cpm/) for CP/M `.com` executables and [`-t zx81`](docs/platform/zx81/) for Sinclair ZX81 `.p` snapshots.
-- **eZ80** (`-t ez80`): Generates 24-bit eZ80 ADL machine code, with [`-t agon`](docs/platform/agon/) for Agon Light / Console8 MOS executables.
-- **6502** (`-t 6502`): Generates 6502 machine code (configurable `--zp`, `--stack-zp`, `--no-stack-zp`), with `-t sim65` for `cc65`'s `sim65` simulator, [`-t c64`](docs/platform/c64/) for Commodore 64 `.prg`, and [`-t x16` / `-t x16-cart`](docs/platform/x16/) for Commander X16 `.prg` and banked `.crt` cartridges.
-- **ARM64** (`-t arm64`): Generates AArch64 machine code, with `--run` support for direct JIT execution on macOS Apple Silicon.
-- **RISC-V RV32IM** (`-t rv32`): Generates RV32IM machine code, with `-t virt` for standalone QEMU `virt` ELF32 execution and `-t obj` for relocatable ELF32 `.o` output (linking `extern` symbols and `libgcc` soft-float).
-- **Bytecode VM** (`-t bc`): Emits portable IR4th bytecode, with `--run` to execute directly in the built-in stack VM.
+- **6502** (`-t 6502`, configurable `--zp`, `--stack-zp`, `--no-stack-zp`)
+  - [`c64`](docs/platform/c64/) (`-t c64`) — Commodore 64 `.prg`
+  - `sim65` (`-t sim65`) — `cc65` simulator
+  - [`x16`](docs/platform/x16/) (`-t x16`, `-t x16-cart`) — Commander X16 `.prg` and banked `.crt` cartridges
+- **ARM64** (`-t arm64`) — AArch64 machine code, with `--run` JIT on macOS Apple Silicon
+- **Bytecode VM** (`-t bc`) — IR4th bytecode, with `--run` in the built-in stack VM
+- **eZ80** (`-t ez80`)
+  - [`agon`](docs/platform/agon/) (`-t agon`) — Agon Light / Console8 24-bit ADL MOS executables
+- **RISC-V RV32IM** (`-t rv32`)
+  - `obj` (`-t obj`) — relocatable ELF32 `.o` (linking `extern` symbols and `libgcc` soft-float)
+  - `virt` (`-t virt`) — standalone QEMU `virt` ELF32
+- **Z80** (`-t z80`)
+  - [`cpm`](docs/platform/cpm/) (`-t cpm`) — CP/M `.com` executables
+  - [`zx81`](docs/platform/zx81/) (`-t zx81`) — Sinclair ZX81 `.p` snapshots
+
+
+## Companion Library
+
+IR4(th) includes a minimal companion library in [lib/](lib/). 
+
+The companion library is included for tests and convenience and (apart from stdio) should
+not be considered a core part of this project. Generally, it's aimed at test / demo
+code portability rather than being a dedicated high capabilites platform abstraction.
+
+It uses `require` with a platform → architecture → generic fallback chain (`lib/<platform>/` → `lib/<arch>/` → `lib/`).
+
+See [docs/lib/README.md](docs/lib/README.md) for the full reference.
 
 
 ## Repository Layout
 
 - [src/](src/) — Compiler frontend, code buffer, and target backends
-- [lib/](lib/) — Standard library and platform overrides
+- [lib/](lib/) — Companion library and platform overrides
 - [examples/](examples/) — Standalone example programs
 - [tests/](tests/) — Cross-target test suite and negative compiler tests in [tests/errors/](tests/errors/)
 - [tools/](tools/) — Relocatable runtime generators and developer tools
