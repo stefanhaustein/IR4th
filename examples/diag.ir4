@@ -13,7 +13,7 @@ data s_sfx    "Sfx:  " 0 :i8 end
 data s_joy    "  Joy: " 0 :i8 end
 data s_spr    "Spr:  " 0 :i8 end
 data s_slots  " slots " 0 :i8 end
-data s_bpp    "bpp z=" 0 :i8 end
+data s_bpp    "bpp" 0 :i8 end
 data s_modes  "Gfx Modes (" 0 :i8 end
 data s_rpar   "):" 0 :i8 end
 data s_hash   "  #" 0 :i8 end
@@ -92,7 +92,7 @@ fn draw_static ( use_x :i fg :i bg :i -> :i )
   0 10 gotoxy
   s_spr type0 sprcount typei s_slots type0
   sprmaxw typei 120 emit sprmaxh typei 32 emit
-  sprdepth typei s_bpp type0 sprzdir typei
+  sprdepth typei s_bpp type0
 
   gfxmodes -> var nmodes :i -> var mptr :a
   0 11 gotoxy

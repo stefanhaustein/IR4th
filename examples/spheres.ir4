@@ -235,7 +235,8 @@ fn main ( -> :i )
     err_msg type0
     1 return
   then
-  sprzdir 0 < if 1 -> ball_off 0 -> hl_off else 0 -> ball_off 1 -> hl_off then
+  1 -> ball_off
+  0 -> hl_off
   320 240 6 gfxinit
   draw_grid_bg
   setup_sprites

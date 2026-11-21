@@ -182,7 +182,8 @@ fn main ( -> :i )
     err_msg type0
     1 return
   then
-  sprzdir 0 < if 1 -> shadow_spr 0 -> ball_spr else 0 -> shadow_spr 1 -> ball_spr then
+  1 -> shadow_spr
+  0 -> ball_spr
   320 240 6 gfxinit
   draw_grid_bg
   setup_sprites

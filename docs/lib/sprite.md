@@ -13,6 +13,8 @@ Hardware sprites (optional override per platform)
 ## Functions
 
 - **sprcount** ( -> :i ) — Number of hardware sprite slots (0 = hardware sprites unsupported)
+  - *agon:* 64 hardware sprites; mapped to VDP slots 63-id so sprite 0 renders in front.
+
 - **sprdepth** ( -> :i ) — Sprite color depth in bits per pixel (default: 0)
 - **sprimg** ( img :i w :i h :i data :a pal :a ncolors :i -> :i )
 
@@ -27,12 +29,8 @@ Hardware sprites (optional override per platform)
 
 - **sprset** ( id :i img :i )
 
-  Bind image *img* to hardware sprite *id* (see sprzdir for overlap priority; default: no-op).
+  Bind image *img* to hardware sprite *id* (sprite 0 has highest priority / renders in front; default: no-op).
 
 - **sprshow** ( id :i on :i )
 
   Show (*on* <> 0) or hide (*on* = 0) sprite *id* (default: no-op)
-
-- **sprzdir** ( -> :i )
-
-  Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front (default: 1)

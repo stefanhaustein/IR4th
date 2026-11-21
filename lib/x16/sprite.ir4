@@ -14,7 +14,6 @@ fn sprcount ( -> :i ) 128 end
 fn sprdepth ( -> :i ) 8 end
 fn sprmaxw  ( -> :i ) 64 end
 fn sprmaxh  ( -> :i ) 64 end
-fn sprzdir  ( -> :i ) -1 end
 
 fn __x16_spr_size_code ( n :i -> :i )
   n 8 <= if 0 return then

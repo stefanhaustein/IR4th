@@ -18,7 +18,6 @@ fn sprcount ( -> :i ) 8 end
 fn sprdepth ( -> :i ) 2 end
 fn sprmaxw  ( -> :i ) 24 end
 fn sprmaxh  ( -> :i ) 21 end
-fn sprzdir  ( -> :i ) -1 end
 
 fn __c64_spr_bit ( reg :i bit :i on :i )
   reg i>a -> var r :a

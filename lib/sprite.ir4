@@ -14,16 +14,13 @@ default fn sprmaxw  ( -> :i ) 0 end
 \ Maximum sprite height in pixels (default: 0)
 default fn sprmaxh  ( -> :i ) 0 end
 
-\ Z-order direction: 1 if higher sprite id renders in front, -1 if lower id renders in front (default: 1)
-default fn sprzdir  ( -> :i ) 1 end
-
 \ Define sprite image/frame *img* of screen size *w* x *h*.
 \ *data* holds *w* * *h* unsigned bytes (0 = transparent, 1..*ncolors* = 1-based palette index).
 \ *pal* holds *ncolors* unsigned bytes (color values returned by gfxrgb).
 \ Returns -1 on success, 0 if unsupported or out of sprite resources.
 default fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i ) 0 end
 
-\ Bind image *img* to hardware sprite *id* (see sprzdir for overlap priority; default: no-op).
+\ Bind image *img* to hardware sprite *id* (sprite 0 has highest priority / renders in front; default: no-op).
 default fn sprset ( id :i img :i ) end
 
 \ Move sprite *id* to screen position (*x*, *y*) (default: no-op)
