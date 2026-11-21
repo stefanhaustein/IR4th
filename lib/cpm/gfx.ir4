@@ -72,7 +72,8 @@ end
 fn gfxcharw ( -> :i ) 1 end
 fn gfxcharh ( -> :i ) 1 end
 
-fn gfxtext ( x :i y :i s :a )
+\ Snaps (*x*, *y*) to VT52 character cell (`x, y`) via `type`.
+fn gfxtext ( x :i y :i s :a len :i )
   x y gotoxy
-  s type0
+  s len type
 end

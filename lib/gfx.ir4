@@ -250,9 +250,10 @@ default fn gfxcharw ( -> :i ) 1 end
 \ Character cell height in pixels (default: 2 in ANSI half-block mode)
 default fn gfxcharh ( -> :i ) 2 end
 
-\ Draw NUL-terminated string *s* at pixel (*x*, *y*) in the current drawing color
-default fn gfxtext ( x :i y :i s :a )
+\ Draw *len* normalized-ASCII bytes starting at *s* with top-left at pixel (*x*, *y*) in the current drawing color.
+\ Text-cell targets snap (*x*, *y*) to the nearest character cell (default: ANSI `x, y/2`).
+default fn gfxtext ( x :i y :i s :a len :i )
   __gfx_col fgcolor
   x y 1 u>> gotoxy
-  s type0
+  s len type
 end

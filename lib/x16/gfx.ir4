@@ -156,13 +156,13 @@ end
 fn gfxcharw ( -> :i ) 8 end
 fn gfxcharh ( -> :i ) 8 end
 
-fn gfxtext ( x :i y :i s :a )
+\ Pixel-positioned 8x8 text from VERA VRAM ($1F000) using `xemit` ASCII mapping.
+fn gfxtext ( x :i y :i s :a len :i )
   var buf :bytes 8
   begin
-    s u8@ -> var ch :i
-    ch 0 <>
+    len 0 >
   while
-    ch __c64_xlat -> var p :i
+    s u8@ __c64_xlat -> var p :i
     p -> var sc :i
     p 64 >= p 96 < and if p 64 - -> sc then
     p 160 >= p 192 < and if p 64 - -> sc then
@@ -190,5 +190,6 @@ fn gfxtext ( x :i y :i s :a )
     repeat
     8 +-> x
     1 +-> s
+    -1 +-> len
   repeat
 end

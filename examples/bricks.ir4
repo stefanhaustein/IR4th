@@ -39,8 +39,7 @@ var use_spr    :i
 var bg_col     :i
 
 fn draw_hud ( )
-  var ch :bytes 2
-  0 ch 1 a+ i8!
+  var ch :bytes 1
   gfxcharw -> var cw :i
   score -> var s :i
   3 -> var i :i
@@ -52,11 +51,11 @@ fn draw_hud ( )
       prev 0 <> if
         bg_col gfxcolor
         prev ch i8!
-        dx 6 ch gfxtext
+        dx 6 ch 1 gfxtext
       then
       255 255 255 gfxrgb gfxcolor
       digit ch i8!
-      dx 6 ch gfxtext
+      dx 6 ch 1 gfxtext
       digit old_score i a+ i8!
     then
     s 10 / -> s

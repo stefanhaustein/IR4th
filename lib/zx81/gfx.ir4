@@ -77,7 +77,8 @@ end
 fn gfxcharw ( -> :i ) 2 end
 fn gfxcharh ( -> :i ) 2 end
 
-fn gfxtext ( x :i y :i s :a )
+\ Snaps (*x*, *y*) to the nearest 2x2 cell (`x/2, y/2`) in `D_FILE` via `type`.
+fn gfxtext ( x :i y :i s :a len :i )
   x 1 u>> y 1 u>> gotoxy
-  s type0
+  s len type
 end

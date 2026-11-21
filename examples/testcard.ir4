@@ -29,7 +29,7 @@ var c_red :i
 var c_blue :i
 var c_amber :i
 
-data s_label "IR (4th)" 0 :i8 end
+data s_label "IR (4th)" :i8 end
 
 fn init_colors ( )
   0 0 0 gfxrgb -> c_black
@@ -141,7 +141,7 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
     c_white gfxcolor
     cx 5 gfxcharw * 1 u>> -
     ry bar_h gfxcharh - 1 u>> +
-    s_label gfxtext
+    s_label 8 gfxtext
   then
 
   \ Frequency grating on gray background: starts at yellow box (rx + rw/8), blocks 1 & 2 left of cx, block 3 right of cx

@@ -70,9 +70,14 @@ Platform overrides implement the `default fn` entries below.
   - *agon:* Map 8-bit RGB (0..255) to Agon default palette (1-bpp, 2-bpp, or 16-color VGA 0..15)
   - *x16:* Map 8-bit RGB to X16 default 6x6x6 palette cube (indices 16..231)
 
-- **gfxtext** ( x :i y :i s :a )
+- **gfxtext** ( x :i y :i s :a len :i )
 
-  Draw NUL-terminated string *s* at pixel (*x*, *y*) in the current drawing color
+  Draw *len* normalized-ASCII bytes starting at *s* with top-left at pixel (*x*, *y*) in the current drawing color. Text-cell targets snap (*x*, *y*) to the nearest character cell (default: ANSI `x, y/2`).
+  - *agon:* Pixel-positioned 8x8 text via VDP `VDU 5` at the graphics cursor.
+  - *c64:* Pixel-positioned 8x8 text from C64 Char ROM ($D800) using `xemit` ASCII mapping.
+  - *cpm:* Snaps (*x*, *y*) to VT52 character cell (`x, y`) via `type`.
+  - *x16:* Pixel-positioned 8x8 text from VERA VRAM ($1F000) using `xemit` ASCII mapping.
+  - *zx81:* Snaps (*x*, *y*) to the nearest 2x2 cell (`x/2, y/2`) in `D_FILE` via `type`.
 
 - **gfxticks** ( -> :i ) — Return platform tick counter (wraps monotonically; default: 0)
 - **gfxvline** ( x :i y :i h :i )

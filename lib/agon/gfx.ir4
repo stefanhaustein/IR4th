@@ -143,9 +143,10 @@ end
 fn gfxcharw ( -> :i ) 8 end
 fn gfxcharh ( -> :i ) 8 end
 
-fn gfxtext ( x :i y :i s :a )
+\ Pixel-positioned 8x8 text via VDP `VDU 5` at the graphics cursor.
+fn gfxtext ( x :i y :i s :a len :i )
   4 x y __vdu_plot
   5 emit
-  s type0
+  s len type
   4 emit
 end
