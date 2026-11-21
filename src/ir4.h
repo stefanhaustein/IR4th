@@ -90,7 +90,7 @@ typedef enum { TY_NONE = 0, TY_W, TY_A, TY_F, TY_I32 } StackType;
 typedef enum { OP_DUP = 0, OP_DROP, OP_SWAP } StackOp;
 
 /* Local variable operations */
-typedef enum { LOCAL_GET = 0, LOCAL_SET, LOCAL_ADDR } LocalOp;
+typedef enum { LOCAL_GET = 0, LOCAL_SET, LOCAL_ADDR, LOCAL_ADD } LocalOp;
 
 /* Branch conditions */
 typedef enum { BR_JMP = 0, BR_JZ } BranchCond;
@@ -243,6 +243,7 @@ typedef struct {
     void (*push_i32)(i32 val);
     void (*push_data)(size_t data_offset);
     void (*local_op)(LocalOp op, size_t slot, StackType type, size_t stack_bytes);
+    int (*local_add_imm)(size_t slot, StackType type, size_t stack_bytes, i32 imm);
 
     void (*stack_op)(StackOp op, StackType t1, StackType t2);
     void (*op)(IrOp op);

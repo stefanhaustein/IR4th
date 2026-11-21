@@ -54,14 +54,14 @@ end
 
 fn gfxhline ( x :i y :i w :i )
   y 0 < y __cpm_h >= or if return then
-  x 0 < if w x + -> w 0 -> x then
+  x 0 < if x +-> w 0 -> x then
   x w + __cpm_w > if __cpm_w x - -> w then
   w 0 <= if return then
   __cpm_ramp __cpm_col a+ u8@ -> var ch :i
   x y gotoxy
   begin w 0 > while
     ch emit
-    w 1 - -> w
+    -1 +-> w
   repeat
 end
 

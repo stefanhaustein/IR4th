@@ -13,7 +13,7 @@ IR4th compiles via direct 2-pass machine-code generation (with dead-code elimina
 
 ### 1.2 Lexical Categories
 * **Type Tokens (`TYPE`):** Any token starting with a leading colon (`:`) is strictly a type specifier (`:i`, `:i32`, `:a`, `:f`).
-* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `default`, `hot`, `fwd`, `init`, `code`, `inline`, `end`, `require`, `extern`, `var`, `:bytes`, `data`, `:i8`, `:i16`, `:i32`, `align`, `->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`).
+* **Keywords:** Reserved syntax and control-flow tokens (`fn`, `default`, `hot`, `fwd`, `init`, `code`, `inline`, `end`, `require`, `extern`, `var`, `:bytes`, `data`, `:i8`, `:i16`, `:i32`, `align`, `->`, `+->`, `&`, `__heap_start`, `return`, `if`, `else`, `then`, `begin`, `while`, `repeat`, `::`, `jmp`, `jz`, `(`, `)`).
 * **Numeric Literals:** Decimal (`0`, `42`, `-10`), hexadecimal (`0xFF`, `$4000`), or floating-point (`3.14`, `-0.5`).
 * **Identifiers (`IDENT`):** Any non-numeric token without a leading colon that is not a keyword.
 
@@ -66,6 +66,7 @@ end
 ### 3.1 Accessing, Mutating & Addressing Locals
 * **Read (`<ident>`):** Pushes the value of parameter or local `<ident>` (of its declared type `T`) onto the stack.
 * **Write (`-> <ident>`):** Pops the top value from the stack (verifying its type matches `<ident>`'s declared type `T`) and stores it into `<ident>`.
+* **Add-Assign (`+-> <ident>`):** Pops a delta (`:i` for `:i` or `:a` variables, `:i32` for `:i32`, `:f` for `:f`) and adds it in place to `<ident>`.
 * **Declare & Initialize (`-> var <ident> :<type>`):** Declares a function-scoped local scalar (`:i`, `:i32`, `:a`, or `:f`) and initializes it by popping the top value from the stack (not valid for `:bytes`).
 * **Address (`& <ident>`):** Pushes the memory address of parameter, local, typed global, or function `<ident>` onto the stack with type `:a` (functions referenced via `&` are retained by dead-code elimination).
 
@@ -77,7 +78,7 @@ var <name> :i            \ Typed scalar global (:i, :i32, :a, or :f)
 var <name> :bytes <size> \ Raw byte buffer
 ```
 
-* Typed globals (`:i`, `:i32`, `:a`, `:f`) behave like locals: `<name>` reads the value, `-> <name>` assigns to it, and `& <name>` pushes its `:a` address.
+* Typed globals (`:i`, `:i32`, `:a`, `:f`) behave like locals: `<name>` reads the value, `-> <name>` assigns to it, `+-> <name>` adds to it, and `& <name>` pushes its `:a` address.
 * `var <name> :bytes <size>` allocates `<size>` bytes aligned to `word_bytes`; referencing `<name>` pushes its `:a` base address (`( -> :a )`).
 * **`__heap_start`:** Built-in constant pushing the `:a` address immediately following all static code, `data`, `var`, and target runtime data.
 

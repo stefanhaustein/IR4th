@@ -42,9 +42,9 @@ fn gfxclear ( )
     0 -> var c :i
     begin c 32 < while
       0 df 1 r 33 * + c + a+ i8!
-      c 1 + -> c
+      1 +-> c
     repeat
-    r 1 + -> r
+    1 +-> r
   repeat
 end
 

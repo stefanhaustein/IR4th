@@ -11,6 +11,7 @@
 - [lib/gfx.ir4](#gfxir4) — Portable stateful pixel graphics (default: ANSI 8-color UTF-8 half-block backend)
 - [lib/sprite.ir4](#spriteir4) — Portable hardware sprite API (optional override per platform)
 - [lib/sfx.ir4](#sfxir4) — Portable minimal sound effects API (optional override per platform)
+- [lib/joy.ir4](#joyir4) — Portable joystick / gamepad input API (optional override per platform)
 
 ## lib/stdio.ir4
 
@@ -129,3 +130,14 @@ Waveforms: 0 = pulse/square, 1 = sawtooth, 2 = triangle, 3 = noise.
 | **sfxplay** ( ch :i freq :i vol :i wave :i dur_ms :i ) | Play a tone on channel *ch* at *freq* Hz, volume *vol* (0..15), waveform *wave* (0..3), for *dur_ms* ms (0 = until sfxstop; default: no-op). |
 | **sfxstop** ( ch :i ) | Silence channel *ch* (default: no-op). |
 | **sfxtick** ( ) | Advance software duration timers once per frame (required on platforms without hardware duration, e.g. C64/X16; default: no-op). |
+
+## lib/joy.ir4
+
+Portable joystick / gamepad input API (optional override per platform)
+Bitmask returned by joyread:
+1 = Up, 2 = Down, 4 = Left, 8 = Right, 16 = Fire/Btn1, 32 = Btn2, 64 = Select, 128 = Start
+
+| Function | Description |
+| --- | --- |
+| **joycount** ( -> :i ) | Query number of joystick/gamepad ports (0 = joystick input unsupported) |
+| **joyread** ( port :i -> :i ) | Read current button bitmask for *port* (0-based; returns 0 if unsupported or out of range) |

@@ -1,0 +1,9 @@
+\ lib/c64/joy.ir4 - Commodore 64 joystick ports (port 0 = CIA1 Port 2 $DC00, port 1 = Port 1 $DC01)
+
+fn joycount ( -> :i ) 2 end
+
+fn joyread ( port :i -> :i )
+  port 0 = if 0xDC00 i>a u8@ 0x1F xor 0x1F and return then
+  port 1 = if 0xDC01 i>a u8@ 0x1F xor 0x1F and return then
+  0
+end

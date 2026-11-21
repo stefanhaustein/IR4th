@@ -561,11 +561,84 @@ static void z80_local_addr(size_t slot, u16 stack_bytes) {
     z80_push(Z80_PUSH_HL);
 }
 
+static void z80_local_add(size_t slot, u16 stack_bytes) {
+    u16 off;
+    if (z80_is_static_slot.data[slot]) {
+        u16 addr_off = (u16)(z80_static_base + z80_local_off.data[slot]);
+        z80_pop(Z80_POP_DE);
+        emit8(0x2A);
+        cb_add_data_reloc(cb_pc(), addr_off);
+        emit16(0x0000); /* LD HL, (nn) */
+        emit8(Z80_ADD_HL_DE);
+        emit8(0x22);
+        cb_add_data_reloc(cb_pc(), addr_off);
+        emit16(0x0000); /* LD (nn), HL */
+        return;
+    }
+    off = (u16)(z80_local_off.data[slot] + stack_bytes);
+    z80_pop(Z80_POP_DE);
+    emit8_16(Z80_LD_HL_NN, off);
+    emit8(Z80_ADD_HL_SP);
+    emit8(0x7E); /* LD A, (HL) */
+    emit8(0x83); /* ADD A, E */
+    emit8(0x77); /* LD (HL), A */
+    emit8(Z80_INC_HL);
+    emit8(0x7E); /* LD A, (HL) */
+    emit8(0x8A); /* ADC A, D */
+    emit8(0x77); /* LD (HL), A */
+}
+
+static int z80_local_add_imm(size_t slot, StackType type, size_t stack_bytes, i32 imm) {
+    i16 d = (i16)imm;
+    (void)type;
+    if (d == 0)
+        return 1;
+    if (z80_is_static_slot.data[slot]) {
+        u16 addr_off = (u16)(z80_static_base + z80_local_off.data[slot]);
+        emit8(0x2A);
+        cb_add_data_reloc(cb_pc(), addr_off);
+        emit16(0x0000); /* LD HL, (nn) */
+        if (d == 1) {
+            emit8(Z80_INC_HL);
+        } else if (d == -1) {
+            emit8(Z80_DEC_HL);
+        } else if (d == 2) {
+            emit8(Z80_INC_HL);
+            emit8(Z80_INC_HL);
+        } else if (d == -2) {
+            emit8(Z80_DEC_HL);
+            emit8(Z80_DEC_HL);
+        } else {
+            emit8_16(0x11, (u16)d); /* LD DE, d */
+            emit8(Z80_ADD_HL_DE);
+        }
+        emit8(0x22);
+        cb_add_data_reloc(cb_pc(), addr_off);
+        emit16(0x0000); /* LD (nn), HL */
+        return 1;
+    }
+    if (d > 0 && d <= 255) {
+        u16 off = (u16)(z80_local_off.data[slot] + stack_bytes);
+        emit8_16(Z80_LD_HL_NN, off);
+        emit8(Z80_ADD_HL_SP);
+        emit8(0x7E);        /* LD A, (HL) */
+        emit8_8(0xC6, (u8)d); /* ADD A, d */
+        emit8(0x77);        /* LD (HL), A */
+        emit8(Z80_INC_HL);
+        emit8_8(0x30, 1);   /* JR NC, +1 */
+        emit8(0x34);        /* INC (HL) */
+        return 1;
+    }
+    return 0;
+}
+
 static void z80_local_op(LocalOp op, size_t slot, StackType type, size_t stack_bytes) {
     if (op == LOCAL_GET)
         z80_local_get(slot, type, (u16)stack_bytes);
     else if (op == LOCAL_ADDR)
         z80_local_addr(slot, (u16)stack_bytes);
+    else if (op == LOCAL_ADD)
+        z80_local_add(slot, (u16)stack_bytes);
     else
         z80_local_set(slot, type, (u16)stack_bytes);
 }
@@ -1634,6 +1707,7 @@ const Backend be_z80 = {"z80",
                         z80_push_i32,
                         z80_push_data,
                         z80_local_op,
+                        z80_local_add_imm,
                         z80_stack_op,
                         z80_op,
                         z80_add_imm,

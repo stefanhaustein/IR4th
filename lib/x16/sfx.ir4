@@ -45,10 +45,10 @@ fn sfxtick ( )
     __x16_sfx_tmr ch 1 << a+ -> var p :a
     p i16@ -> var t :i
     t 0 > if
-      t 1 - -> t
+      -1 +-> t
       t p i16!
       t 0 = if ch sfxstop then
     then
-    ch 1 + -> ch
+    1 +-> ch
   repeat
 end

@@ -9,23 +9,23 @@ default fn fillchar ( dst :a len :i val :i )
     len 0 >
   while
     val dst i8!
-    dst 1 a+ -> dst
-    len 1 - -> len
+    1 +-> dst
+    -1 +-> len
   repeat
 end
 
 \ Copy *len* bytes from *src* to *dst* (overlap-safe)
 default fn memcpy ( dst :a src :a len :i )
   dst src a> if
-    dst len a+ -> dst
-    src len a+ -> src
+    len +-> dst
+    len +-> src
     begin
       len 0 >
     while
       src 1 a- -> src
       dst 1 a- -> dst
       src u8@ dst i8!
-      len 1 - -> len
+      -1 +-> len
     repeat
     return
   then
@@ -33,9 +33,9 @@ default fn memcpy ( dst :a src :a len :i )
     len 0 >
   while
     src u8@ dst i8!
-    src 1 a+ -> src
-    dst 1 a+ -> dst
-    len 1 - -> len
+    1 +-> src
+    1 +-> dst
+    -1 +-> len
   repeat
 end
 
@@ -46,9 +46,9 @@ default fn memcmp ( a :a b :a len :i -> :i )
   while
     a u8@ b u8@ - -> var d :i
     d 0 <> if d return then
-    a 1 a+ -> a
-    b 1 a+ -> b
-    len 1 - -> len
+    1 +-> a
+    1 +-> b
+    -1 +-> len
   repeat
   0
 end

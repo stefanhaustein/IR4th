@@ -20,7 +20,7 @@ fn init_pal ( )
       gfxrgb
     then
     pal i a+ i8!
-    i 1 + -> i
+    1 +-> i
   repeat
 end
 
@@ -36,7 +36,7 @@ hot fn mandel_px ( cr :i ci :i -> :i )
     then
     zr zi * 5 >> ci + -> zi
     zr2 zi2 - cr + -> zr
-    it 1 + -> it
+    1 +-> it
   repeat
   0
 end
@@ -63,13 +63,13 @@ fn render_mandel ( )
         px -> x0
         nc -> c
       then
-      px 1 + -> px
+      1 +-> px
     repeat
     c 0 > if
       c gfxcolor
       x0 py w x0 - gfxhline
     then
-    py 1 + -> py
+    1 +-> py
   repeat
 end
 

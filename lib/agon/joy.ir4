@@ -1,0 +1,19 @@
+\ lib/agon/joy.ir4 - Agon Light keyboard-mapped joystick (via MOS sysvars inkey)
+
+require "stdio.ir4"
+
+fn joycount ( -> :i ) 1 end
+
+fn joyread ( port :i -> :i )
+  port 0 <> if 0 return then
+  inkey -> var k :i
+  k 0 = if 0 return then
+  k 11 = k 119 = or k 87 = or if 1 return then
+  k 10 = k 115 = or k 83 = or if 2 return then
+  k 8 = k 97 = or k 65 = or if 4 return then
+  k 21 = k 100 = or k 68 = or if 8 return then
+  k 32 = k 122 = or k 90 = or if 16 return then
+  k 120 = k 88 = or if 32 return then
+  k 13 = if 128 return then
+  0
+end

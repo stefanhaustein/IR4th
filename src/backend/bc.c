@@ -26,6 +26,12 @@ static void bc_local_op(LocalOp op, size_t slot, StackType type, size_t stack_by
     u8 sz = type_size(type);
     u16 off = (u16)bc_local_off.data[slot];
     (void)stack_bytes;
+    if (op == LOCAL_ADD) {
+        bc_local_op(LOCAL_GET, slot, type, stack_bytes);
+        emit8(BC_ADD);
+        bc_local_op(LOCAL_SET, slot, type, stack_bytes);
+        return;
+    }
     if (bc_local_is_static.data[slot]) {
         if (op == LOCAL_ADDR) {
             emit8(BC_PUSH_DATA);
@@ -546,6 +552,7 @@ const Backend be_bc = {"bc",
                        bc_push_i32,
                        bc_push_data,
                        bc_local_op,
+                       NULL,
                        bc_stack_op,
                        bc_op,
                        bc_add_imm,

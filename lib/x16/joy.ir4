@@ -1,0 +1,59 @@
+\ lib/x16/joy.ir4 - Commander X16 KERNAL joystick input (port 0 = keyboard + inkey, ports 1..4 = SNES pads)
+
+require "stdio.ir4"
+
+\ Calls KERNAL JOYSTICK_SCAN ($FF53) then JOYSTICK_GET ($FF56).
+\ Returns active-high (byte1 << 8) | byte0, or 0 if not present.
+code __x16_joy_get ( port :i -> :i )
+  0x8A :i8                  \ TXA
+  0x48 :i8                  \ PHA (save data stack pointer on HW stack)
+  0xBD :i8 0 :as            \ LDA 0,X (port)
+  0x48 :i8                  \ PHA (save port)
+  0x20 :i8 0x53 :i8 0xFF :i8 \ JSR $FF53 (JOYSTICK_SCAN)
+  0x68 :i8                  \ PLA (restore port -> A)
+  0x20 :i8 0x56 :i8 0xFF :i8 \ JSR $FF56 (JOYSTICK_GET)
+  0x85 :i8 0x02 :i8         \ STA $02 (save byte0)
+  0x86 :i8 0x03 :i8         \ STX $03 (save byte1)
+  0x68 :i8                  \ PLA
+  0xAA :i8                  \ TAX (restore data stack pointer)
+  0xC0 :i8 0xFF :i8         \ CPY #$FF (absent?)
+  0xD0 :i8 0x09 :i8         \ BNE +9
+  0xA9 :i8 0x00 :i8         \ LDA #$00
+  0x9D :i8 0 :as            \ STA 0,X
+  0x9D :i8 1 :as            \ STA 1,X
+  0x60 :i8                  \ RTS
+  0xA5 :i8 0x02 :i8         \ LDA $02 (byte0)
+  0x49 :i8 0xFF :i8         \ EOR #$FF (invert byte0)
+  0x9D :i8 0 :as            \ STA 0,X
+  0xA5 :i8 0x03 :i8         \ LDA $03 (byte1)
+  0x49 :i8 0xFF :i8         \ EOR #$FF (invert byte1)
+  0x9D :i8 1 :as            \ STA 1,X
+  0x60 :i8                  \ RTS
+end
+
+fn joycount ( -> :i ) 5 end
+
+fn joyread ( port :i -> :i )
+  port 0 < port 4 > or if 0 return then
+  port __x16_joy_get -> var raw :i
+  0 -> var out :i
+  raw 0x0008 and if out 1 or -> out then
+  raw 0x0004 and if out 2 or -> out then
+  raw 0x0002 and if out 4 or -> out then
+  raw 0x0001 and if out 8 or -> out then
+  raw 0x0080 and if out 16 or -> out then
+  raw 0x8000 and if out 32 or -> out then
+  raw 0x0020 and if out 64 or -> out then
+  raw 0x0010 and if out 128 or -> out then
+  port 0 = if
+    inkey -> var k :i
+    k 145 = k 119 = or k 87 = or if out 1 or -> out then
+    k 17  = k 115 = or k 83 = or if out 2 or -> out then
+    k 157 = k 97  = or k 65 = or if out 4 or -> out then
+    k 29  = k 100 = or k 68 = or if out 8 or -> out then
+    k 32  = k 122 = or k 90 = or if out 16 or -> out then
+    k 120 = k 88  = or if out 32 or -> out then
+    k 13  = if out 128 or -> out then
+  then
+  out
+end

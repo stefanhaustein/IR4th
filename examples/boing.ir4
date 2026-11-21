@@ -52,7 +52,7 @@ fn draw_grid_step ( step :i )
   x 280 <= if
     x 16 x ybot gfxline
     x ybot 160 x 160 - 13 * 10 / + ybot 12 + gfxline
-    x 20 + -> x
+    20 +-> x
     x 280 <= if
       x 16 x ybot gfxline
       x ybot 160 x 160 - 13 * 10 / + ybot 12 + gfxline
@@ -110,11 +110,11 @@ hot fn precompute_sphere ( )
         ty ryz iatan_half 24 + 6 * 49 / ilat_buf idx a+ i8!
         tx fz iatan_half 24 + ilon_buf idx a+ i8!
       then
-      idx 1 + -> idx
-      px 1 + -> px
+      1 +-> idx
+      1 +-> px
     repeat
     py draw_h_step
-    py 1 + -> py
+    1 +-> py
   repeat
 end
 
@@ -128,10 +128,10 @@ hot fn upload_ball_frame ( frame :i )
       ilon_buf idx a+ u8@ frame 1 << + 3 >> -> var ilon :i
       ilat ilon + 1 and 0 = if 2 else 1 then spr_buf idx a+ i8!
     then
-    idx 1 + -> idx
+    1 +-> idx
   repeat
   frame 1 + 64 64 spr_buf ball_pal 2 sprimg 0 <> if
-    num_frames 1 + -> num_frames
+    1 +-> num_frames
   then
 end
 
@@ -148,10 +148,10 @@ hot fn upload_shadow ( )
       else
         1 spr_buf idx a+ i8!
       then
-      idx 1 + -> idx
-      px 1 + -> px
+      1 +-> idx
+      1 +-> px
     repeat
-    py 1 + -> py
+    1 +-> py
   repeat
   0 64 64 spr_buf shadow_pal 1 sprimg drop
   shadow_spr 0 sprset
@@ -169,7 +169,7 @@ fn setup_sprites ( )
   begin f 8 < while
     f upload_ball_frame
     f 1 + draw_grid_step
-    f 1 + -> f
+    1 +-> f
   repeat
 end
 
@@ -199,11 +199,11 @@ fn main ( -> :i )
   ball_spr 1 sprshow
   gfxheight 76 - 4 << -> var floor8 :i
   begin inkey 0 = while
-    x vx + -> x
+    vx +-> x
     x 30 < if 30 -> x 1 -> vx 0 180 10 2 60 sfxplay then
     x 216 > if 216 -> x -1 -> vx 0 180 10 2 60 sfxplay then
-    vy 1 + -> vy
-    y8 vy + -> y8
+    1 +-> vy
+    vy +-> y8
     y8 floor8 >= if
       floor8 -> y8
       -54 -> vy
@@ -211,9 +211,9 @@ fn main ( -> :i )
     then
     tick 1 and 0 = if
       vx 0 > if
-        f 1 = if num_frames -> f else f 1 - -> f then
+        f 1 = if num_frames -> f else -1 +-> f then
       else
-        f num_frames >= if 1 -> f else f 1 + -> f then
+        f num_frames >= if 1 -> f else 1 +-> f then
       then
       ball_spr f sprset
     then
@@ -221,7 +221,7 @@ fn main ( -> :i )
     ball_spr x y8 4 >> sprpos
     gfxvsync
     sfxtick
-    tick 1 + -> tick
+    1 +-> tick
   repeat
   0 sfxstop
   shadow_spr 0 sprshow

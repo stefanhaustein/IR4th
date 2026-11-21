@@ -50,8 +50,8 @@ fn gfxmode ( mode :i )
       p 6 a+ i16@ -> __gd
       0 -> n
     else
-      p 8 a+ -> p
-      n 1 - -> n
+      8 +-> p
+      -1 +-> n
     then
   repeat
   22 emit mode emit

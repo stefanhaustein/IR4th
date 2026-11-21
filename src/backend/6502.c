@@ -657,6 +657,104 @@ static void m6502_local_addr(size_t slot) {
     cb_add_data_reloc_split(lo_pos, hi_pos, (u16)(locals_data_off + m6502_local_off.data[slot]));
 }
 
+static void m6502_local_add(size_t slot) {
+    u16 off = m6502_local_off.data[slot];
+    u8 b;
+    if (m6502_static_frame) {
+        emit8(M6502_CLC);
+        for (b = 0; b < 2; b++) {
+            m6502_lda_stk(b);
+            emit8(M6502_ADC_ABS);
+            cb_add_data_reloc(cb_pc(), (u16)(m6502_static_base + off + b));
+            emit16(0x0000);
+            emit8(M6502_STA_ABS);
+            cb_add_data_reloc(cb_pc(), (u16)(m6502_static_base + off + b));
+            emit16(0x0000);
+        }
+        m6502_pop2();
+        return;
+    }
+    m6502_ldy_lfp();
+    emit8(M6502_CLC);
+    for (b = 0; b < 2; b++) {
+        m6502_lda_stk(b);
+        emit8(0x79); /* ADC abs,Y */
+        cb_add_data_reloc(cb_pc(), (u16)(locals_data_off + off + b));
+        emit16(0x0000);
+        m6502_emit_local_store((u16)(off + b));
+    }
+    m6502_pop2();
+}
+
+static int m6502_local_add_imm(size_t slot, StackType type, size_t stack_bytes, i32 imm) {
+    u16 off = m6502_local_off.data[slot];
+    u16 k = (u16)(i16)imm;
+    (void)type;
+    (void)stack_bytes;
+    if (m6502_compact)
+        return 0;
+    if (k == 0)
+        return 1;
+    if (m6502_static_frame) {
+        u16 addr = (u16)(m6502_static_base + off);
+        if (k == 1) {
+            emit8(0xEE); /* INC abs */
+            cb_add_data_reloc(cb_pc(), addr);
+            emit16(0x0000);
+            emit8_8(M6502_BNE, 3);
+            emit8(0xEE); /* INC abs+1 */
+            cb_add_data_reloc(cb_pc(), (u16)(addr + 1));
+            emit16(0x0000);
+            return 1;
+        }
+        if (k == 0xFFFF) {
+            emit8(M6502_LDA_ABS);
+            cb_add_data_reloc(cb_pc(), addr);
+            emit16(0x0000);
+            emit8_8(M6502_BNE, 3);
+            emit8(0xCE); /* DEC abs+1 */
+            cb_add_data_reloc(cb_pc(), (u16)(addr + 1));
+            emit16(0x0000);
+            emit8(0xCE); /* DEC abs */
+            cb_add_data_reloc(cb_pc(), addr);
+            emit16(0x0000);
+            return 1;
+        }
+        emit8(M6502_CLC);
+        emit8(M6502_LDA_ABS);
+        cb_add_data_reloc(cb_pc(), addr);
+        emit16(0x0000);
+        emit8_8(M6502_ADC_IMM, (u8)(k & 0xFF));
+        emit8(M6502_STA_ABS);
+        cb_add_data_reloc(cb_pc(), addr);
+        emit16(0x0000);
+        if ((k >> 8) == 0) {
+            emit8_8(M6502_BCC, 3);
+            emit8(0xEE); /* INC abs+1 */
+            cb_add_data_reloc(cb_pc(), (u16)(addr + 1));
+            emit16(0x0000);
+        } else {
+            emit8(M6502_LDA_ABS);
+            cb_add_data_reloc(cb_pc(), (u16)(addr + 1));
+            emit16(0x0000);
+            emit8_8(M6502_ADC_IMM, (u8)(k >> 8));
+            emit8(M6502_STA_ABS);
+            cb_add_data_reloc(cb_pc(), (u16)(addr + 1));
+            emit16(0x0000);
+        }
+        return 1;
+    }
+    m6502_ldy_lfp();
+    emit8(M6502_CLC);
+    m6502_lda_local((u8)off);
+    emit8_8(M6502_ADC_IMM, (u8)(k & 0xFF));
+    m6502_emit_local_store(off);
+    m6502_lda_local((u8)(off + 1));
+    emit8_8(M6502_ADC_IMM, (u8)(k >> 8));
+    m6502_emit_local_store((u16)(off + 1));
+    return 1;
+}
+
 static void m6502_local_op(LocalOp op, size_t slot, StackType type, size_t stack_bytes) {
     if (m6502_compact) {
         m6502_bc_local_op(op, slot, type);
@@ -666,6 +764,8 @@ static void m6502_local_op(LocalOp op, size_t slot, StackType type, size_t stack
         m6502_local_get(slot, type, (u16)stack_bytes);
     else if (op == LOCAL_ADDR)
         m6502_local_addr(slot);
+    else if (op == LOCAL_ADD)
+        m6502_local_add(slot);
     else
         m6502_local_set(slot, type, (u16)stack_bytes);
 }
@@ -2162,6 +2262,12 @@ void be_6502_ensure_helpers(int need_mul, int need_div, int need_icall, int need
 static void m6502_bc_local_op(LocalOp op, size_t slot, StackType type) {
     u8 sz = (type == TY_F || type == TY_I32) ? 4 : 2;
     u16 off = m6502_local_off.data[slot];
+    if (op == LOCAL_ADD) {
+        m6502_bc_local_op(LOCAL_GET, slot, type);
+        emit8(BC_ADD);
+        m6502_bc_local_op(LOCAL_SET, slot, type);
+        return;
+    }
     if (m6502_static_frame) {
         u16 data_off = (u16)(m6502_static_base + off);
         if (op == LOCAL_ADDR)
@@ -2999,6 +3105,7 @@ const Backend be_6502 = {"6502",
                          m6502_push_i32,
                          m6502_push_data,
                          m6502_local_op,
+                         m6502_local_add_imm,
                          m6502_stack_op,
                          m6502_op,
                          m6502_add_imm,

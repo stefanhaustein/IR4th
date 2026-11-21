@@ -77,8 +77,8 @@ default fn gfxinit ( w :i h :i depth :i )
       score -> best_score
       p i16@ -> best_mode
     then
-    p 8 a+ -> p
-    cnt 1 - -> cnt
+    8 +-> p
+    -1 +-> cnt
   repeat
   best_mode gfxmode
 end
@@ -124,8 +124,8 @@ end
 default fn gfxhline ( x :i y :i w :i )
   begin w 0 > while
     x y gfxpx
-    x 1 + -> x
-    w 1 - -> w
+    1 +-> x
+    -1 +-> w
   repeat
 end
 
@@ -133,8 +133,8 @@ end
 default fn gfxvline ( x :i y :i h :i )
   begin h 0 > while
     x y gfxpx
-    y 1 + -> y
-    h 1 - -> h
+    1 +-> y
+    -1 +-> h
   repeat
 end
 
@@ -164,10 +164,10 @@ default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
       err 0 < if
         r y1 p r - 1 + gfxhline
         p 1 + -> r
-        y1 s + -> y1
-        err dx + -> err
+        s +-> y1
+        dx +-> err
       then
-      p 1 + -> p
+      1 +-> p
     repeat
     r x2 <= if r y1 x2 r - 1 + gfxhline then
   else
@@ -184,10 +184,10 @@ default fn gfxline ( x1 :i y1 :i x2 :i y2 :i )
       err 0 < if
         x1 r p r - 1 + gfxvline
         p 1 + -> r
-        x1 s + -> x1
-        err dy + -> err
+        s +-> x1
+        dy +-> err
       then
-      p 1 + -> p
+      1 +-> p
     repeat
     r y2 <= if x1 r y2 r - 1 + gfxvline then
   then
@@ -208,7 +208,7 @@ default fn gfxfillrect ( x :i y :i w :i h :i )
   y h + -> var ye :i
   begin y ye < while
     x y w gfxhline
-    y 1 + -> y
+    1 +-> y
   repeat
 end
 
@@ -234,11 +234,11 @@ default fn gfxcircle ( cx :i cy :i r :i )
     cx y - cy x - gfxpx
     cx y + cy x - gfxpx
     cx x + cy y - gfxpx
-    y 1 + -> y
+    1 +-> y
     err 0 < if
       err y 1 << + 1 + -> err
     else
-      x 1 - -> x
+      -1 +-> x
       err y x - 1 << + 1 + -> err
     then
   repeat

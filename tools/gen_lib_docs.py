@@ -16,6 +16,7 @@ ORDER = [
     "gfx.ir4",
     "sprite.ir4",
     "sfx.ir4",
+    "joy.ir4",
 ]
 
 FN_RE = re.compile(r"^((?:(?:default|hot)\s+)*)fn\s+(\S+)\s*\(([^)]*)\)")

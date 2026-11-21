@@ -270,6 +270,11 @@ static void rv_local_op(LocalOp op, size_t slot, StackType type, size_t stack_by
             emit32(enc_r(0x00, RV_T0, RV_FP, 0, RV_T0, 0x33UL)); /* ADD t0, fp, t0 */
         }
         push_reg(RV_T0);
+    } else if (op == LOCAL_ADD) {
+        pop_reg(RV_T0);
+        rv_lw(RV_T1, off, RV_FP);
+        emit32(enc_r(0x00, RV_T0, RV_T1, 0, RV_T0, 0x33UL)); /* ADD t0, t1, t0 */
+        rv_sw(RV_T0, off, RV_FP);
     } else {
         pop_reg(RV_T0);
         rv_sw(RV_T0, off, RV_FP);
@@ -863,6 +868,7 @@ const Backend be_rv32 = {"rv32",
                          rv_push_w,
                          rv_push_data,
                          rv_local_op,
+                         NULL,
                          rv_stack_op,
                          rv_op,
                          rv_add_imm,

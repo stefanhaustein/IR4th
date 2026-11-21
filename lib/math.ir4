@@ -64,7 +64,7 @@ fn sqrt ( x :f -> :f )
     i 6 <
   while
     g x g f/ f+ 0.5 f* -> g
-    i 1 + -> i
+    1 +-> i
   repeat
   g scale f*
 end
@@ -157,13 +157,13 @@ fn exp ( x :f -> :f )
     k 0 >
   while
     res 2.0 f* -> res
-    k 1 - -> k
+    -1 +-> k
   repeat
   begin
     k 0 <
   while
     res 0.5 f* -> res
-    k 1 + -> k
+    1 +-> k
   repeat
   res
 end
@@ -176,13 +176,13 @@ fn ln ( x :f -> :f )
     x 1.4142135623730951 f>
   while
     x 0.5 f* -> x
-    k 1 + -> k
+    1 +-> k
   repeat
   begin
     x 0.7071067811865476 f<
   while
     x 2.0 f* -> x
-    k 1 - -> k
+    -1 +-> k
   repeat
   x 1.0 f- x 1.0 f+ f/ -> var u :f
   u u f* -> var u2 :f

@@ -17,8 +17,8 @@ fn type ( s :a len :i )
     len 0 >
   while
     s u8@ xemit
-    s 1 a+ -> s
-    len 1 - -> len
+    1 +-> s
+    -1 +-> len
   repeat
 end
 
@@ -29,7 +29,7 @@ fn type0 ( s :a )
     c 0 <>
   while
     c xemit
-    s 1 a+ -> s
+    1 +-> s
   repeat
 end
 
@@ -43,12 +43,12 @@ fn typeu ( n :i )
   while
     n 10 umod 48 + buf len a+ i8!
     n 10 u/ -> n
-    len 1 + -> len
+    1 +-> len
   repeat
   begin
     len 0 >
   while
-    len 1 - -> len
+    -1 +-> len
     buf len a+ u8@ xemit
   repeat
 end
@@ -72,12 +72,12 @@ fn typei_w ( n :i w :i )
     0 t - -> t
   then
   t 0 = if
-    d 1 + -> d
+    1 +-> d
   else
     begin
       t 0 <>
     while
-      d 1 + -> d
+      1 +-> d
       t 10 u/ -> t
     repeat
   then
@@ -85,7 +85,7 @@ fn typei_w ( n :i w :i )
     w d >
   while
     32 xemit
-    w 1 - -> w
+    -1 +-> w
   repeat
   n typei
 end
@@ -95,7 +95,7 @@ fn typeh_w ( n :i w :i )
   begin
     w 0 >
   while
-    w 1 - -> w
+    -1 +-> w
     n w 2 << u>> 15 and -> var d :i
     d 10 < if
       d 48 + xemit
@@ -113,7 +113,7 @@ fn typeh ( n :i )
     t 15 u>
   while
     t 4 u>> -> t
-    w 1 + -> w
+    1 +-> w
   repeat
   n w typeh_w
 end

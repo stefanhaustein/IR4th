@@ -35,7 +35,8 @@ end
 
 fn sfxstop ( ch :i )
   ch 0 < ch 2 > or if return then
-  __c64_sfx_ctrl ch a+ u8@ 0xFE and 0xD404 ch 7 * + i>a i8!
+  0 0xD404 ch 7 * + i>a i8!
+  0 0xD406 ch 7 * + i>a i8!
   0 __c64_sfx_tmr ch 1 << a+ i16!
 end
 
@@ -45,10 +46,10 @@ fn sfxtick ( )
     __c64_sfx_tmr ch 1 << a+ -> var p :a
     p i16@ -> var t :i
     t 0 > if
-      t 1 - -> t
+      -1 +-> t
       t p i16!
       t 0 = if ch sfxstop then
     then
-    ch 1 + -> ch
+    1 +-> ch
   repeat
 end

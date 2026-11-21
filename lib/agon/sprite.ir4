@@ -57,7 +57,7 @@ fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )
       p 2 a+ u8@ emit
       255 emit
     then
-    i 1 + -> i
+    1 +-> i
   repeat
   -1
 end

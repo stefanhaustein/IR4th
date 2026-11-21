@@ -111,6 +111,28 @@ static U8Vec ez_is_static;
 static size_t ez_frame_bytes = 0;
 static size_t ez_static_base = 0;
 
+static int ez_local_add_imm(size_t slot, StackType type, size_t stack_bytes, i32 imm) {
+    (void)type;
+    (void)stack_bytes;
+    if (imm == 0)
+        return 1;
+    if (ez_is_static.data[slot]) {
+        size_t addr_off = ez_static_base + ez_local_off.data[slot];
+        ez_ld_hl_ind_data(addr_off);
+        if (imm == 1) {
+            emit8(0x23); /* INC HL */
+        } else if (imm == -1) {
+            emit8(0x2B); /* DEC HL */
+        } else {
+            emit8_24(EZ80_LD_DE_N24, (u32)imm);
+            emit8(EZ80_ADD_HL_DE);
+        }
+        ez_ld_data_hl(addr_off);
+        return 1;
+    }
+    return 0;
+}
+
 static void ez_local_op(LocalOp op, size_t slot, StackType type, size_t stack_bytes) {
     size_t off;
     int is4 = (type == TY_F || type == TY_I32);
@@ -131,6 +153,11 @@ static void ez_local_op(LocalOp op, size_t slot, StackType type, size_t stack_by
                 ez_ld_hl_ind_data(addr_off);
                 ez_push_hl();
             }
+        } else if (op == LOCAL_ADD) {
+            ez_pop_de();
+            ez_ld_hl_ind_data(addr_off);
+            emit8(EZ80_ADD_HL_DE);
+            ez_ld_data_hl(addr_off);
         } else {
             if (is4) {
                 ez_pop_hl();
@@ -166,6 +193,16 @@ static void ez_local_op(LocalOp op, size_t slot, StackType type, size_t stack_by
             emit8_8(EZ80_ED, EZ80_ED_LD_HL_MHL);
             ez_push_hl();
         }
+    } else if (op == LOCAL_ADD) {
+        ez_pop_de();
+        emit8_24(EZ80_LD_HL_N24, (u32)off);
+        emit8(EZ80_ADD_HL_SP);
+        emit8_8(EZ80_ED, EZ80_ED_LD_HL_MHL);
+        emit8(EZ80_ADD_HL_DE);
+        emit8(0xEB); /* EX DE, HL */
+        emit8_24(EZ80_LD_HL_N24, (u32)(off - 3));
+        emit8(EZ80_ADD_HL_SP);
+        emit8_8(EZ80_ED, EZ80_ED_LD_MHL_DE);
     } else {
         if (is4) {
             ez_pop_de();
@@ -1573,6 +1610,7 @@ const Backend be_ez80 = {"ez80",
                          ez_push_i32,
                          ez_push_data,
                          ez_local_op,
+                         ez_local_add_imm,
                          ez_stack_op,
                          ez_op,
                          ez_add_imm,

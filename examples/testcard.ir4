@@ -88,12 +88,12 @@ fn draw_background ( )
   cx step mod -> var x :i
   begin x w < while
     x 0 h gfxvline
-    x step + -> x
+    step +-> x
   repeat
   cy step mod -> var y :i
   begin y h < while
     0 y w gfxhline
-    y step + -> y
+    step +-> y
   repeat
   cx cy r gfxcircle
 end
@@ -106,7 +106,7 @@ fn draw_ebu_bars ( rx :i ry :i rw :i rh :i )
     i 7 = if rx rw + else rx rw i 1 + * 8 / + then -> var x1 :i
     i ebu_color gfxcolor
     x0 ry x1 x0 - rh gfxfillrect
-    i 1 + -> i
+    1 +-> i
   repeat
 end
 
@@ -119,7 +119,7 @@ fn draw_gray_steps ( rx :i ry :i rw :i rh :i )
     i 4 = if 255 else i 6 << then -> var v :i
     v v v gfxrgb gfxcolor
     x0 ry x1 x0 - rh gfxfillrect
-    i 1 + -> i
+    1 +-> i
   repeat
 end
 
@@ -143,7 +143,7 @@ fn draw_ir4_label ( cx :i ry :i bar_h :i )
   x lw 1 u>> + ym x lw + 1 - y1 gfxline
 
   \ 'I' left of 'R'
-  x 8 - -> x
+  -8 +-> x
   x y0 5 gfxhline
   x y1 5 gfxhline
   x 2 + y0 lh gfxvline
@@ -189,7 +189,7 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
     period 2 = period 3 = or if c_white else c_gray then then
     gfxcolor
     gr_x x + gr_y gr_h gfxvline
-    x 1 + -> x
+    1 +-> x
   repeat
 
   \ Block 2 (medium): [b1_w .. b1_w + b2_w), ends at cx
@@ -199,7 +199,7 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
     period 0 = if c_black else period 2 = if c_white else c_gray then then
     gfxcolor
     gr_x x + gr_y gr_h gfxvline
-    x 1 + -> x
+    1 +-> x
   repeat
 
   \ Block 3 (fine): [b1_w + b2_w .. gr_w), symmetric 3 px right of cx
@@ -208,7 +208,7 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
     x 1 and 0 = if c_dgray else c_lgray then
     gfxcolor
     gr_x x + gr_y gr_h gfxvline
-    x 1 + -> x
+    1 +-> x
   repeat
 
   \ Amber block to the right of Block 3
@@ -229,7 +229,7 @@ fn draw_center_band ( rx :i ry :i rw :i rh :i cx :i step :i )
     tw 0 > if
       cx tri_h 2 u>> - tri_y dy + tw gfxhline
     then
-    dy 1 + -> dy
+    1 +-> dy
   repeat
 
   \ White vertical center line through black bar and gap between blocks 2 & 3 to meet arrow
@@ -258,7 +258,7 @@ fn draw_color_grad ( rx :i ry :i rw :i rh :i )
     then then then then then
     r g b gfxrgb gfxcolor
     rx x + ry rh gfxvline
-    x 1 + -> x
+    1 +-> x
   repeat
 end
 
@@ -271,7 +271,7 @@ fn draw_gray_grad ( rx :i ry :i rw :i rh :i )
     x 127 * d / 1 << -> var v :i
     v v v gfxrgb gfxcolor
     rx x + ry rh gfxvline
-    x 1 + -> x
+    1 +-> x
   repeat
 end
 
@@ -280,19 +280,19 @@ fn draw_testcard ( )
   step 3 * -> var bh :i
   ry -> var y0 :i
   rx y0 rw bh draw_ebu_bars
-  y0 bh + -> y0
+  bh +-> y0
 
   \ Row 2: 5 equal grayscale blocks (2 grid cells) + white center line
   step 1 << -> bh
   rx y0 rw bh draw_gray_steps
   c_white gfxcolor
   cx y0 bh gfxvline
-  y0 bh + -> y0
+  bh +-> y0
 
   \ Row 3: Center black bar + frequency grating + amber + pointer (3 grid cells)
   step 3 * -> bh
   rx y0 rw bh cx step draw_center_band
-  y0 bh + -> y0
+  bh +-> y0
 
   \ Row 4: Stacked RGB rainbow + smooth grayscale gradients (2 grid cells)
   ry rh + y0 - -> bh

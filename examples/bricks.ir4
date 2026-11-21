@@ -1,0 +1,258 @@
+\ Brick Breaker game using portable gfx.ir4, sprite.ir4, sfx.ir4, and joy.ir4
+\ Controls: Left/Right to move paddle, Fire/Button 1 (Space/Z on Agon) to launch.
+
+require "stdio.ir4"
+require "sprite.ir4"
+require "sfx.ir4"
+require "joy.ir4"
+
+var bricks     :bytes 50
+var pad_pal    :bytes 3
+var ball_pal   :bytes 1
+var pad_pix    :bytes 144
+var ball_pix   :bytes 36
+
+var sw         :i
+var sh         :i
+var bw         :i
+var bh         :i
+var top_y      :i
+var pad_w      :i
+var pad_h      :i
+var pad_x      :i
+var pad_y      :i
+var old_px     :i
+var ball_sz    :i
+var bx         :i
+var by         :i
+var vx         :i
+var vy         :i
+var old_bx     :i
+var old_by     :i
+var launched   :i
+var lives      :i
+var left_cnt   :i
+var use_spr    :i
+var bg_col     :i
+
+fn row_color ( r :i -> :i )
+  r 0 = if 255 0 0 gfxrgb return then
+  r 1 = if 255 0 255 gfxrgb return then
+  r 2 = if 255 255 0 gfxrgb return then
+  r 3 = if 0 255 0 gfxrgb return then
+  0 255 255 gfxrgb
+end
+
+fn init_sprites ( )
+  0 -> use_spr
+  sprcount 2 < if return then
+  24 -> var pw :i
+  6  -> var ph :i
+  pw sprmaxw > if sprmaxw -> pw then
+  ph sprmaxh > if sprmaxh -> ph then
+  pad_pix pw ph * 0 fillchar
+  \ Fancy 24x6 multicolor paddle: rounded corners, red endcaps (1), silver body (2), white highlight (3)
+  0 -> var y :i
+  begin y ph < while
+    0 -> var x :i
+    begin x pw < while
+      x 2 < x pw 2 - >= or y 0 = y ph 1 - = or and 0 = if
+        2 -> var col :i
+        y 1 = if 3 -> col then
+        x 4 < x pw 4 - >= or if 1 -> col then
+        col pad_pix y pw * x + a+ i8!
+      then
+      1 +-> x
+    repeat
+    1 +-> y
+  repeat
+  ball_pix 36 0 fillchar
+  \ 6x6 rounded ball with specular hole at (1, 1)
+  0 -> y
+  begin y 6 < while
+    0 -> x
+    begin x 6 < while
+      x 0 = x 5 = or y 0 = y 5 = or and 0 =
+      x 1 = y 1 = and 0 = and if
+        1 ball_pix y 6 * x + a+ i8!
+      then
+      1 +-> x
+    repeat
+    1 +-> y
+  repeat
+  255 0 0 gfxrgb pad_pal i8!
+  192 192 192 gfxrgb pad_pal 1 a+ i8!
+  255 255 255 gfxrgb pad_pal 2 a+ i8!
+  255 255 255 gfxrgb ball_pal i8!
+  0 pw ph pad_pix pad_pal 3 sprimg 0 = if return then
+  1 6 6 ball_pix ball_pal 1 sprimg 0 = if return then
+  0 0 sprset
+  1 1 sprset
+  0 1 sprshow
+  1 1 sprshow
+  pw -> pad_w
+  ph -> pad_h
+  6 -> ball_sz
+  1 -> use_spr
+end
+
+fn draw_brick ( c :i r :i alive :i )
+  alive if r row_color else bg_col then gfxcolor
+  c bw * 1 + top_y r bh * + bw 2 - bh 2 - gfxfillrect
+end
+
+fn reset_bricks ( )
+  0 -> left_cnt
+  0 -> var r :i
+  begin r 5 < while
+    0 -> var c :i
+    begin c 10 < while
+      r 10 * c + -> var idx :i
+      1 bricks idx a+ i8!
+      c r 1 draw_brick
+      1 +-> left_cnt
+      1 +-> c
+    repeat
+    1 +-> r
+  repeat
+end
+
+fn reset_ball ( )
+  0 -> launched
+  pad_x pad_w 2 / + ball_sz 2 / - 4 << -> bx
+  pad_y ball_sz - 1 - 4 << -> by
+  28 -> vx
+  -48 -> vy
+end
+
+fn draw_actors ( )
+  bx 4 >> -> var sx :i
+  by 4 >> -> var sy :i
+  use_spr if
+    0 pad_x pad_y sprpos
+    1 sx sy sprpos
+    return
+  then
+  old_px 0 >= if
+    bg_col gfxcolor
+    old_px pad_y pad_w pad_h gfxfillrect
+    old_bx old_by ball_sz ball_sz gfxfillrect
+  then
+  255 255 255 gfxrgb gfxcolor
+  pad_x pad_y pad_w pad_h gfxfillrect
+  96 224 255 gfxrgb gfxcolor
+  sx sy ball_sz ball_sz gfxfillrect
+  pad_x -> old_px
+  sx -> old_bx
+  sy -> old_by
+end
+
+fn hit_bricks ( )
+  bx 4 >> -> var sx :i
+  by 4 >> -> var sy :i
+  sx ball_sz 2 / + -> var cx :i
+  sy ball_sz 2 / + -> var cy :i
+  cy top_y < if return then
+  cy top_y - bh / -> var r :i
+  r 0 < r 4 > or if return then
+  cx bw / -> var c :i
+  c 0 < c 9 > or if return then
+  r 10 * c + -> var idx :i
+  bricks idx a+ u8@ 0 = if return then
+  0 bricks idx a+ i8!
+  c r 0 draw_brick
+  0 vy - -> vy
+  -1 +-> left_cnt
+  0 440 4 r - 110 * + 12 0 50 sfxplay
+  left_cnt 0 = if
+    reset_bricks
+    reset_ball
+  then
+end
+
+fn step_ball ( )
+  launched 0 = if
+    pad_x pad_w 2 / + ball_sz 2 / - 4 << -> bx
+    pad_y ball_sz - 1 - 4 << -> by
+    return
+  then
+  vx +-> bx
+  vy +-> by
+  bx 4 >> -> var sx :i
+  by 4 >> -> var sy :i
+  bx 0 <= vx 0 < and if
+    0 -> bx
+    0 vx - -> vx
+    0 330 8 0 30 sfxplay
+  then
+  bx sw ball_sz - 4 << >= vx 0 > and if
+    sw ball_sz - 4 << -> bx
+    0 vx - -> vx
+    0 330 8 0 30 sfxplay
+  then
+  by 0 <= vy 0 < and if
+    0 -> by
+    0 vy - -> vy
+    0 330 8 0 30 sfxplay
+  then
+  \ Paddle bounce
+  vy 0 > sy ball_sz + pad_y >= and sy pad_y pad_h + <= and if
+    sx ball_sz + pad_x >= sx pad_x pad_w + <= and if
+      pad_y ball_sz - 1 - 4 << -> by
+      0 vy - -> vy
+      sx ball_sz 2 / + pad_x pad_w 2 / + - 3 * -> vx
+      vx 0 = if 8 -> vx then
+      0 660 12 2 45 sfxplay
+    then
+  then
+  hit_bricks
+  \ Missed ball
+  by 4 >> sh >= if
+    -1 +-> lives
+    0 150 14 1 180 sfxplay
+    lives 0 <= if
+      3 -> lives
+      reset_bricks
+    then
+    reset_ball
+  then
+end
+
+fn main ( )
+  320 200 4 gfxinit
+  gfxwidth -> sw
+  gfxheight -> sh
+  0 0 0 gfxrgb -> bg_col
+  bg_col gfxcolor
+  gfxclear
+  sw 10 / -> bw
+  sh 24 / -8 and -> bh
+  bh 2 < if 2 -> bh then
+  sh 10 / 7 + -8 and -> top_y
+  sw 8 / -> pad_w
+  pad_w 6 < if 6 -> pad_w then
+  4 -> pad_h
+  4 -> ball_sz
+  init_sprites
+  sw pad_w - 2 / -> pad_x
+  sh pad_h - 6 - -> pad_y
+  -1 -> old_px
+  3 -> lives
+  reset_bricks
+  reset_ball
+  begin 1 while
+    0 joyread -> var j :i
+    j 4 and if -5 +-> pad_x then
+    j 8 and if 5 +-> pad_x then
+    pad_x 0 < if 0 -> pad_x then
+    pad_x sw pad_w - > if sw pad_w - -> pad_x then
+    launched 0 = j 16 and 0 <> and if
+      1 -> launched
+      0 880 10 0 40 sfxplay
+    then
+    step_ball
+    draw_actors
+    sfxtick
+    gfxvsync
+  repeat
+end

@@ -22,8 +22,8 @@ end
 
 fn gotoxy ( x :i y :i )
   19 emit
-  begin y 0 > while 17 emit y 1 - -> y repeat
-  begin x 0 > while 29 emit x 1 - -> x repeat
+  begin y 0 > while 17 emit -1 +-> y repeat
+  begin x 0 > while 29 emit -1 +-> x repeat
 end
 
 fn termwidth ( -> :i )

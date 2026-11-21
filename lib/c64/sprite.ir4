@@ -48,13 +48,13 @@ fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )
             data sy w * x + a+ u8@ 0 <> if 1 -> pix then
           then
           byte 1 << pix or -> byte
-          p 1 + -> p
+          1 +-> p
         repeat
         byte dst i8!
-        dst 1 a+ -> dst
-        b 1 + -> b
+        1 +-> dst
+        1 +-> b
       repeat
-      sy 1 + -> sy
+      1 +-> sy
     repeat
   else
     1 __c64_img_mc img a+ i8!
@@ -76,13 +76,13 @@ fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )
             c -> code
           then
           byte 2 << code or -> byte
-          p 1 + -> p
+          1 +-> p
         repeat
         byte dst i8!
-        dst 1 a+ -> dst
-        b 1 + -> b
+        1 +-> dst
+        1 +-> b
       repeat
-      sy 1 + -> sy
+      1 +-> sy
     repeat
   then
   -1

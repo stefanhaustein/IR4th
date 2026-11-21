@@ -59,20 +59,20 @@ hot fn sprimg ( img :i w :i h :i data :a pal :a ncolors :i -> :i )
         x w < if
           data u8@ -> var c :i
           c 0 = c ncolors > or if 0 else pal c 1 - a+ u8@ then 0x9F23 i>a i8!
-          data 1 a+ -> data
+          1 +-> data
         else
           0 0x9F23 i>a i8!
         then
-        x 1 + -> x
+        1 +-> x
       repeat
     else
       0 -> var pad :i
       begin pad sw < while
         0 0x9F23 i>a i8!
-        pad 1 + -> pad
+        1 +-> pad
       repeat
     then
-    y 1 + -> y
+    1 +-> y
   repeat
 
   spr_u 255 and __x16_img_lo img a+ i8!

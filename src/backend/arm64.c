@@ -225,6 +225,19 @@ static void a64_local_op(LocalOp op, size_t slot, StackType type, size_t stack_b
             emit32(0xCB0003A0UL); /* SUB X0, X29, X0 */
         }
         push_x0();
+    } else if (op == LOCAL_ADD) {
+        pop_x0();
+        if (off <= 255) {
+            emit32(0xF84003A1UL | (((0UL - off) & 0x1FFUL) << 12)); /* LDUR X1, [X29, #-off] */
+            emit32(0x8B000020UL);                                   /* ADD X0, X1, X0 */
+            emit32(0xF80003A0UL | (((0UL - off) & 0x1FFUL) << 12)); /* STUR X0, [X29, #-off] */
+        } else {
+            mov_x0_u32(off, 1);
+            emit32(0xCB0103A1UL); /* SUB X1, X29, X1 */
+            emit32(0xF9400022UL); /* LDR X2, [X1] */
+            emit32(0x8B000040UL); /* ADD X0, X2, X0 */
+            emit32(0xF9000020UL); /* STR X0, [X1] */
+        }
     } else {
         if (off <= 255) {
             pop_x0();
@@ -847,6 +860,7 @@ const Backend be_arm64 = {"arm64",
                           a64_push_w,
                           a64_push_data,
                           a64_local_op,
+                          NULL,
                           a64_stack_op,
                           a64_op,
                           a64_add_imm,

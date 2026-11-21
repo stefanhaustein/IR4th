@@ -1770,6 +1770,82 @@ static void compile_body(WordIR *w) {
             continue;
         }
 
+        /* Local or typed global add-assign: +-> <ident> */
+        if (strcmp(tok, "+->") == 0) {
+            tok = next_tok();
+            if (!tok)
+                ir4_die("expected identifier after '+->'");
+            idx = find_local(tok);
+            if (idx >= 0) {
+                LocalVar *lv = &locals.data[idx];
+                StackType dt = (lv->type == TY_A) ? TY_W : lv->type;
+                if (lv->size > 0)
+                    ir4_die("cannot '+->' to ':bytes' local");
+                tpop_expect(dt);
+                if (lv->type == TY_W || lv->type == TY_A) {
+                    ins = emit_ir(IR_LOCAL_OP, w);
+                    ins->u.loc.op = LOCAL_ADD;
+                    ins->u.loc.slot = lv->slot;
+                    ins->u.loc.type = lv->type;
+                    ins->u.loc.stack_bytes = tstack_bytes();
+                } else {
+                    ins = emit_ir(IR_LOCAL_OP, w);
+                    ins->u.loc.op = LOCAL_GET;
+                    ins->u.loc.slot = lv->slot;
+                    ins->u.loc.type = lv->type;
+                    ins->u.loc.stack_bytes = tstack_bytes() + 4;
+                    ins = emit_ir(IR_ALU_OP, w);
+                    ins->u.op = (lv->type == TY_F) ? OP_FADD : OP_ADD32;
+                    ins = emit_ir(IR_LOCAL_OP, w);
+                    ins->u.loc.op = LOCAL_SET;
+                    ins->u.loc.slot = lv->slot;
+                    ins->u.loc.type = lv->type;
+                    ins->u.loc.stack_bytes = tstack_bytes();
+                }
+                continue;
+            }
+            idx = find_buffer(tok);
+            if (idx < 0)
+                ir4_die("unknown variable in '+->'");
+            {
+                BufferSym *bs = buffers.data[idx];
+                StackType dt;
+                if (bs->type == TY_NONE)
+                    ir4_die("cannot '+->' to ':bytes' or 'data' symbol");
+                dt = (bs->type == TY_A) ? TY_W : bs->type;
+                tpop_expect(dt);
+                ins = emit_ir(IR_PUSH_DATA, w);
+                ins->u.offset = bs->offset;
+                ins = emit_ir(IR_STACK_OP, w);
+                ins->u.stk.op = OP_SWAP;
+                ins->u.stk.t1 = dt;
+                ins->u.stk.t2 = TY_A;
+                ins = emit_ir(IR_PUSH_DATA, w);
+                ins->u.offset = bs->offset;
+                ins = emit_ir(IR_ALU_OP, w);
+                ins->u.op = (bs->type == TY_F) ? OP_FETCH :
+                            (bs->type == TY_I32) ? OP_FETCH :
+                            (bs->type == TY_A) ? OP_AFETCH : OP_FETCH;
+                if (bs->type == TY_A) {
+                    ins = emit_ir(IR_STACK_OP, w);
+                    ins->u.stk.op = OP_SWAP;
+                    ins->u.stk.t1 = TY_W;
+                    ins->u.stk.t2 = TY_A;
+                }
+                ins = emit_ir(IR_ALU_OP, w);
+                ins->u.op = (bs->type == TY_F) ? OP_FADD :
+                            (bs->type == TY_I32) ? OP_ADD32 :
+                            (bs->type == TY_A) ? OP_AADD : OP_ADD;
+                ins = emit_ir(IR_STACK_OP, w);
+                ins->u.stk.op = OP_SWAP;
+                ins->u.stk.t1 = TY_A;
+                ins->u.stk.t2 = bs->type;
+                ins = emit_ir(IR_ALU_OP, w);
+                ins->u.op = global_store_op(bs->type);
+            }
+            continue;
+        }
+
         /* Local or typed global assignment: -> <ident> */
         if (strcmp(tok, "->") == 0) {
             tok = next_tok();
@@ -1781,6 +1857,30 @@ static void compile_body(WordIR *w) {
                 if (lv->size > 0)
                     ir4_die("cannot assign to ':bytes' local");
                 tpop_expect(lv->type);
+                if ((lv->type == TY_W || lv->type == TY_A) && w->ir_len >= fold_fence + 3) {
+                    IrInstr *p0 = &ir_buf.data[w->ir_start + w->ir_len - 3];
+                    IrInstr *p1 = p0 + 1;
+                    IrInstr *p2 = p0 + 2;
+                    if (p0->kind == IR_LOCAL_OP && p0->u.loc.op == LOCAL_GET &&
+                        p0->u.loc.slot == lv->slot && p1->kind == IR_PUSH_W &&
+                        p2->kind == IR_ALU_OP &&
+                        (p2->u.op == OP_ADD || p2->u.op == OP_SUB ||
+                         p2->u.op == OP_AADD || p2->u.op == OP_ASUB)) {
+                        i32 delta = (p2->u.op == OP_SUB || p2->u.op == OP_ASUB)
+                                        ? (i32)(0 - (u32)p1->u.w)
+                                        : p1->u.w;
+                        p0->kind = IR_PUSH_W;
+                        p0->u.w = delta;
+                        p1->kind = IR_LOCAL_OP;
+                        p1->u.loc.op = LOCAL_ADD;
+                        p1->u.loc.slot = lv->slot;
+                        p1->u.loc.type = lv->type;
+                        p1->u.loc.stack_bytes = tstack_bytes();
+                        w->ir_len--;
+                        ir_buf.len--;
+                        continue;
+                    }
+                }
                 ins = emit_ir(IR_LOCAL_OP, w);
                 ins->u.loc.op = LOCAL_SET;
                 ins->u.loc.slot = lv->slot;
@@ -2170,6 +2270,15 @@ static void emit_word(size_t fidx) {
                 be->fn_end(sig, w->locals.data, w->locals.len);
                 break;
             case IR_PUSH_W:
+                if (i + 1 < w->ir_len && ir_buf.data[w->ir_start + i + 1].kind == IR_LOCAL_OP) {
+                    const IrInstr *nins = &ir_buf.data[w->ir_start + i + 1];
+                    if (nins->u.loc.op == LOCAL_ADD && be->local_add_imm &&
+                        be->local_add_imm(nins->u.loc.slot, nins->u.loc.type,
+                                          nins->u.loc.stack_bytes, ins->u.w)) {
+                        i++;
+                        break;
+                    }
+                }
                 if (i + 2 < w->ir_len && ir_buf.data[w->ir_start + i + 1].kind == IR_ALU_OP &&
                     ir_buf.data[w->ir_start + i + 2].kind == IR_ALU_OP) {
                     IrOp aop = ir_buf.data[w->ir_start + i + 1].u.op;

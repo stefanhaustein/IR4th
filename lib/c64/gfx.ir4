@@ -12,6 +12,8 @@
 \   while gfxrgb maps RGB to 8 C64 colors and gfxpx/gfxhline/gfxvline update the 8x8 cell
 \   foreground attribute in $CC00 (ZX Spectrum-style attribute clash; bg stays color 0).
 
+require "mem.ir4"
+
 data __c64_modes
   0 :i16 320 :i16 200 :i16 1 :i16
 end
@@ -23,16 +25,13 @@ end
 var __c64_col :i
 var __c64_bg :i
 
-\ Read 1 byte from RAM underneath KERNAL ROM ($E000-$FFFF) with IRQs disabled
-code __c64_peek_under ( p :a -> :i )
-  0xBD :i8 0 :as 0x85 :i8 0x02 :i8
-  0xBD :i8 1 :as 0x85 :i8 0x03 :i8
-  0x78 :i8 0xA9 :i8 0x35 :i8 0x85 :i8 0x01 :i8
-  0xA0 :i8 0x00 :i8 0xB1 :i8 0x02 :i8 0xA8 :i8
-  0xA9 :i8 0x36 :i8 0x85 :i8 0x01 :i8 0x58 :i8
-  0x98 :i8 0x9D :i8 0 :as
-  0xA9 :i8 0x00 :i8 0x9D :i8 1 :as
-  0x60 :i8
+\ Map RAM underneath KERNAL ROM ($E000-$FFFF) with IRQs disabled
+code __c64_ram_on ( )
+  0x78 :i8 0xA9 :i8 0x35 :i8 0x85 :i8 0x01 :i8 0x60 :i8
+end
+
+code __c64_ram_off ( )
+  0xA9 :i8 0x36 :i8 0x85 :i8 0x01 :i8 0x58 :i8 0x60 :i8
 end
 
 fn gfxmodes ( -> :a :i )
@@ -85,121 +84,126 @@ hot fn gfxcolor ( c :i )
 end
 
 fn gfxclear ( )
-  0xE000 i>a -> var p :a
-  8000 -> var n :i
-  begin n 0 > while
-    0 p i8!
-    p 1 a+ -> p
-    n 1 - -> n
-  repeat
+  0xE000 i>a 8000 0 fillchar
   __c64_col 15 and -> __c64_bg
-  __c64_bg -> var attr :i
-  0xCC00 i>a -> p
-  1000 -> n
-  begin n 0 > while
-    attr p i8!
-    p 1 a+ -> p
-    n 1 - -> n
-  repeat
+  0xCC00 i>a 1000 __c64_bg fillchar
+end
+
+hot fn gfxhline ( x :i y :i w :i )
+  y 0 < y 200 >= or if return then
+  x 0 < if x +-> w 0 -> x then
+  x w + 320 > if 320 x - -> w then
+  w 0 <= if return then
+  y 3 u>> -> var row :i
+  x 3 u>> -> var c0 :i
+  x w + 1 - -> var x1 :i
+  x1 3 u>> -> var c1 :i
+  0xE000 i>a row 8 << row 6 << + c0 3 << + y 7 and + a+ -> var p :a
+  255 x 7 and u>> -> var lmask :i
+  255 7 x1 7 and - << 255 and -> var rmask :i
+  __c64_ram_on
+  __c64_col __c64_bg = if
+    c0 c1 = if
+      p u8@ lmask rmask and invert and p i8!
+    else
+      p u8@ lmask invert and p i8!
+      8 +-> p
+      c0 1 + -> var c :i
+      begin c c1 < while
+        0 p i8!
+        8 +-> p
+        1 +-> c
+      repeat
+      p u8@ rmask invert and p i8!
+    then
+  else
+    0xCC00 i>a row 5 << row 3 << + c0 + a+ -> var cell :a
+    __c64_col 4 << -> var fgnib :i
+    c0 c1 = if
+      p u8@ lmask rmask and or p i8!
+      cell u8@ 15 and fgnib or cell i8!
+    else
+      p u8@ lmask or p i8!
+      cell u8@ 15 and fgnib or cell i8!
+      8 +-> p
+      1 +-> cell
+      c0 1 + -> c
+      begin c c1 < while
+        255 p i8!
+        cell u8@ 15 and fgnib or cell i8!
+        8 +-> p
+        1 +-> cell
+        1 +-> c
+      repeat
+      p u8@ rmask or p i8!
+      cell u8@ 15 and fgnib or cell i8!
+    then
+  then
+  __c64_ram_off
 end
 
 hot fn gfxpx ( x :i y :i )
   x 0 < x 320 >= or y 0 < y 200 >= or or if return then
   y 3 u>> -> var row :i
   x 3 u>> -> var col :i
-  row 8 << row 6 << + col 3 << + y 7 and + -> var off :i
-  0xE000 i>a off a+ -> var p :a
+  0xE000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> var p :a
   128 x 7 and u>> -> var mask :i
-  __c64_col __c64_bg <> if
-    p __c64_peek_under mask or p i8!
+  __c64_ram_on
+  __c64_col __c64_bg = if
+    p u8@ mask invert and p i8!
+  else
+    p u8@ mask or p i8!
     0xCC00 i>a row 5 << row 3 << + col + a+ -> var cell :a
     cell u8@ 15 and __c64_col 4 << or cell i8!
-  else
-    p __c64_peek_under mask 255 xor and p i8!
   then
-end
-
-hot fn gfxhline ( x :i y :i w :i )
-  y 0 < y 200 >= or if return then
-  x 0 < if w x + -> w 0 -> x then
-  x w + 320 > if 320 x - -> w then
-  w 0 <= if return then
-  y 3 u>> -> var row :i
-  begin w 0 > while
-    x 7 and 0 = w 8 >= and if
-      x 3 u>> -> var col :i
-      0xE000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> var p :a
-      __c64_col __c64_bg <> if
-        255 p i8!
-        0xCC00 i>a row 5 << row 3 << + col + a+ -> var cell :a
-        cell u8@ 15 and __c64_col 4 << or cell i8!
-      else
-        0 p i8!
-      then
-      x 8 + -> x
-      w 8 - -> w
-    else
-      x 3 u>> -> col
-      0xE000 i>a row 8 << row 6 << + col 3 << + y 7 and + a+ -> p
-      128 x 7 and u>> -> var mask :i
-      __c64_col __c64_bg <> if
-        p __c64_peek_under mask or p i8!
-        0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
-        cell u8@ 15 and __c64_col 4 << or cell i8!
-      else
-        p __c64_peek_under mask 255 xor and p i8!
-      then
-      x 1 + -> x
-      w 1 - -> w
-    then
-  repeat
+  __c64_ram_off
 end
 
 hot fn gfxvline ( x :i y :i h :i )
   x 0 < x 320 >= or if return then
-  y 0 < if h y + -> h 0 -> y then
+  y 0 < if y +-> h 0 -> y then
   y h + 200 > if 200 y - -> h then
   h 0 <= if return then
   y 3 u>> -> var row :i
   x 3 u>> -> var col :i
   y 7 and -> var ry :i
   0xE000 i>a row 8 << row 6 << + col 3 << + ry + a+ -> var p :a
-  0xCC00 i>a row 5 << row 3 << + col + a+ -> var cell :a
   128 x 7 and u>> -> var mask :i
-  mask 255 xor -> var nmask :i
-  x 0 < x 320 >= or if return then
-  y 0 < if h y + -> h 0 -> y then
-  y h + 200 > if 200 y - -> h then
-  h 0 <= if return then
-  y 3 u>> -> row
-  x 3 u>> -> col
-  y 7 and -> ry
-  0xE000 i>a row 8 << row 6 << + col 3 << + ry + a+ -> p
-  0xCC00 i>a row 5 << row 3 << + col + a+ -> cell
-  128 x 7 and u>> -> mask
-  mask 255 xor -> nmask
-  __c64_col __c64_bg <> if
-    cell u8@ 15 and __c64_col 4 << or cell i8!
-  then
-  begin h 0 > while
-    __c64_col __c64_bg <> if
-      p __c64_peek_under mask or p i8!
-    else
-      p __c64_peek_under nmask and p i8!
-    then
-    h 1 - -> h
-    h 0 > if
-      ry 7 = if
-        0 -> ry
-        p 313 a+ -> p
-        cell 40 a+ -> cell
-        __c64_col __c64_bg <> if
-          cell u8@ 15 and __c64_col 4 << or cell i8!
+  __c64_ram_on
+  __c64_col __c64_bg = if
+    mask invert -> var nmask :i
+    begin h 0 > while
+      p u8@ nmask and p i8!
+      -1 +-> h
+      h 0 > if
+        ry 7 = if
+          0 -> ry
+          313 +-> p
+        else
+          1 +-> ry
+          1 +-> p
         then
-      else
-        ry 1 + -> ry
-        p 1 a+ -> p
       then
-    then
-  repeat
+    repeat
+  else
+    0xCC00 i>a row 5 << row 3 << + col + a+ -> var cell :a
+    __c64_col 4 << -> var fgnib :i
+    cell u8@ 15 and fgnib or cell i8!
+    begin h 0 > while
+      p u8@ mask or p i8!
+      -1 +-> h
+      h 0 > if
+        ry 7 = if
+          0 -> ry
+          313 +-> p
+          40 +-> cell
+          cell u8@ 15 and fgnib or cell i8!
+        else
+          1 +-> ry
+          1 +-> p
+        then
+      then
+    repeat
+  then
+  __c64_ram_off
 end

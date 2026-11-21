@@ -39,11 +39,11 @@ fn __x16_init_pal ( )
       begin b 6 < while
         g 3 * 4 << b 3 * or 0x9F23 i>a i8!
         r 3 * 0x9F23 i>a i8!
-        b 1 + -> b
+        1 +-> b
       repeat
-      g 1 + -> g
+      1 +-> g
     repeat
-    r 1 + -> r
+    1 +-> r
   repeat
 end
 
@@ -98,7 +98,7 @@ hot fn __x16_set_addr ( x :i y :i inc :i )
   x 8 u>> y + y 2 u>> + -> var mid :i
   lo 255 > if
     lo 255 and -> lo
-    mid 1 + -> mid
+    1 +-> mid
   then
   lo 0x9F20 i>a i8!
   mid 255 and 0x9F21 i>a i8!
@@ -113,25 +113,25 @@ end
 
 hot fn gfxhline ( x :i y :i w :i )
   y 0 < y __x16_h >= or if return then
-  x 0 < if w x + -> w 0 -> x then
+  x 0 < if x +-> w 0 -> x then
   x w + __x16_w > if __x16_w x - -> w then
   w 0 <= if return then
   x y 0x10 __x16_set_addr
   begin w 0 > while
     __x16_col 0x9F23 i>a i8!
-    w 1 - -> w
+    -1 +-> w
   repeat
 end
 
 hot fn gfxvline ( x :i y :i h :i )
   x 0 < x __x16_w >= or if return then
-  y 0 < if h y + -> h 0 -> y then
+  y 0 < if y +-> h 0 -> y then
   y h + __x16_h > if __x16_h y - -> h then
   h 0 <= if return then
   x y 0xE0 __x16_set_addr
   begin h 0 > while
     __x16_col 0x9F23 i>a i8!
-    h 1 - -> h
+    -1 +-> h
   repeat
 end
 
@@ -145,8 +145,8 @@ hot fn gfxclear ( )
     begin blk 0 > while
       c d0 i8! c d0 i8! c d0 i8! c d0 i8!
       c d0 i8! c d0 i8! c d0 i8! c d0 i8!
-      blk 1 - -> blk
+      -1 +-> blk
     repeat
-    row 1 - -> row
+    -1 +-> row
   repeat
 end
