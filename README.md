@@ -119,12 +119,12 @@ YT Playlist: https://www.youtube.com/watch?v=l4LC_M3oXqM&list=PLQKhMXcXxjVY
 
 | Target | Mandelbrot ([mandel.ir4](examples/mandel.ir4)) | TV Test Card ([testcard.ir4](examples/testcard.ir4)) |
 |---|---|---|
-| **Commander X16** | ![Commander X16 Mandelbrot](docs/img/mandel_x16.png) | ![Commander X16 testcard](docs/img/testcard_x16.png) |
-| **Commodore 64** | ![C64 Mandelbrot](docs/img/mandel_c64.png) | ![C64 testcard](docs/img/testcard_c64.png) |
-| **Agon** | ![Agon Mandelbrot](docs/img/mandel_agon.png) | ![Agon testcard](docs/img/testcard_agon.png) |
-| **CP/M** | ![CP/M Mandelbrot](docs/img/mandel_cpm.png) | — |
-| **Sinclair ZX81** | ![ZX81 Mandelbrot](docs/img/mandel_zx81.png) | — |
-| **Terminal (ANSI half-blocks)** | ![ARM64 ANSI Mandelbrot](docs/img/mandel_arm64.png) | ![ANSI terminal testcard](docs/img/testcard_ansi.png) |
+| **Commander X16** | <img src="docs/img/mandel_x16.png" alt="Commander X16 Mandelbrot" width="320"> | <img src="docs/img/testcard_x16.png" alt="Commander X16 testcard" width="320"> |
+| **Commodore 64** | <img src="docs/img/mandel_c64.png" alt="C64 Mandelbrot" width="320"> | <img src="docs/img/testcard_c64.png" alt="C64 testcard" width="320"> |
+| **Agon** | <img src="docs/img/mandel_agon.png" alt="Agon Mandelbrot" width="320"> | <img src="docs/img/testcard_agon.png" alt="Agon testcard" width="320"> |
+| **CP/M** | <img src="docs/img/mandel_cpm.png" alt="CP/M Mandelbrot" width="320"> | — |
+| **Sinclair ZX81** | <img src="docs/img/mandel_zx81.png" alt="ZX81 Mandelbrot" width="320"> | — |
+| **Terminal (ANSI half-blocks)** | <img src="docs/img/mandel_arm64.png" alt="ARM64 ANSI Mandelbrot" width="320"> | <img src="docs/img/testcard_ansi.png" alt="ANSI terminal testcard" width="320"> |
 
 
 ## License
