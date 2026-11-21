@@ -75,19 +75,19 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 ## Architectures & Platforms
 
 - **6502** (-t 6502, configurable `--zp`, `--stack-zp`, `--no-stack-zp`)
-  - [c64](docs/platform/c64/) (-t c64) — Commodore 64 PRG
+  - [c64](docs/platform/c64/README.md) (-t c64) — Commodore 64 PRG
   - sim65 (-t sim65) — cc65 simulator
-  - [x16](docs/platform/x16/) (-t x16, -t x16-cart) — Commander X16 PRG and banked CRT cartridges
+  - [x16](docs/platform/x16/README.md) (-t x16, -t x16-cart) — Commander X16 PRG and banked CRT cartridges
 - **ARM64** (-t arm64) — AArch64 machine code, with `--run` JIT on macOS Apple Silicon
 - **Bytecode VM** (-t bc) — IR4th bytecode, with `--run` in the built-in stack VM
 - **eZ80** (-t ez80)
-  - [agon](docs/platform/agon/) (-t agon) — Agon Light / Console8 24-bit ADL MOS executables
+  - [agon](docs/platform/agon/README.md) (-t agon) — Agon Light / Console8 24-bit ADL MOS executables
 - **RISC-V RV32IM** (-t rv32)
   - obj (-t obj) — relocatable ELF32 object files (linking extern symbols and libgcc soft-float)
   - virt (-t virt) — standalone QEMU virt ELF32
 - **Z80** (-t z80)
-  - [cpm](docs/platform/cpm/) (-t cpm) — CP/M COM executables
-  - [zx81](docs/platform/zx81/) (-t zx81) — Sinclair ZX81 `.p` snapshots
+  - [cpm](docs/platform/cpm/README.md) (-t cpm) — CP/M COM executables
+  - [zx81](docs/platform/zx81/README.md) (-t zx81) — Sinclair ZX81 `.p` snapshots
 
 
 ## Companion Library
