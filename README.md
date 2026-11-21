@@ -2,7 +2,9 @@
 
 **IR4(th)** (*Typed Forth as an Intermediate Representation*) is a minimal, statically typed, monomorphic concatenative intermediate language designed for retro-computing CPUs (such as Z80 and 6502) and constrained embedded systems.
 
-IR4(th) programs are compiled via a 2-pass direct machine-code compiler (with reachability dead-code elimination) using `ir4c` (written in strict C89).
+IR4(th) programs are compiled via a 2-pass direct machine-code compiler (with reachability dead-code elimination) using ir4c (written in strict C89).
+
+IR4(th) is aimed at language builders as a compiler backend target rather than a language for writing applications directly. While it is expressive enough for hand-written tests and demos, high-level features such as structs, arrays, or records are intentionally out of scope and left to frontend languages.
 
 See [spec.md](spec.md) for the full language specification.
 
@@ -72,20 +74,20 @@ Pass `-I dir` (repeatable) to add library search directories ahead of the built-
 
 ## Architectures & Platforms
 
-- **6502** (`-t 6502`, configurable `--zp`, `--stack-zp`, `--no-stack-zp`)
-  - [`c64`](docs/platform/c64/) (`-t c64`) — Commodore 64 `.prg`
-  - `sim65` (`-t sim65`) — `cc65` simulator
-  - [`x16`](docs/platform/x16/) (`-t x16`, `-t x16-cart`) — Commander X16 `.prg` and banked `.crt` cartridges
-- **ARM64** (`-t arm64`) — AArch64 machine code, with `--run` JIT on macOS Apple Silicon
-- **Bytecode VM** (`-t bc`) — IR4th bytecode, with `--run` in the built-in stack VM
-- **eZ80** (`-t ez80`)
-  - [`agon`](docs/platform/agon/) (`-t agon`) — Agon Light / Console8 24-bit ADL MOS executables
-- **RISC-V RV32IM** (`-t rv32`)
-  - `obj` (`-t obj`) — relocatable ELF32 `.o` (linking `extern` symbols and `libgcc` soft-float)
-  - `virt` (`-t virt`) — standalone QEMU `virt` ELF32
-- **Z80** (`-t z80`)
-  - [`cpm`](docs/platform/cpm/) (`-t cpm`) — CP/M `.com` executables
-  - [`zx81`](docs/platform/zx81/) (`-t zx81`) — Sinclair ZX81 `.p` snapshots
+- **6502** (-t 6502, configurable `--zp`, `--stack-zp`, `--no-stack-zp`)
+  - [c64](docs/platform/c64/) (-t c64) — Commodore 64 PRG
+  - sim65 (-t sim65) — cc65 simulator
+  - [x16](docs/platform/x16/) (-t x16, -t x16-cart) — Commander X16 PRG and banked CRT cartridges
+- **ARM64** (-t arm64) — AArch64 machine code, with `--run` JIT on macOS Apple Silicon
+- **Bytecode VM** (-t bc) — IR4th bytecode, with `--run` in the built-in stack VM
+- **eZ80** (-t ez80)
+  - [agon](docs/platform/agon/) (-t agon) — Agon Light / Console8 24-bit ADL MOS executables
+- **RISC-V RV32IM** (-t rv32)
+  - obj (-t obj) — relocatable ELF32 object files (linking extern symbols and libgcc soft-float)
+  - virt (-t virt) — standalone QEMU virt ELF32
+- **Z80** (-t z80)
+  - [cpm](docs/platform/cpm/) (-t cpm) — CP/M COM executables
+  - [zx81](docs/platform/zx81/) (-t zx81) — Sinclair ZX81 `.p` snapshots
 
 
 ## Companion Library
